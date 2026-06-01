@@ -254,38 +254,41 @@ static uint64_t fu_xs_next(void) {
 /* generators                                                         */
 /* ------------------------------------------------------------------ */
 
-static void fu_gen_v4(unsigned char *b) {
-    fu_rand(b, 16);
+/* Generators return zend_result: a CSPRNG failure (FAILURE, exception pending)
+   short-circuits the layout immediately rather than running on zeroed bytes. */
+static zend_result fu_gen_v4(unsigned char *b) {
+    if (fu_rand(b, 16) == FAILURE) return FAILURE;
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
+    return SUCCESS;
 }
 
-static void fu_gen_v4_fast(unsigned char *b) {
-    uint64_t a = fu_xs_next(), c = fu_xs_next();
+static zend_result fu_gen_v4_fast(unsigned char *b) {
+    uint64_t a = fu_xs_next();
+    if (UNEXPECTED(EG(exception))) return FAILURE; /* first call seeds from the CSPRNG */
+    uint64_t c = fu_xs_next();
     memcpy(b, &a, 8); memcpy(b + 8, &c, 8);
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
+    return SUCCESS;
 }
 
 /* lay out a v1 UUID from a Gregorian 100ns timestamp; node (6 bytes) and
    clockseq (0..0x3fff) optional — pass NULL / -1 to randomize them. */
-static void fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
+static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
     uint32_t tl = (uint32_t)(g & 0xffffffffULL);
     uint16_t tm = (uint16_t)((g >> 32) & 0xffff);
     uint16_t th = (uint16_t)((g >> 48) & 0x0fff) | 0x1000; /* version 1 */
+    if (clockseq < 0) { unsigned char r[2]; if (fu_rand(r, 2) == FAILURE) return FAILURE; clockseq = ((r[0]<<8)|r[1]) & 0x3fff; }
+    unsigned char rnode[6];
+    if (!node) { if (fu_rand(rnode, 6) == FAILURE) return FAILURE; rnode[0] |= 0x01; node = rnode; }
     b[0]=tl>>24; b[1]=tl>>16; b[2]=tl>>8; b[3]=tl;
     b[4]=tm>>8;  b[5]=tm;
     b[6]=th>>8;  b[7]=th;
-    if (clockseq < 0) { unsigned char r[2]; fu_rand(r, 2); clockseq = ((r[0]<<8)|r[1]) & 0x3fff; }
     b[8]=((clockseq>>8) & 0x3f) | 0x80;  /* variant + clock_seq_hi */
     b[9]=clockseq & 0xff;                /* clock_seq_low */
-    if (node) {
-        memcpy(b+10, node, 6);
-    } else {
-        unsigned char r[6]; fu_rand(r, 6);
-        memcpy(b+10, r, 6);
-        b[10] |= 0x01;                   /* multicast bit: random node */
-    }
+    memcpy(b+10, node, 6);
+    return SUCCESS;
 }
 
 static inline uint64_t fu_greg_now(void) {
@@ -295,15 +298,15 @@ static inline uint64_t fu_greg_now(void) {
     return unix100 + 0x01B21DD213814000ULL; /* 1582-10-15 .. 1970 in 100ns */
 }
 
-static void fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
-    fu_lay_v1(b, fu_greg_now(), node, clockseq);
+static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+    return fu_lay_v1(b, fu_greg_now(), node, clockseq);
 }
 
-static void fu_gen_v1(unsigned char *b) { fu_gen_v1_ex(b, NULL, -1); }
+static zend_result fu_gen_v1(unsigned char *b) { return fu_gen_v1_ex(b, NULL, -1); }
 
-static void fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+static zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
     unsigned char v1[16];
-    fu_gen_v1_ex(v1, node, clockseq);
+    if (fu_gen_v1_ex(v1, node, clockseq) == FAILURE) return FAILURE;
     uint64_t th = ((uint64_t)(v1[6] & 0x0f) << 8) | v1[7];
     uint64_t tm = ((uint64_t)v1[4] << 8) | v1[5];
     uint64_t tl = ((uint64_t)v1[0] << 24) | ((uint64_t)v1[1] << 16) | ((uint64_t)v1[2] << 8) | v1[3];
@@ -313,44 +316,48 @@ static void fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clocks
     b[6]=0x60 | ((t60>>8)&0x0f);
     b[7]=t60 & 0xff;
     memcpy(b+8, v1+8, 8); /* variant + clock_seq + node preserved */
+    return SUCCESS;
 }
 
-static void fu_gen_v6(unsigned char *b) { fu_gen_v6_ex(b, NULL, -1); }
+static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1); }
 
 /* DCE Security (v2): v1 time layout, but time_low := local identifier and
    clock_seq_low := local domain; version nibble = 2. The low 32 timestamp bits
    are sacrificed for the local id, so v2 time resolution is coarse. */
-static void fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
+static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
                       const unsigned char *node, int clockseq) {
-    fu_lay_v1(b, fu_greg_now(), node, clockseq);
+    if (fu_lay_v1(b, fu_greg_now(), node, clockseq) == FAILURE) return FAILURE;
     b[0] = (local_id >> 24) & 0xff; b[1] = (local_id >> 16) & 0xff;
     b[2] = (local_id >> 8)  & 0xff; b[3] = local_id & 0xff;
     b[6] = (b[6] & 0x0f) | 0x20;    /* version 2 */
     b[9] = local_domain;            /* clock_seq_low := local domain */
+    return SUCCESS;
 }
 
-static void fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t counter) {
+static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t counter) {
+    unsigned char r[4]; if (fu_rand(r, 4) == FAILURE) return FAILURE;
     b[0]=(ms>>40)&0xff; b[1]=(ms>>32)&0xff; b[2]=(ms>>24)&0xff;
     b[3]=(ms>>16)&0xff; b[4]=(ms>>8)&0xff;  b[5]=ms&0xff;
     b[6]=0x70 | ((counter>>38)&0x0f);
     b[7]=(counter>>30)&0xff;
     b[8]=0x80 | ((counter>>24)&0x3f);
     b[9]=(counter>>16)&0xff; b[10]=(counter>>8)&0xff; b[11]=counter&0xff;
-    unsigned char r[4]; fu_rand(r, 4); memcpy(b+12, r, 4);
+    memcpy(b+12, r, 4);
+    return SUCCESS;
 }
 
 /* monotonic v7 using module-global state */
-static void fu_gen_v7(unsigned char *b) {
+static zend_result fu_gen_v7(unsigned char *b) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     uint64_t ms = (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
     uint64_t counter;
     if (ms > FAST_UUID_G(v7_ts)) {
-        FAST_UUID_G(v7_ts) = ms;
-        unsigned char r[6]; fu_rand(r, 6);
+        unsigned char r[6]; if (fu_rand(r, 6) == FAILURE) return FAILURE; /* draw before mutating state */
         counter = (((uint64_t)r[0]<<34)|((uint64_t)r[1]<<26)|((uint64_t)r[2]<<18)
                   |((uint64_t)r[3]<<10)|((uint64_t)r[4]<<2)|((uint64_t)r[5]>>6));
         counter &= (1ULL<<40) - 1; /* leave 2 high bits as overflow headroom */
+        FAST_UUID_G(v7_ts) = ms;
         FAST_UUID_G(v7_counter) = counter;
     } else {
         counter = FAST_UUID_G(v7_counter) + 1;
@@ -358,15 +365,15 @@ static void fu_gen_v7(unsigned char *b) {
         FAST_UUID_G(v7_counter) = counter;
         ms = FAST_UUID_G(v7_ts);
     }
-    fu_lay_v7(b, ms, counter);
+    return fu_lay_v7(b, ms, counter);
 }
 
 /* non-monotonic v7 at an explicit timestamp */
-static void fu_gen_v7_at(unsigned char *b, uint64_t ms) {
-    unsigned char r[6]; fu_rand(r, 6);
+static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms) {
+    unsigned char r[6]; if (fu_rand(r, 6) == FAILURE) return FAILURE;
     uint64_t counter = (((uint64_t)r[0]<<34)|((uint64_t)r[1]<<26)|((uint64_t)r[2]<<18)
                        |((uint64_t)r[3]<<10)|((uint64_t)r[4]<<2)|((uint64_t)r[5]>>6)) & ((1ULL<<42)-1);
-    fu_lay_v7(b, ms, counter);
+    return fu_lay_v7(b, ms, counter);
 }
 
 static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
@@ -507,7 +514,7 @@ PHP_METHOD(FastUuid_Uuid, uuid1) {
         if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0); RETURN_THROWS(); }
         np = node;
     }
-    unsigned char b[16]; fu_gen_v1_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)); fu_return_uuid(return_value, b);
+    unsigned char b[16]; if (fu_gen_v1_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid2) {
@@ -554,7 +561,7 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
         np = node;
     }
     unsigned char b[16];
-    fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cs_null ? -1 : (int)(clockseq & 0x3fff));
+    if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
 }
 
@@ -568,7 +575,7 @@ PHP_METHOD(FastUuid_Uuid, uuid3) {
 
 PHP_METHOD(FastUuid_Uuid, uuid4) {
     ZEND_PARSE_PARAMETERS_NONE();
-    unsigned char b[16]; fu_gen_v4(b); fu_return_uuid(return_value, b);
+    unsigned char b[16]; if (fu_gen_v4(b) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid5) {
@@ -591,7 +598,7 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
         if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0); RETURN_THROWS(); }
         np = node;
     }
-    unsigned char b[16]; fu_gen_v6_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)); fu_return_uuid(return_value, b);
+    unsigned char b[16]; if (fu_gen_v6_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid7) {
@@ -610,9 +617,9 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
         if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
         zend_long sec = zval_get_long(&ret);
         zval_ptr_dtor(&ret);
-        fu_gen_v7_at(b, (uint64_t)sec * 1000ULL);
+        if (fu_gen_v7_at(b, (uint64_t)sec * 1000ULL) == FAILURE) RETURN_THROWS();
     } else {
-        fu_gen_v7(b);
+        if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
     }
     fu_return_uuid(return_value, b);
 }
@@ -706,7 +713,7 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
     }
     /* signed: dates before 1970 give a negative unix-seconds value */
     int64_t g = secs * 10000000LL + (int64_t)micros * 10LL + (int64_t)0x01B21DD213814000ULL;
-    unsigned char b[16]; fu_lay_v1(b, (uint64_t)g, np, cs_null ? -1 : (int)(clockseq & 0x3fff));
+    unsigned char b[16]; if (fu_lay_v1(b, (uint64_t)g, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
 }
 
@@ -893,11 +900,11 @@ PHP_METHOD(FastUuid_Uuid, __unserialize) {
     fu_format36(_fu_src, ZSTR_VAL(_fu_s)); ZSTR_VAL(_fu_s)[36] = '\0'; \
     RETURN_STR(_fu_s); } while (0)
 
-PHP_FUNCTION(uuid_v1) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v1(b); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v4) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v4(b); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v4_fast) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v4_fast(b); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v6) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v6(b); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v7) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v7(b); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v1) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v1(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v4) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v4_fast) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4_fast(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v6) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v6(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v7) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v7(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
 
 PHP_FUNCTION(uuid_v3) {
     zend_string *zns, *name;
