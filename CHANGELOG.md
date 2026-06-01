@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-01
+
+### Fixed
+
+- Windows builds now compile under MSVC. The wall clock uses
+  `GetSystemTimePreciseAsFileTime` (100ns resolution) instead of POSIX
+  `clock_gettime`, and the cast handler returns `zend_result` to match its
+  signature. 0.1.0 and 0.1.1 attached no Windows DLLs because the MSVC build
+  failed; this release ships them.
+
 ## [0.1.1] - 2026-06-01
 
 ### Fixed
@@ -45,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.1.1...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.1.2...HEAD
+[0.1.2]: https://github.com/iliaal/fast_uuid/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/iliaal/fast_uuid/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/iliaal/fast_uuid/releases/tag/0.1.0
