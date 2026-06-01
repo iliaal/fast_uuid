@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ARM64 builds now use a NEON table-lookup hex formatter for UUID string output,
+  matching the existing SSSE3 fast path on x86-64.
+
 ## [0.1.2] - 2026-06-01
 
 ### Fixed

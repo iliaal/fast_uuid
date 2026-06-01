@@ -37,6 +37,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <stdint.h>
 
 #ifndef PHP_WIN32
 # include <unistd.h>   /* getuid/getgid for uuid2 auto local-identifier */
@@ -49,6 +50,11 @@
 # include <immintrin.h>
 # define FU_X86 1
 static int fu_has_ssse3 = 0;   /* set in MINIT via __builtin_cpu_supports */
+#endif
+
+#if defined(__aarch64__)
+# include <arm_neon.h>
+# define FU_AARCH64 1
 #endif
 
 ZEND_DECLARE_MODULE_GLOBALS(fast_uuid)
@@ -113,7 +119,7 @@ static int fu_compare(zval *a, zval *b) {
 /* formatting / parsing                                               */
 /* ------------------------------------------------------------------ */
 
-/* scalar 16-byte -> 32 lowercase hex chars (default / non-x86 / no-SSSE3) */
+/* scalar 16-byte -> 32 lowercase hex chars (default / no SIMD path) */
 static inline void fu_hex32_scalar(const unsigned char *b, char *o) {
     const char *L = fu_lut;
     for (int i = 0; i < 16; i++) { o[i*2] = L[b[i]*2]; o[i*2+1] = L[b[i]*2+1]; }
@@ -139,9 +145,28 @@ static void fu_hex32_ssse3(const unsigned char *b, char *o) {
 }
 #endif
 
+#ifdef FU_AARCH64
+static inline void fu_hex32_neon(const unsigned char *b, char *o) {
+    const uint8x16_t v    = vld1q_u8((const uint8_t *)b);
+    const uint8x16_t mask = vdupq_n_u8(0x0f);
+    const uint8x16_t lut  = vld1q_u8((const uint8_t *)fu_hexd);
+    const uint8x16_t hi   = vshrq_n_u8(v, 4);
+    const uint8x16_t lo   = vandq_u8(v, mask);
+    const uint8x16_t hh   = vqtbl1q_u8(lut, hi);
+    const uint8x16_t lh   = vqtbl1q_u8(lut, lo);
+    const uint8x16x2_t z  = vzipq_u8(hh, lh);
+    vst1q_u8((uint8_t *)o,       z.val[0]);
+    vst1q_u8((uint8_t *)(o + 16), z.val[1]);
+}
+#endif
+
 static inline void fu_hex32(const unsigned char *b, char *o) {
 #ifdef FU_X86
     if (fu_has_ssse3) { fu_hex32_ssse3(b, o); return; }
+#endif
+#ifdef FU_AARCH64
+    fu_hex32_neon(b, o);
+    return;
 #endif
     fu_hex32_scalar(b, o);
 }
@@ -1231,9 +1256,11 @@ PHP_MINFO_FUNCTION(fast_uuid) {
     php_info_print_table_row(2, "fast_uuid support", "enabled");
     php_info_print_table_row(2, "version", PHP_FAST_UUID_VERSION);
 #ifdef FU_X86
-    php_info_print_table_row(2, "x86 SIMD hex formatter", fu_has_ssse3 ? "SSSE3" : "scalar (CPU lacks SSSE3)");
+    php_info_print_table_row(2, "SIMD hex formatter", fu_has_ssse3 ? "SSSE3" : "scalar (CPU lacks SSSE3)");
+#elif defined(FU_AARCH64)
+    php_info_print_table_row(2, "SIMD hex formatter", "AArch64 NEON");
 #else
-    php_info_print_table_row(2, "x86 SIMD hex formatter", "n/a (non-x86 build)");
+    php_info_print_table_row(2, "SIMD hex formatter", "scalar");
 #endif
     php_info_print_table_end();
 }
