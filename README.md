@@ -8,13 +8,13 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 
 - **Batched CSPRNG**: `getrandom()` is amortized across ~500 v4s via an 8 KB per-thread buffer instead of one syscall per UUID. ramsey's per-call `random_bytes()` is the usual bottleneck.
 - **No property table**: the object is 16 inline bytes plus a lazily-cached canonical string. No `HashTable`, no declared properties, custom create/free/clone/compare/cast handlers.
-- **SIMD hex formatter**: on x86-64 a runtime-dispatched SSSE3 `pshufb`-LUT path turns 16 bytes into 32 hex in a handful of vector ops. A scalar LUT path covers other architectures (ARM64/Graviton-safe). MINIT decides the dispatch once via `__builtin_cpu_supports("ssse3")`.
+- **SIMD hex formatter**: x86-64 uses a runtime-dispatched SSSE3 `pshufb`-LUT path, and ARM64 uses a NEON table-lookup path. Both turn 16 bytes into 32 hex in a handful of vector ops, with a scalar LUT fallback for other architectures.
 - **Procedural path**: `uuid_v4()` and friends return a `zend_string` with no object allocation, for ORM inserts and cache keys.
 
 ## Requirements
 
 - PHP 8.3 through 8.6, NTS or ZTS. PHP 8.3 builds via two small `#if PHP_VERSION_ID < 80400` polyfills.
-- x86-64 gets the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
+- x86-64 and ARM64 get the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
 - No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 and v5 use PHP's bundled MD5/SHA1.
 
 ## Install
