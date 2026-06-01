@@ -2,15 +2,15 @@
 
 ## Layout
 
-- `fast_uuid.c` — the C engine (generation, parsing, formatting, the object
+- `fast_uuid.c`: the C engine (generation, parsing, formatting, the object
   model, procedural functions).
-- `fast_uuid.stub.php` — the source of truth for the public API. Arginfo is
+- `fast_uuid.stub.php`: the source of truth for the public API. Arginfo is
   generated from it; do not hand-edit `fast_uuid_arginfo.h`.
-- `php_fast_uuid.h` — module header, version, and the two
+- `php_fast_uuid.h`: module header, version, and the two
   `#if PHP_VERSION_ID < 80400` polyfills that keep PHP 8.3 building against
   `gen_stub` output.
-- `compat/` — the `FastUuid\Compat` ramsey-shaped package (pure PHP, PSR-4).
-- `tests/` — `.phpt` tests; `tests/_autoload.inc` is the compat-layer autoloader
+- `compat/`: the `FastUuid\Compat` ramsey-shaped package (pure PHP, PSR-4).
+- `tests/`: `.phpt` tests. `tests/_autoload.inc` is the compat-layer autoloader
   the compat tests require.
 
 ## Build and test
@@ -32,7 +32,7 @@ php /path/to/php-src/build/gen_stub.php fast_uuid.stub.php
 
 Generation is non-deterministic, so tests assert booleans rather than literal
 UUID values: write `var_dump(<bool expr>);` and put `bool(true)` in `--EXPECT--`.
-Each test declares `--EXTENSIONS--\nfast_uuid`; compat tests additionally start
+Each test declares `--EXTENSIONS--\nfast_uuid`. Compat tests also start
 their `--FILE--` body with `require __DIR__ . '/_autoload.inc';`. The compat
 layer has no external extension dependencies, so tests must not require `ctype`
 or other extensions.

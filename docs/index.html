@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fast_uuid API reference</title>
+<style>
+  :root {
+    --bg: #fafaf7; --ink: #1a1a1a; --muted: #6b6b6b; --rule: #d8d4cc;
+    --accent: #b04a3a; --code-bg: #f3efe7; --out-bg: #eef2ee; --max: 78ch;
+    --proc: #b04a3a; --obj: #d08a6c; --fast2: #e6c0ad; --pecl: #4f7799; --ramsey: #9a9488;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink);
+    font: 17px/1.6 Charter, "Iowan Old Style", Georgia, serif;
+    -webkit-font-smoothing: antialiased; padding: 3rem 1.5rem 6rem; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1,h2,h3 { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: 2.3rem; margin: 0 0 0.3rem; }
+  h2 { font-size: 1.35rem; margin: 3rem 0 0.6rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.02rem; margin: 1.8rem 0 0.4rem; }
+  p { max-width: var(--max); }
+  a { color: var(--accent); }
+  code { font-family: "JetBrains Mono","SF Mono",Menlo,ui-monospace,monospace; font-size: 0.88em; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 3px; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: var(--max); margin: 0.4rem 0 1.5rem; }
+  nav.toc { font-family: Inter, sans-serif; font-size: 0.9rem; background: white; border: 1px solid var(--rule); border-radius: 6px; padding: 0.9rem 1.2rem; margin: 1.5rem 0; columns: 2; column-gap: 2rem; }
+  nav.toc a { display: block; padding: 0.15rem 0; color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+
+  .ex { margin: 0.9rem 0 1.4rem; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+  .ex pre { margin: 0; font-family: "JetBrains Mono",Menlo,ui-monospace,monospace; font-size: 0.82rem; line-height: 1.5; padding: 0.8rem 1rem; overflow-x: auto; }
+  .ex .code { background: var(--code-bg); }
+  .ex .out { background: var(--out-bg); border-top: 1px solid var(--rule); color: #2a3a2a; }
+  .ex .out::before { content: "→ output"; display: block; font-family: Inter, sans-serif; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.3rem; }
+  .tag { font-family: Inter, sans-serif; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; background: #e9e3d6; color: #8a7f63; padding: 0.12em 0.5em; border-radius: 10px; vertical-align: middle; margin-left: 0.4rem; }
+  .tag.det { background: #dde8dd; color: #4a6a4a; }
+  .kw { color: #8a5a2b; } .str { color: #3a6a3a; } .cm { color: #9a9488; } .fn { color: #b04a3a; }
+
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-family: Inter, sans-serif; font-size: 0.88rem; }
+  th, td { text-align: right; padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  td.win { color: var(--accent); font-weight: 700; }
+  .na { color: #bbb; }
+  .sig { font-family: "JetBrains Mono",Menlo,monospace; font-size: 0.82rem; background: var(--code-bg); border-left: 3px solid var(--accent); padding: 0.5rem 0.9rem; border-radius: 0 4px 4px 0; margin: 0.6rem 0; overflow-x: auto; }
+  .note { background: #fff; border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 0.7rem 1rem; font-size: 0.95rem; max-width: var(--max); margin: 1rem 0; }
+  .diagram { background: white; border: 1px solid var(--rule); border-radius: 6px; padding: 1.2rem; margin: 1.2rem 0; }
+  .diagram-caption { font-size: 0.84rem; color: var(--muted); margin-top: 0.4rem; font-style: italic; }
+  .legend { display: flex; flex-wrap: wrap; gap: 1rem; font-family: Inter, sans-serif; font-size: 0.78rem; margin: 0.2rem 0 0.8rem; }
+  .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .sw { width: 13px; height: 13px; border-radius: 2px; display: inline-block; }
+  text { font-family: Inter, ui-sans-serif, sans-serif; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-family: Inter, sans-serif; font-size: 0.9rem; color: var(--muted); }
+  footer a { margin-right: 1.2rem; }
+  @media (max-width: 720px) { body { padding: 2rem 1rem 4rem; } nav.toc { columns: 1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>fast_uuid</h1>
+  <p class="lede">RFC 9562 UUID generation as a PHP C extension. Versions 1, 2, 3, 4, 5, 6, 7, 8 plus nil and max, a <code>ramsey/uuid</code>-shaped object API, and procedural functions that skip object allocation. Every example below was run against the built extension; the output shown is what it printed.</p>
+
+  <nav class="toc">
+    <a href="#install">Install</a>
+    <a href="#quickstart">Quick start</a>
+    <a href="#generate">Generating UUIDs</a>
+    <a href="#parse">Parsing and conversion</a>
+    <a href="#inspect">Reading a UUID</a>
+    <a href="#procedural">Procedural functions</a>
+    <a href="#compat">ramsey-compat layer</a>
+    <a href="#bench">Benchmarks</a>
+  </nav>
+
+  <h2 id="install">Install</h2>
+  <div class="ex"><pre class="code"><span class="cm"># build the extension</span>
+phpize &amp;&amp; ./configure --enable-fast-uuid &amp;&amp; make &amp;&amp; make test
+
+<span class="cm"># or with PIE</span>
+pie install iliaal/fast_uuid
+
+<span class="cm"># the ramsey-compat layer (optional, separate package)</span>
+composer require iliaal/fast-uuid-compat</pre></div>
+  <p>libuuid is optional. When it's present the extension uses it to back v1; otherwise it generates v1 internally. No external library is needed for any version.</p>
+
+  <h2 id="quickstart">Quick start</h2>
+  <div class="ex">
+    <pre class="code"><span class="kw">use</span> FastUuid\Uuid;
+
+<span class="cm">// generate</span>
+<span class="kw">echo</span> Uuid::<span class="fn">uuid4</span>();                 <span class="cm">// random</span>
+<span class="kw">echo</span> Uuid::<span class="fn">uuid7</span>();                 <span class="cm">// time-ordered, good DB key</span>
+
+<span class="cm">// parse and read back</span>
+$u = Uuid::<span class="fn">fromString</span>(<span class="str">'6ba7b810-9dad-11d1-80b4-00c04fd430c8'</span>);
+<span class="kw">echo</span> $u-&gt;<span class="fn">getVersion</span>(), <span class="str">' '</span>, $u-&gt;<span class="fn">getHex</span>();</pre>
+    <pre class="out">36fa4138-9c2e-4765-955e-161592900197
+019e8314-69c9-738a-aea4-8a72d37418eb
+1 6ba7b8109dad11d180b400c04fd430c8</pre>
+  </div>
+
+  <h2 id="generate">Generating UUIDs</h2>
+  <p>Each factory returns a <code>FastUuid\Uuid</code>. Cast to string or call <code>toString()</code> for the canonical form.</p>
+
+  <div class="ex">
+    <pre class="code"><span class="cm">// time-based and random</span>
+Uuid::<span class="fn">uuid1</span>();   <span class="cm">// node + clock, optional Uuid::uuid1($node, $clockSeq)</span>
+Uuid::<span class="fn">uuid6</span>();   <span class="cm">// reordered-time, sortable v1</span>
+Uuid::<span class="fn">uuid4</span>();   <span class="cm">// random</span>
+Uuid::<span class="fn">uuid7</span>();   <span class="cm">// unix-time-ordered, optional Uuid::uuid7($dateTime)</span></pre>
+    <pre class="out">uuid1  60e596ac-5db2-11f1-aea4-a92f0e25fb04   <span style="color:#9a9488">(sample)</span>
+uuid6  1f15db26-0e59-66ad-aea4-a92f0e25fb04   <span style="color:#9a9488">(sample)</span>
+uuid4  36fa4138-9c2e-4765-955e-161592900197   <span style="color:#9a9488">(sample)</span>
+uuid7  019e8314-69c9-738a-aea4-8a72d37418eb   <span style="color:#9a9488">(sample)</span></pre>
+  </div>
+
+  <div class="ex">
+    <pre class="code"><span class="cm">// name-based (deterministic): v3 = MD5, v5 = SHA1</span>
+Uuid::<span class="fn">uuid3</span>(Uuid::NAMESPACE_DNS, <span class="str">'php.net'</span>);
+Uuid::<span class="fn">uuid5</span>(Uuid::NAMESPACE_DNS, <span class="str">'php.net'</span>);</pre>
+    <pre class="out">11a38b9a-b3da-360f-9353-a5a725514269
+c4a760a8-dbcf-5254-a0d9-6a4474bd1b62</pre>
+  </div>
+
+  <div class="ex">
+    <pre class="code"><span class="cm">// DCE Security (v2): local id in bytes 0-3, domain in byte 9</span>
+$u = Uuid::<span class="fn">uuid2</span>(Uuid::DCE_DOMAIN_PERSON, <span class="str">1000</span>);
+<span class="kw">echo</span> $u-&gt;<span class="fn">getVersion</span>(), <span class="str">' '</span>, $u;
+
+<span class="cm">// v8: caller supplies 16 bytes, version and variant get set</span>
+<span class="kw">echo</span> Uuid::<span class="fn">uuid8</span>(<span class="fn">hex2bin</span>(<span class="str">'00112233445566778899aabbccddeeff'</span>));</pre>
+    <pre class="out">2 000003e8-5db2-21f1-b700-5975aec1a10d   <span style="color:#9a9488">(local id 1000 = 0x000003e8)</span>
+00112233-4455-8677-8899-aabbccddeeff</pre>
+  </div>
+
+  <h2 id="parse">Parsing and conversion</h2>
+  <p><code>fromString</code> accepts the canonical form, a <code>urn:uuid:</code> prefix, brace-wrapped, bare 32-hex, and any letter case. A bad string raises <code>FastUuid\Exception\InvalidUuidStringException</code>.</p>
+  <div class="ex">
+    <pre class="code">$s = <span class="str">'6ba7b810-9dad-11d1-80b4-00c04fd430c8'</span>;
+
+Uuid::<span class="fn">fromString</span>($s);
+Uuid::<span class="fn">fromBytes</span>(<span class="fn">hex2bin</span>(<span class="str">'6ba7b8109dad11d180b400c04fd430c8'</span>));
+Uuid::<span class="fn">fromInteger</span>(<span class="str">'143098242404177361603877621312831893704'</span>);
+Uuid::<span class="fn">fromHexadecimal</span>(<span class="str">'6ba7b8109dad11d180b400c04fd430c8'</span>);
+Uuid::<span class="fn">isValid</span>($s);            <span class="cm">// bool</span></pre>
+    <pre class="out">fromString       6ba7b810-9dad-11d1-80b4-00c04fd430c8
+fromBytes        6ba7b810-9dad-11d1-80b4-00c04fd430c8
+fromInteger      6ba7b810-9dad-11d1-80b4-00c04fd430c8
+fromHexadecimal  6ba7b810-9dad-11d1-80b4-00c04fd430c8
+isValid          true   (false for 'nope')</pre>
+  </div>
+  <div class="ex">
+    <pre class="code"><span class="cm">// fromDateTime builds a v1 at the given instant</span>
+$u = Uuid::<span class="fn">fromDateTime</span>(<span class="kw">new</span> DateTimeImmutable(<span class="str">'2024-01-01 00:00:00'</span>));
+<span class="kw">echo</span> $u-&gt;<span class="fn">getVersion</span>(), <span class="str">' '</span>, $u-&gt;<span class="fn">getDateTime</span>()-&gt;<span class="fn">format</span>(<span class="str">'Y-m-d'</span>);</pre>
+    <pre class="out">1 2024-01-01</pre>
+  </div>
+
+  <h2 id="inspect">Reading a UUID</h2>
+  <div class="ex">
+    <pre class="code">$u = Uuid::<span class="fn">fromString</span>(<span class="str">'6ba7b810-9dad-11d1-80b4-00c04fd430c8'</span>);
+
+$u-&gt;<span class="fn">getHex</span>();        $u-&gt;<span class="fn">getUrn</span>();      $u-&gt;<span class="fn">getBytes</span>();   <span class="cm">// 16 raw bytes</span>
+$u-&gt;<span class="fn">getVersion</span>();    $u-&gt;<span class="fn">getVariant</span>();  $u-&gt;<span class="fn">getInteger</span>();
+$u-&gt;<span class="fn">getFields</span>();     $u-&gt;<span class="fn">getDateTime</span>();
+$u-&gt;<span class="fn">equals</span>($other); $u-&gt;<span class="fn">compareTo</span>($other);</pre>
+    <pre class="out">getHex      6ba7b8109dad11d180b400c04fd430c8
+getUrn      urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8
+getVersion  1        getVariant  2
+getInteger  143098242404177361603877621312831893704
+getFields   {"time_low":"6ba7b810","time_mid":"9dad","time_hi_and_version":"11d1",
+             "clock_seq_hi_and_reserved":"80","clock_seq_low":"b4","node":"00c04fd430c8"}
+compareTo   -1   (00..01 vs 00..02)</pre>
+  </div>
+  <p><code>getDateTime()</code> works for the time-based versions (1, 2, 6, 7) and raises <code>UnsupportedOperationException</code> for the others. The object is <code>JsonSerializable</code> and <code>Stringable</code>, so it drops straight into <code>json_encode</code>:</p>
+  <div class="ex">
+    <pre class="code"><span class="kw">echo</span> <span class="fn">json_encode</span>([<span class="str">'id'</span> =&gt; $u]);</pre>
+    <pre class="out">{"id":"6ba7b810-9dad-11d1-80b4-00c04fd430c8"}</pre>
+  </div>
+
+  <h2 id="procedural">Procedural functions</h2>
+  <p>These return a string with no object allocation. Use them on the hot path: ORM inserts, cache keys, bulk generation.</p>
+  <div class="ex">
+    <pre class="code">uuid_v1(); uuid_v3($ns, $name); uuid_v4(); uuid_v5($ns, $name);
+uuid_v6(); uuid_v7(); uuid_v8($bytes);
+uuid_v4_fast();                  <span class="cm">// non-crypto xoshiro256**, IDs only</span>
+uuid_to_bin($s);                 <span class="cm">// canonical -&gt; 16 bytes</span>
+uuid_from_bin($bytes);           <span class="cm">// 16 bytes -&gt; canonical</span>
+uuid_is_valid($s);
+fast_uuid_random_bytes(16);      <span class="cm">// batched CSPRNG bytes</span></pre>
+    <pre class="out">uuid_v4         fbc41d54-b200-43d8-891c-b9c1a92df715   <span style="color:#9a9488">(sample)</span>
+uuid_to_bin     6ba7b8109dad11d180b400c04fd430c8       (hex of bytes)
+uuid_from_bin   6ba7b810-9dad-11d1-80b4-00c04fd430c8
+uuid_is_valid   true</pre>
+  </div>
+  <div class="note"><code>uuid_v4_fast()</code> uses a non-cryptographic PRNG. Don't use it for session tokens, password-reset keys, or anything an attacker shouldn't predict. Use <code>uuid_v4()</code> for those.</div>
+
+  <h2 id="compat">ramsey-compat layer</h2>
+  <p>The <code>FastUuid\Compat</code> package puts a <code>ramsey/uuid</code>-shaped API over the C core. Migration is largely a <code>use</code> swap from <code>Ramsey\Uuid\Uuid</code> to <code>FastUuid\Compat\Uuid</code>. Generation stays on the C fast path.</p>
+  <div class="ex">
+    <pre class="code"><span class="kw">use</span> FastUuid\Compat\Uuid;
+
+<span class="cm">// factories return the per-version class</span>
+Uuid::<span class="fn">uuid4</span>() <span class="kw">instanceof</span> FastUuid\Compat\Rfc4122\UuidV4;   <span class="cm">// true</span>
+
+<span class="cm">// Fields and Type objects</span>
+$u = Uuid::<span class="fn">fromString</span>(<span class="str">'6ba7b810-9dad-11d1-80b4-00c04fd430c8'</span>);
+(string) $u-&gt;<span class="fn">getFields</span>()-&gt;<span class="fn">getNode</span>();   <span class="cm">// Type\Hexadecimal</span>
+(string) $u-&gt;<span class="fn">getInteger</span>();              <span class="cm">// Type\Integer</span></pre>
+    <pre class="out">instanceof UuidV4   true
+getNode             00c04fd430c8
+getInteger          143098242404177361603877621312831893704</pre>
+  </div>
+  <div class="ex">
+    <pre class="code"><span class="kw">use</span> FastUuid\Compat\Codec\OrderedTimeCodec;
+<span class="kw">use</span> FastUuid\Compat\Guid\Guid;
+<span class="kw">use</span> FastUuid\Compat\UuidFactory;
+<span class="kw">use</span> FastUuid\Compat\Provider\RandomGeneratorInterface;
+
+<span class="cm">// codec round-trip (MySQL ordered-time layout)</span>
+$c = <span class="kw">new</span> OrderedTimeCodec();
+$c-&gt;<span class="fn">decodeBytes</span>($c-&gt;<span class="fn">encodeBinary</span>($v1))-&gt;<span class="fn">equals</span>($v1);   <span class="cm">// true</span>
+
+<span class="cm">// GUID mixed-endian presentation</span>
+(<span class="kw">new</span> Guid($u))-&gt;<span class="fn">toString</span>();
+
+<span class="cm">// swap the random source on a factory</span>
+$f = <span class="kw">new</span> UuidFactory();
+$f-&gt;<span class="fn">setRandomGenerator</span>(<span class="kw">new class</span> <span class="kw">implements</span> RandomGeneratorInterface {
+    <span class="kw">public function</span> <span class="fn">generate</span>(<span class="kw">int</span> $length): <span class="kw">string</span> { <span class="kw">return</span> <span class="fn">random_bytes</span>($length); }
+});
+$f-&gt;<span class="fn">uuid4</span>()-&gt;<span class="fn">getVersion</span>();   <span class="cm">// 4</span></pre>
+    <pre class="out">codec round-trip    true
+guid                10b8a76b-ad9d-d111-80b4-00c04fd430c8
+factory uuid4 ver   4</pre>
+  </div>
+
+  <h2 id="bench">Benchmarks</h2>
+  <p>Throughput against <code>ramsey/uuid</code> 4.9.2 and the PECL <code>uuid</code> extension 1.3.0, on PHP 8.4.22 NTS (non-debug, x86-64 with the SSSE3 formatter). Best of 5 runs, 500k iterations each. Each engine ran in its own process. Higher is faster.</p>
+
+  <div class="diagram">
+  <div class="legend">
+    <span><span class="sw" style="background:var(--proc)"></span> fast_uuid procedural</span>
+    <span><span class="sw" style="background:var(--obj)"></span> fast_uuid object</span>
+    <span><span class="sw" style="background:var(--fast2);border:1px dashed var(--proc)"></span> uuid_v4_fast (non-crypto)</span>
+    <span><span class="sw" style="background:var(--pecl)"></span> PECL uuid</span>
+    <span><span class="sw" style="background:var(--ramsey)"></span> ramsey/uuid</span>
+  </div>
+  <svg viewBox="0 0 900 470" role="img" aria-label="UUID throughput by operation and engine">
+    <g stroke="#e7e2d8" stroke-width="1">
+      <line x1="200" y1="48" x2="200" y2="440"/><line x1="373.7" y1="48" x2="373.7" y2="440"/>
+      <line x1="547.4" y1="48" x2="547.4" y2="440"/><line x1="721.1" y1="48" x2="721.1" y2="440"/>
+    </g>
+    <g fill="#9a9488" font-size="11" text-anchor="middle">
+      <text x="200" y="40">0</text><text x="373.7" y="40">10M</text>
+      <text x="547.4" y="40">20M</text><text x="721.1" y="40">30M</text><text x="850" y="40">ops/sec</text>
+    </g>
+    <text x="12" y="64" font-size="13" font-weight="600">v4 generate &rarr; string</text>
+    <g font-size="11">
+      <rect x="200" y="70" width="365" height="14" fill="#b04a3a"/><text x="570" y="81">21.0M</text>
+      <rect x="200" y="87" width="646" height="14" fill="#e6c0ad" stroke="#b04a3a" stroke-dasharray="3 2"/><text x="651" y="98">37.2M v4_fast</text>
+      <rect x="200" y="104" width="226" height="14" fill="#d08a6c"/><text x="431" y="115">13.0M</text>
+      <rect x="200" y="121" width="8" height="14" fill="#4f7799"/><text x="213" y="132" fill="#4f7799">0.48M PECL</text>
+      <rect x="200" y="138" width="19" height="14" fill="#9a9488"/><text x="224" y="149" fill="#6b6b6b">1.11M ramsey</text>
+    </g>
+    <text x="12" y="172" font-size="13" font-weight="600">v1 generate &rarr; string</text>
+    <g font-size="11">
+      <rect x="200" y="178" width="240" height="14" fill="#b04a3a"/><text x="445" y="189">13.8M</text>
+      <rect x="200" y="195" width="156" height="14" fill="#d08a6c"/><text x="361" y="206">8.98M</text>
+      <rect x="200" y="212" width="147" height="14" fill="#4f7799"/><text x="352" y="223" fill="#4f7799">8.47M PECL</text>
+      <rect x="200" y="229" width="5" height="14" fill="#9a9488"/><text x="210" y="240" fill="#6b6b6b">0.29M ramsey</text>
+    </g>
+    <text x="12" y="263" font-size="13" font-weight="600">v7 generate &rarr; string</text>
+    <g font-size="11">
+      <rect x="200" y="269" width="292" height="14" fill="#b04a3a"/><text x="497" y="280">16.8M</text>
+      <rect x="200" y="286" width="234" height="14" fill="#d08a6c"/><text x="439" y="297">13.5M</text>
+      <rect x="200" y="303" width="12" height="14" fill="#9a9488"/><text x="217" y="314" fill="#6b6b6b">0.67M ramsey (PECL n/a)</text>
+    </g>
+    <text x="12" y="337" font-size="13" font-weight="600">parse &rarr; 16 bytes</text>
+    <g font-size="11">
+      <rect x="200" y="343" width="307" height="14" fill="#b04a3a"/><text x="512" y="354">17.7M</text>
+      <rect x="200" y="360" width="201" height="14" fill="#d08a6c"/><text x="406" y="371">11.6M</text>
+      <rect x="200" y="377" width="97" height="14" fill="#4f7799"/><text x="302" y="388" fill="#4f7799">5.57M PECL</text>
+      <rect x="200" y="394" width="59" height="14" fill="#9a9488"/><text x="264" y="405" fill="#6b6b6b">3.37M ramsey</text>
+    </g>
+  </svg>
+  <p class="diagram-caption">Procedural and PECL paths return a string directly; the object and ramsey paths build an object then format. Compare procedural to PECL and object to ramsey for like-for-like.</p>
+  </div>
+
+  <h3>Speedup over ramsey/uuid</h3>
+  <table>
+    <thead><tr><th>Operation</th><th>fast_uuid (object)</th><th>fast_uuid (procedural)</th></tr></thead>
+    <tbody>
+      <tr><td>v4</td><td>11.7x</td><td class="win">18.9x</td></tr>
+      <tr><td>v1</td><td>30.7x</td><td class="win">47.2x</td></tr>
+      <tr><td>v7</td><td>20.0x</td><td class="win">24.9x</td></tr>
+      <tr><td>parse</td><td>3.5x</td><td class="win">5.2x</td></tr>
+    </tbody>
+  </table>
+  <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.48M. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
+
+  <footer>
+    <a href="https://github.com/iliaal/fast_uuid">GitHub</a>
+    <a href="../README.md">README</a>
+    <a href="../BENCHMARKS.md">Benchmarks</a>
+    <a href="../SECURITY.md">Security</a>
+    <a href="../CONTRIBUTING.md">Contributing</a>
+  </footer>
+
+</div>
+</body>
+</html>

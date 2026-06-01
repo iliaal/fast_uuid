@@ -1,19 +1,21 @@
 # fast_uuid
 
-A high-performance PHP C extension for RFC 9562 / RFC 4122 UUID generation — versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. Pure C engine (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace; procedural functions give a zero-object-allocation fast path for the hottest call sites.
+A high-performance PHP C extension for RFC 9562 / RFC 4122 UUID generation. It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace, and procedural functions give a zero-allocation fast path for the hottest call sites.
+
+Full API reference with runnable examples: [docs/index.html](docs/index.html). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Why it's fast
 
-- **Batched CSPRNG** — `getrandom()` is amortized across ~500 v4s via an 8 KB per-thread buffer instead of one syscall per UUID. (ramsey's per-call `random_bytes()` is the usual bottleneck.)
-- **No property table** — the object is 16 inline bytes plus a lazily-cached canonical string: no `HashTable`, no declared properties, custom create/free/clone/compare/cast handlers.
-- **SIMD hex formatter** — on x86-64 a runtime-dispatched SSSE3 `pshufb`-LUT path formats 16 bytes → 32 hex in a handful of vector ops; a scalar LUT path is used elsewhere (ARM64/Graviton-safe). Dispatch is decided once in MINIT via `__builtin_cpu_supports("ssse3")`.
-- **Procedural path** — `uuid_v4()` and friends return a `zend_string` with no object allocation, for ORM inserts / cache keys.
+- **Batched CSPRNG**: `getrandom()` is amortized across ~500 v4s via an 8 KB per-thread buffer instead of one syscall per UUID. ramsey's per-call `random_bytes()` is the usual bottleneck.
+- **No property table**: the object is 16 inline bytes plus a lazily-cached canonical string. No `HashTable`, no declared properties, custom create/free/clone/compare/cast handlers.
+- **SIMD hex formatter**: on x86-64 a runtime-dispatched SSSE3 `pshufb`-LUT path turns 16 bytes into 32 hex in a handful of vector ops. A scalar LUT path covers other architectures (ARM64/Graviton-safe). MINIT decides the dispatch once via `__builtin_cpu_supports("ssse3")`.
+- **Procedural path**: `uuid_v4()` and friends return a `zend_string` with no object allocation, for ORM inserts and cache keys.
 
 ## Requirements
 
-- PHP **8.3–8.6**, NTS or ZTS. (8.3 is supported via two small `#if PHP_VERSION_ID < 80400` polyfills.)
+- PHP 8.3 through 8.6, NTS or ZTS. PHP 8.3 builds via two small `#if PHP_VERSION_ID < 80400` polyfills.
 - x86-64 gets the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
-- **libuuid is optional** — when present it backs v1 (and v6, derived from v1); otherwise an internal RFC-compliant v1 generator (random node + multicast bit) is used. v3/v5 use PHP's bundled MD5/SHA1. No external library is required for any version.
+- **libuuid is optional**: when present it backs v1 (and v6, derived from v1); otherwise the extension uses an internal RFC-compliant v1 generator (random node + multicast bit). v3 and v5 use PHP's bundled MD5/SHA1. No external library is required for any version.
 
 ## Build
 
@@ -31,7 +33,7 @@ The arginfo header is generated from `fast_uuid.stub.php`. To regenerate after e
 php /path/to/php-src/build/gen_stub.php fast_uuid.stub.php
 ```
 
-## Object API — `FastUuid\Uuid`
+## Object API: `FastUuid\Uuid`
 
 Static factories (all return `FastUuid\UuidInterface`):
 
@@ -78,13 +80,13 @@ $u->getVersion();        // 2
 $u = \FastUuid\Uuid::uuid2(\FastUuid\Uuid::DCE_DOMAIN_GROUP, 4242);
 ```
 
-The local identifier occupies bytes 0–3 (big-endian); the local domain is stored in byte 9. With `domain` PERSON/GROUP and a null identifier, the uid/gid is used.
+The local identifier occupies bytes 0 to 3 (big-endian); the local domain is stored in byte 9. With domain PERSON or GROUP and a null identifier, the extension uses the process uid or gid.
 
 ## Exceptions
 
-`FastUuid\Exception\InvalidArgumentException` (extends `\InvalidArgumentException`) — invalid argument (bad length, bad node, bad integer).
-`FastUuid\Exception\InvalidUuidStringException` (extends the above) — unparseable UUID string.
-`FastUuid\Exception\UnsupportedOperationException` (extends `\RuntimeException`) — e.g. `getDateTime()` on a non-time-based version.
+- `FastUuid\Exception\InvalidArgumentException` (extends `\InvalidArgumentException`): a bad length, node, or integer.
+- `FastUuid\Exception\InvalidUuidStringException` (extends the above): an unparseable UUID string.
+- `FastUuid\Exception\UnsupportedOperationException` (extends `\RuntimeException`): raised by `getDateTime()` on a non-time-based version.
 
 ## Procedural API
 
@@ -96,9 +98,9 @@ uuid_is_valid($uuid) // bool
 fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 ```
 
-`uuid_v4_fast()` uses a non-cryptographic xoshiro256** PRNG — only for non-security IDs.
+`uuid_v4_fast()` uses a non-cryptographic xoshiro256** PRNG. Use it only for non-security IDs.
 
-## ramsey/uuid compatibility layer — `FastUuid\Compat`
+## ramsey/uuid compatibility layer (`FastUuid\Compat`)
 
 `compat/` is a separate Composer package (`iliaal/fast-uuid-compat`, PSR-4 `FastUuid\Compat\`) that provides the cold-path ramsey ergonomics on top of the C engine: `UuidFactory`, the per-version `Rfc4122\UuidV1`…`UuidV8` / `NilUuid` / `MaxUuid` / `Nonstandard\Uuid` classes, `Rfc4122\UuidV2` with `getLocalDomain()` / `getLocalIdentifier()`, `Rfc4122\Fields` (`FieldsInterface`), `Type\Hexadecimal`, `Type\Integer`, the codecs (`StringCodec`, `OrderedTimeCodec`, `TimestampFirstCombCodec`, `TimestampLastCombCodec`, `GuidStringCodec`), `Guid\Guid`, the providers (`RandomGeneratorInterface`, `NodeProviderInterface`, `TimeGeneratorInterface` + defaults), and the validators (`GenericValidator`, `NonstandardValidator`).
 
@@ -119,6 +121,14 @@ make test                                  # run-tests.php against the built .so
 ```
 
 The suite (`tests/*.phpt`) covers every version, all parse forms, per-version `getDateTime`, fields/integer, node/clockSeq, the exception hierarchy, the procedural functions, the SIMD formatter, and the full compat layer. Verified green on PHP 8.3 / 8.4 / 8.4-ZTS / 8.5 / 8.6 (0 compiler warnings) and clean under an ASan/UBSan-instrumented build.
+
+## Contributing
+
+Build instructions, the stub-to-arginfo workflow, and the test conventions are in [CONTRIBUTING.md](CONTRIBUTING.md). Run the suite against more than one PHP version when you touch C, and add an ASan/UBSan run for any change to a parse, format, or generation path.
+
+## Security
+
+Report a vulnerability by email to ilia@ilia.ws. Details and scope are in [SECURITY.md](SECURITY.md).
 
 ## License
 

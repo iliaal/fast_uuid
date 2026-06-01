@@ -30,7 +30,7 @@ per engine in its own process.
 | Operation        | fast_uuid (obj) | fast_uuid (proc) | ramsey/uuid | PECL uuid |
 |------------------|----------------:|-----------------:|------------:|----------:|
 | v4 gen→string    | 13.0            | **21.0**         | 1.11        | 0.48      |
-| v4 (non-crypto)  | —               | **37.2**         | —           | —         |
+| v4 (non-crypto)  | n/a             | **37.2**         | n/a         | n/a       |
 | v1 gen→string    | 8.98            | **13.8**         | 0.29        | 8.47      |
 | v7 gen→string    | 13.5            | **16.8**         | 0.67        | n/a       |
 | parse→16 bytes   | 11.6            | **17.7**         | 3.37        | 5.57      |
