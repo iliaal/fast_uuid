@@ -80,20 +80,20 @@ jobs:
         run: composer validate --strict --no-check-publish --working-dir=compat
 
   pie-smoke:
-    name: "PIE path-repository install (PHP 8.4)"
+    name: "PIE path-repository build (PHP 8.4)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: fast_uuid
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          tools: composer, pie
-      - name: Install via PIE from a path repository
+          tools: phpize, php-config
+          coverage: none
+      - name: Download PIE
         run: |
-          pie repository:add path "$GITHUB_WORKSPACE/fast_uuid"
-          pie install iliaal/fast_uuid
-          php -m | grep -qi fast_uuid
-          php -d extension=fast_uuid -r 'echo \FastUuid\Uuid::uuid4(), PHP_EOL;'
+          curl -fsSL -o /tmp/pie.phar https://github.com/php/pie/releases/latest/download/pie.phar
+          chmod +x /tmp/pie.phar
+      - name: PIE build smoke
+        run: |
+          php /tmp/pie.phar repository:add path .
+          php /tmp/pie.phar build iliaal/fast_uuid:*@dev --enable-fast-uuid
