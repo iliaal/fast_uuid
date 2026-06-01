@@ -361,7 +361,7 @@ static zend_result fu_gen_v7(unsigned char *b) {
         unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE; /* draw before mutating state */
         randb = (((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
                 |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7]);
-        randb &= (1ULL<<60) - 1; /* seed 60 bits, leave 2 high bits as overflow headroom */
+        randb &= (1ULL<<62) - 1; /* full 62-bit rand_b; the overflow check below carries into the key */
         FAST_UUID_G(v7_key) = key;
         FAST_UUID_G(v7_randb) = randb;
     } else {
