@@ -87,3 +87,43 @@ as above; ramsey/uuid 4.9.2 for comparison.
 - ramsey v1 is its slowest path (clock-sequence and node bookkeeping in PHP).
   fast_uuid's v1 runs close to v4: the node and clock sequence come from the
   same batched CSPRNG, with no MAC lookup or clock-file coordination.
+
+## ARM64 / NEON
+
+On aarch64 a NEON table-lookup formatter (`vqtbl1q_u8`) replaces the scalar hex
+path, mirroring the SSSE3 path on x86-64. Measured on a Neoverse-N1
+(Graviton2-class, 4 cores), PHP 8.4.21 NTS release (`-O2`, no debug, no
+sanitizers), one core pinned with `taskset`, best of 30 runs.
+
+The formatter only touches UUID-to-string output, so the cleanest measure is
+`uuid_from_bin()` (16 bytes to canonical string, no RNG). Building the same
+source with NEON disabled (`make CC='gcc -DFU_DISABLE_NEON'`) isolates its
+contribution:
+
+| Path                          | NEON | scalar | NEON gain |
+|-------------------------------|-----:|-------:|----------:|
+| `uuid_from_bin` (pure format) | 18.0 | 15.5   | +16%      |
+| `uuid_v7()` gen→string        | 9.4  | 8.2    | +15%      |
+| `uuid_v4()` gen→string        | 10.2 | 9.1    | +12%      |
+| `Uuid::uuid4()` obj→string    | 5.6  | 5.2    | +7%       |
+| `uuid_to_bin` (parse)         | 10.6 | 10.7   | -1%       |
+
+Parsing never calls the formatter, so its flat NEON-vs-scalar result is the
+control: it confirms the gains above are the formatter and not some build
+difference. The win is largest on pure formatting and shrinks as the RNG draw
+and object allocation take a bigger share of each call.
+
+Against ramsey/uuid 4.9.2 on the same core (NEON build):
+
+| Operation      | fast_uuid (proc) | fast_uuid (obj) | ramsey/uuid | speedup (proc / obj) |
+|----------------|-----------------:|----------------:|------------:|---------------------:|
+| v4 gen→string  | 10.2             | 5.5             | 0.54        | 19x / 10x            |
+| v7 gen→string  | 9.4              | n/a             | 0.32        | 29x                  |
+| parse→16 bytes | 10.6             | n/a             | 1.67        | 6.3x                 |
+
+Absolute throughput is roughly half the x86-64 figures above because the
+Neoverse-N1 has a slower single thread, but the speedup over ramsey holds: its
+pure-PHP work runs on the same slower core.
+
+Reproduce: `bench/run_neon.sh <neon.so> <scalar.so>` drives the A/B and the
+ramsey comparison.

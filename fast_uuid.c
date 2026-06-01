@@ -52,7 +52,7 @@
 static int fu_has_ssse3 = 0;   /* set in MINIT via __builtin_cpu_supports */
 #endif
 
-#if defined(__aarch64__)
+#if defined(__aarch64__) && !defined(FU_DISABLE_NEON)
 # include <arm_neon.h>
 # define FU_AARCH64 1
 #endif
