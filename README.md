@@ -15,13 +15,13 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 
 - PHP 8.3 through 8.6, NTS or ZTS. PHP 8.3 builds via two small `#if PHP_VERSION_ID < 80400` polyfills.
 - x86-64 gets the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
-- **libuuid is optional**: when present it backs v1 (and v6, derived from v1); otherwise the extension uses an internal RFC-compliant v1 generator (random node + multicast bit). v3 and v5 use PHP's bundled MD5/SHA1. No external library is required for any version.
+- No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 and v5 use PHP's bundled MD5/SHA1.
 
 ## Build
 
 ```sh
 phpize
-./configure --enable-fast-uuid          # add --with-libuuid-dir=/usr to back v1 with libuuid
+./configure --enable-fast-uuid
 make
 make test
 php -d extension="$(pwd)/modules/fast_uuid.so" -r 'echo \FastUuid\Uuid::uuid4(), "\n"; echo uuid_v7(), "\n";'
@@ -111,8 +111,9 @@ Generation stays on the pure-C fast path; supplying a custom `RandomGeneratorInt
 On PHP 8.4 (NTS, non-debug, x86-64 with the SSSE3 formatter), generating a v4
 UUID and its canonical string runs at ~21M ops/sec via the procedural path and
 ~13M via the object API, against ~1.1M for `ramsey/uuid` and ~0.48M for the PECL
-`uuid` extension. fast_uuid is 12x to 47x faster than ramsey across v1/v4/v7
-generation and parsing. Full table and method in [BENCHMARKS.md](BENCHMARKS.md).
+`uuid` extension. fast_uuid runs 12x to 54x faster than ramsey on v1/v4/v7
+generation, and 3x to 6x faster on parsing. Full table and method in
+[BENCHMARKS.md](BENCHMARKS.md).
 
 ## Testing
 

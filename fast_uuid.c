@@ -33,10 +33,6 @@
 # include "ext/standard/php_random.h"
 #endif
 
-#ifdef HAVE_LIBUUID
-# include <uuid/uuid.h>
-#endif
-
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
@@ -293,9 +289,6 @@ static inline uint64_t fu_greg_now(void) {
 }
 
 static void fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
-#ifdef HAVE_LIBUUID
-    if (!node && clockseq < 0) { uuid_t u; uuid_generate_time_safe(u); memcpy(b, u, 16); return; }
-#endif
     fu_lay_v1(b, fu_greg_now(), node, clockseq);
 }
 
@@ -955,11 +948,6 @@ PHP_MINFO_FUNCTION(fast_uuid) {
     php_info_print_table_row(2, "x86 SIMD hex formatter", fu_has_ssse3 ? "SSSE3" : "scalar (CPU lacks SSSE3)");
 #else
     php_info_print_table_row(2, "x86 SIMD hex formatter", "n/a (non-x86 build)");
-#endif
-#ifdef HAVE_LIBUUID
-    php_info_print_table_row(2, "libuuid (v1 backend)", "yes");
-#else
-    php_info_print_table_row(2, "libuuid (v1 backend)", "no (internal)");
 #endif
     php_info_print_table_end();
 }

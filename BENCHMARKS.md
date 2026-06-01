@@ -31,9 +31,9 @@ per engine in its own process.
 |------------------|----------------:|-----------------:|------------:|----------:|
 | v4 gen→string    | 13.0            | **21.0**         | 1.11        | 0.48      |
 | v4 (non-crypto)  | n/a             | **37.2**         | n/a         | n/a       |
-| v1 gen→string    | 8.98            | **13.8**         | 0.29        | 8.47      |
-| v7 gen→string    | 13.5            | **16.8**         | 0.67        | n/a       |
-| parse→16 bytes   | 11.6            | **17.7**         | 3.37        | 5.57      |
+| v1 gen→string    | 10.9            | **15.6**         | 0.29        | 8.47      |
+| v7 gen→string    | 13.5            | **19.3**         | 0.67        | n/a       |
+| parse→16 bytes   | 11.6            | **18.4**         | 3.37        | 5.57      |
 
 `v4 (non-crypto)` is `uuid_v4_fast()` (xoshiro256**), included for reference; it
 is not for security-sensitive identifiers.
@@ -43,9 +43,9 @@ is not for security-sensitive identifiers.
 | Operation | fast_uuid (obj) | fast_uuid (proc) |
 |-----------|----------------:|-----------------:|
 | v4        | 11.7x           | 18.9x            |
-| v1        | 30.7x           | 47.2x            |
-| v7        | 20.0x           | 24.9x            |
-| parse     | 3.5x            | 5.2x             |
+| v1        | 37.6x           | 53.8x            |
+| v7        | 20.1x           | 28.8x            |
+| parse     | 3.4x            | 5.5x             |
 
 ## Notes
 
@@ -55,5 +55,6 @@ is not for security-sensitive identifiers.
 - Against PECL `uuid`, the procedural path is 1.6x faster on v1 and 44x faster
   on v4. PECL `uuid`'s v4 is much slower than its v1 because libuuid's random
   type draws fresh entropy per call rather than batching.
-- ramsey v1 is its slowest path (clock-sequence and node bookkeeping in PHP);
-  fast_uuid's v1 is roughly flat with v4.
+- ramsey v1 is its slowest path (clock-sequence and node bookkeeping in PHP).
+  fast_uuid's v1 runs close to v4: the node and clock sequence come from the
+  same batched CSPRNG, with no MAC lookup or clock-file coordination.

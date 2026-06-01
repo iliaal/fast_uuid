@@ -82,7 +82,7 @@ pie install iliaal/fast_uuid
 
 <span class="cm"># the ramsey-compat layer (optional, separate package)</span>
 composer require iliaal/fast-uuid-compat</pre></div>
-  <p>libuuid is optional. When it's present the extension uses it to back v1; otherwise it generates v1 internally. No external library is needed for any version.</p>
+  <p>No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set); v3 and v5 use PHP's bundled MD5 and SHA1.</p>
 
   <h2 id="quickstart">Quick start</h2>
   <div class="ex">
@@ -266,20 +266,20 @@ factory uuid4 ver   4</pre>
     </g>
     <text x="12" y="172" font-size="13" font-weight="600">v1 generate &rarr; string</text>
     <g font-size="11">
-      <rect x="200" y="178" width="240" height="14" fill="#b04a3a"/><text x="445" y="189">13.8M</text>
-      <rect x="200" y="195" width="156" height="14" fill="#d08a6c"/><text x="361" y="206">8.98M</text>
+      <rect x="200" y="178" width="271" height="14" fill="#b04a3a"/><text x="476" y="189">15.6M</text>
+      <rect x="200" y="195" width="189" height="14" fill="#d08a6c"/><text x="394" y="206">10.9M</text>
       <rect x="200" y="212" width="147" height="14" fill="#4f7799"/><text x="352" y="223" fill="#4f7799">8.47M PECL</text>
       <rect x="200" y="229" width="5" height="14" fill="#9a9488"/><text x="210" y="240" fill="#6b6b6b">0.29M ramsey</text>
     </g>
     <text x="12" y="263" font-size="13" font-weight="600">v7 generate &rarr; string</text>
     <g font-size="11">
-      <rect x="200" y="269" width="292" height="14" fill="#b04a3a"/><text x="497" y="280">16.8M</text>
+      <rect x="200" y="269" width="335" height="14" fill="#b04a3a"/><text x="540" y="280">19.3M</text>
       <rect x="200" y="286" width="234" height="14" fill="#d08a6c"/><text x="439" y="297">13.5M</text>
       <rect x="200" y="303" width="12" height="14" fill="#9a9488"/><text x="217" y="314" fill="#6b6b6b">0.67M ramsey (PECL n/a)</text>
     </g>
     <text x="12" y="337" font-size="13" font-weight="600">parse &rarr; 16 bytes</text>
     <g font-size="11">
-      <rect x="200" y="343" width="307" height="14" fill="#b04a3a"/><text x="512" y="354">17.7M</text>
+      <rect x="200" y="343" width="320" height="14" fill="#b04a3a"/><text x="525" y="354">18.4M</text>
       <rect x="200" y="360" width="201" height="14" fill="#d08a6c"/><text x="406" y="371">11.6M</text>
       <rect x="200" y="377" width="97" height="14" fill="#4f7799"/><text x="302" y="388" fill="#4f7799">5.57M PECL</text>
       <rect x="200" y="394" width="59" height="14" fill="#9a9488"/><text x="264" y="405" fill="#6b6b6b">3.37M ramsey</text>
@@ -293,9 +293,9 @@ factory uuid4 ver   4</pre>
     <thead><tr><th>Operation</th><th>fast_uuid (object)</th><th>fast_uuid (procedural)</th></tr></thead>
     <tbody>
       <tr><td>v4</td><td>11.7x</td><td class="win">18.9x</td></tr>
-      <tr><td>v1</td><td>30.7x</td><td class="win">47.2x</td></tr>
-      <tr><td>v7</td><td>20.0x</td><td class="win">24.9x</td></tr>
-      <tr><td>parse</td><td>3.5x</td><td class="win">5.2x</td></tr>
+      <tr><td>v1</td><td>37.6x</td><td class="win">53.8x</td></tr>
+      <tr><td>v7</td><td>20.1x</td><td class="win">28.8x</td></tr>
+      <tr><td>parse</td><td>3.4x</td><td class="win">5.5x</td></tr>
     </tbody>
   </table>
   <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.48M. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>

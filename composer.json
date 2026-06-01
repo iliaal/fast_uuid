@@ -20,10 +20,6 @@
                 "name": "enable-fast-uuid",
                 "description": "Enable fast_uuid support",
                 "needs-value": false
-            },
-            {
-                "name": "with-libuuid-dir",
-                "description": "Path to the libuuid (util-linux) install prefix; used to back v1 time-based UUIDs"
             }
         ]
     }

@@ -35,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime-dispatched x86-64 SSSE3 `pshufb`-LUT hex formatter, selected once in
   MINIT via `__builtin_cpu_supports`; scalar LUT fallback on other
   architectures.
-- Optional libuuid backend for v1 (`uuid_generate_time_safe`) when present and
-  no node/clock-sequence override is requested; internal generator otherwise.
+- Internal RFC-compliant v1 and v6 generator with a random node (multicast bit
+  set per RFC 9562). No external libraries; `uuid1()`/`uuid6()` accept an
+  explicit node and clock sequence when a fixed node is needed.
 - `FastUuid\Compat` companion package: ramsey/uuid-shaped object API layered
   over the C core. Per-version classes (`Rfc4122\UuidV1`..`UuidV8`, `NilUuid`,
   `MaxUuid`, `Nonstandard\Uuid`), `Rfc4122\UuidV2` with `getLocalDomain()` /
