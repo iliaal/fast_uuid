@@ -29,6 +29,12 @@ $sorted = $s; sort($sorted, SORT_STRING);
 var_dump($s === $sorted);
 var_dump(count(array_unique($s)) === $n);
 
+// rand_b fills all 62 bits: the variant byte's random portion must reach past 0x8f.
+// A 60-bit seed would force b[8]'s top 2 random bits to 0, capping it at 0x8f.
+$hi = 0;
+for ($i = 0; $i < 4000; $i++) { $v = ord(Uuid::uuid7()->getBytes()[8]); if ($v > $hi) $hi = $v; }
+var_dump($hi > 0x8f);
+
 // getDateTime stays ms-only (ramsey-compat): decoded microseconds are always a 1000-multiple.
 var_dump(((int) Uuid::uuid7()->getDateTime()->format('u')) % 1000 === 0);
 
@@ -40,6 +46,7 @@ var_dump($u->toInteger() === $u->getInteger());
 var_dump($u->toUrn() === $u->getUrn());
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
 bool(true)
