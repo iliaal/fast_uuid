@@ -44,7 +44,7 @@ class StringCodec implements CodecInterface
     final protected static function stringToBytes(string $s): string
     {
         $hex = \str_replace('-', '', $s);
-        if (\strlen($hex) !== 32 || !\ctype_xdigit($hex)) {
+        if (\strlen($hex) !== 32 || !\preg_match('/^[0-9a-fA-F]+$/', $hex)) {
             throw new InvalidArgumentException('Invalid UUID string');
         }
         return (string) \hex2bin($hex);

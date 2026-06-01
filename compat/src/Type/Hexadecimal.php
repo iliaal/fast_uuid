@@ -14,7 +14,7 @@ final class Hexadecimal implements \JsonSerializable, \Stringable
     public function __construct(string $value)
     {
         $v = str_starts_with($value, '0x') ? substr($value, 2) : $value;
-        if ($v !== '' && !ctype_xdigit($v)) {
+        if ($v !== '' && !\preg_match('/^[0-9a-fA-F]+$/', $v)) {
             throw new InvalidArgumentException('Value must be a hexadecimal number');
         }
         $this->hex = strtolower($v);

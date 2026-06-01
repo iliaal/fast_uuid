@@ -549,7 +549,7 @@ PHP_METHOD(FastUuid_Uuid, uuid3) {
     zval *zns; zend_string *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
-    if (!fu_resolve_ns(zns, ns)) { zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_ns(zns, ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16]; fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
 }
 
@@ -562,7 +562,7 @@ PHP_METHOD(FastUuid_Uuid, uuid5) {
     zval *zns; zend_string *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
-    if (!fu_resolve_ns(zns, ns)) { zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_ns(zns, ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16]; fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
 }
 
@@ -601,7 +601,7 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
 PHP_METHOD(FastUuid_Uuid, uuid8) {
     zend_string *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(data) != 16) { zend_throw_exception(spl_ce_InvalidArgumentException, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
+    if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
     unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
     b[6] = (b[6] & 0x0f) | 0x80;
     b[8] = (b[8] & 0x3f) | 0x80;
@@ -619,7 +619,7 @@ PHP_METHOD(FastUuid_Uuid, fromString) {
 PHP_METHOD(FastUuid_Uuid, fromBytes) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(s) != 16) { zend_throw_exception(spl_ce_InvalidArgumentException, "UUID bytes must be 16 long", 0); RETURN_THROWS(); }
+    if (ZSTR_LEN(s) != 16) { zend_throw_exception(fu_ex_invalid_arg, "UUID bytes must be 16 long", 0); RETURN_THROWS(); }
     fu_return_uuid(return_value, (const unsigned char *)ZSTR_VAL(s));
 }
 
@@ -627,7 +627,7 @@ PHP_METHOD(FastUuid_Uuid, fromInteger) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (!fu_from_decimal(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid integer", 0); RETURN_THROWS(); }
+    if (!fu_from_decimal(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid integer", 0); RETURN_THROWS(); }
     fu_return_uuid(return_value, b);
 }
 
@@ -688,7 +688,7 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
 
 PHP_METHOD(FastUuid_Uuid, __construct) {
     /* intentionally private: use factory methods */
-    zend_throw_exception(spl_ce_InvalidArgumentException, "Use FastUuid\\Uuid::uuid* / from* factories", 0);
+    zend_throw_exception(fu_ex_invalid_arg, "Use FastUuid\\Uuid::uuid* / from* factories", 0);
     RETURN_THROWS();
 }
 
@@ -824,7 +824,7 @@ PHP_METHOD(FastUuid_Uuid, compareTo) {
     if (Z_TYPE_P(o) == IS_OBJECT && instanceof_function(Z_OBJCE_P(o), fast_uuid_ce))
         memcpy(b, fu_from_zobj(Z_OBJ_P(o))->b, 16);
     else if (Z_TYPE_P(o) == IS_STRING && fu_parse(Z_STRVAL_P(o), Z_STRLEN_P(o), b)) {}
-    else { zend_throw_exception(spl_ce_InvalidArgumentException, "Not comparable", 0); RETURN_THROWS(); }
+    else { zend_throw_exception(fu_ex_invalid_arg, "Not comparable", 0); RETURN_THROWS(); }
     int r = memcmp(self->b, b, 16);
     RETURN_LONG(r < 0 ? -1 : (r > 0 ? 1 : 0));
 }
@@ -839,9 +839,10 @@ PHP_METHOD(FastUuid_Uuid, jsonSerialize) {
 /* ------------------------------------------------------------------ */
 
 #define FU_RETURN_FORMATTED(b) do { \
-    zend_string *s = zend_string_alloc(36, 0); \
-    fu_format36((b), ZSTR_VAL(s)); ZSTR_VAL(s)[36] = '\0'; \
-    RETURN_STR(s); } while (0)
+    const unsigned char *_fu_src = (b); \
+    zend_string *_fu_s = zend_string_alloc(36, 0); \
+    fu_format36(_fu_src, ZSTR_VAL(_fu_s)); ZSTR_VAL(_fu_s)[36] = '\0'; \
+    RETURN_STR(_fu_s); } while (0)
 
 PHP_FUNCTION(uuid_v1) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v1(b); FU_RETURN_FORMATTED(b); }
 PHP_FUNCTION(uuid_v4) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; fu_gen_v4(b); FU_RETURN_FORMATTED(b); }
@@ -853,7 +854,7 @@ PHP_FUNCTION(uuid_v3) {
     zend_string *zns, *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_FORMATTED(b);
 }
 
@@ -861,14 +862,14 @@ PHP_FUNCTION(uuid_v5) {
     zend_string *zns, *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_FORMATTED(b);
 }
 
 PHP_FUNCTION(uuid_v8) {
     zend_string *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(data) != 16) { zend_throw_exception(spl_ce_InvalidArgumentException, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
+    if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
     unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
     b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80;
     FU_RETURN_FORMATTED(b);
@@ -878,14 +879,14 @@ PHP_FUNCTION(uuid_to_bin) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid UUID", 0); RETURN_THROWS(); }
+    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid UUID", 0); RETURN_THROWS(); }
     RETURN_STRINGL((char *)b, 16);
 }
 
 PHP_FUNCTION(uuid_from_bin) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(s) != 16) { zend_throw_exception(spl_ce_InvalidArgumentException, "Expected 16 bytes", 0); RETURN_THROWS(); }
+    if (ZSTR_LEN(s) != 16) { zend_throw_exception(fu_ex_invalid_arg, "Expected 16 bytes", 0); RETURN_THROWS(); }
     FU_RETURN_FORMATTED((const unsigned char *)ZSTR_VAL(s));
 }
 
@@ -900,7 +901,7 @@ PHP_FUNCTION(uuid_is_valid) {
 PHP_FUNCTION(fast_uuid_random_bytes) {
     zend_long n;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(n) ZEND_PARSE_PARAMETERS_END();
-    if (n <= 0) { zend_throw_exception(spl_ce_InvalidArgumentException, "length must be > 0", 0); RETURN_THROWS(); }
+    if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); RETURN_THROWS(); }
     zend_string *s = zend_string_alloc((size_t)n, 0);
     fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n);
     ZSTR_VAL(s)[n] = '\0';

@@ -16,7 +16,7 @@ final class Integer implements \JsonSerializable, \Stringable
         $v = (string) $value;
         $neg = str_starts_with($v, '-');
         $digits = $neg ? substr($v, 1) : $v;
-        if ($digits === '' || !ctype_digit($digits)) {
+        if (!\preg_match('/^[0-9]+$/', $digits)) {
             throw new InvalidArgumentException('Value must be a signed integer or a string containing only digits');
         }
         $this->value = ($neg ? '-' : '') . ltrim($digits, '0') ?: '0';
