@@ -40,6 +40,7 @@
 
 #ifndef PHP_WIN32
 # include <unistd.h>   /* getuid/getgid for uuid2 auto local-identifier */
+# include <pthread.h>  /* pthread_atfork: invalidate the CSPRNG buffer in a forked child */
 #endif
 
 #if defined(__x86_64__) || defined(__i386__)
@@ -250,6 +251,31 @@ static uint64_t fu_xs_next(void) {
     return r;
 }
 
+/* draw 8 crypto bytes as a big-endian uint64 (rand_b assembly for v7) */
+static zend_result fu_rand_u64(uint64_t *out) {
+    unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE;
+    *out = ((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
+         |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7];
+    return SUCCESS;
+}
+
+#ifndef PHP_WIN32
+/* After fork(), parent and child would otherwise share inherited generator
+   state, yielding identical output across processes: the CSPRNG buffer bytes
+   (uuid_v4), the xoshiro seed (uuid_v4_fast), and the v7 monotonic key/counter
+   (uuid7 emits the same (key, rand_b) when both processes increment within one
+   tick). Discard all three so the child refills/reseeds from the kernel before
+   next use. Runs in the child, in the forking thread, so FAST_UUID_G resolves
+   to that thread's globals under ZTS (pcntl_fork always forks a PHP thread with
+   a live TSRM cache). */
+static void fu_atfork_child(void) {
+    FAST_UUID_G(rpos) = sizeof(FAST_UUID_G(rbuf)); /* force refill on next fu_rand */
+    FAST_UUID_G(prng_seeded) = 0;                  /* force xoshiro reseed */
+    FAST_UUID_G(v7_key) = 0;                        /* force v7 reseed (new key > 0) */
+    FAST_UUID_G(v7_randb) = 0;
+}
+#endif
+
 /* ------------------------------------------------------------------ */
 /* generators                                                         */
 /* ------------------------------------------------------------------ */
@@ -358,9 +384,7 @@ static zend_result fu_gen_v7(unsigned char *b) {
     uint64_t key = (ms << 12) | sub;
     uint64_t randb;
     if (key > FAST_UUID_G(v7_key)) {
-        unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE; /* draw before mutating state */
-        randb = (((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
-                |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7]);
+        if (fu_rand_u64(&randb) == FAILURE) return FAILURE; /* draw before mutating state */
         randb &= (1ULL<<62) - 1; /* full 62-bit rand_b; the overflow check below carries into the key */
         FAST_UUID_G(v7_key) = key;
         FAST_UUID_G(v7_randb) = randb;
@@ -376,9 +400,8 @@ static zend_result fu_gen_v7(unsigned char *b) {
 
 /* non-monotonic v7 at an explicit timestamp (ms + 12-bit sub-ms fraction) */
 static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
-    unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE;
-    uint64_t randb = (((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
-                     |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7]) & ((1ULL<<62)-1);
+    uint64_t randb; if (fu_rand_u64(&randb) == FAILURE) return FAILURE;
+    randb &= (1ULL<<62) - 1;
     return fu_lay_v7(b, ms, sub, randb);
 }
 
@@ -446,10 +469,27 @@ static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
     memcpy(u->b, b, 16);
 }
 
+/* Resolve a namespace argument to 16 bytes. Accepts a native Uuid (zero-copy),
+   any Stringable (incl. a userland FastUuid\UuidInterface) by parsing its string
+   form, or a UUID string. Returns 0 on a non-match or unparseable value; on a
+   throwing __toString it leaves EG(exception) set, which the caller must honor
+   rather than overwrite. */
 static int fu_resolve_ns(zval *z, unsigned char ns[16]) {
-    if (Z_TYPE_P(z) == IS_OBJECT && instanceof_function(Z_OBJCE_P(z), fast_uuid_ce)) {
-        memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
-        return 1;
+    if (Z_TYPE_P(z) == IS_OBJECT) {
+        zend_class_entry *ce = Z_OBJCE_P(z);
+        if (instanceof_function(ce, fast_uuid_ce)) {
+            memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
+            return 1;
+        }
+        if (instanceof_function(ce, zend_ce_stringable)) {
+            zval t; ZVAL_OBJ(&t, Z_OBJ_P(z));
+            zend_string *s = zval_get_string(&t);
+            if (EG(exception)) { if (s) zend_string_release(s); return 0; }
+            int ok = fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), ns);
+            zend_string_release(s);
+            return ok;
+        }
+        return 0;
     }
     if (Z_TYPE_P(z) == IS_STRING) return fu_parse(Z_STRVAL_P(z), Z_STRLEN_P(z), ns);
     return 0;
@@ -460,10 +500,12 @@ static zend_class_entry *fu_ex_invalid_arg;
 static zend_class_entry *fu_ex_invalid_str;
 static zend_class_entry *fu_ex_unsupported;
 
-/* parse a node override: 12-hex string, or int (low 48 bits). returns 1 on success */
+/* parse a node override: 12-hex string, or int in 0..0xffffffffffff. returns 1 on success */
 static int fu_parse_node(zval *z, unsigned char node[6]) {
     if (Z_TYPE_P(z) == IS_LONG) {
-        uint64_t n = (uint64_t)Z_LVAL_P(z);
+        zend_long lv = Z_LVAL_P(z);
+        if (lv < 0 || (uint64_t)lv > 0xffffffffffffULL) return 0; /* reject, don't truncate */
+        uint64_t n = (uint64_t)lv;
         for (int i = 0; i < 6; i++) node[i] = (n >> (8 * (5 - i))) & 0xff;
         return 1;
     }
@@ -493,6 +535,38 @@ static zend_result fu_node_arg(zval *znode, unsigned char node[6], const unsigne
     } else {
         *out = NULL;
     }
+    return SUCCESS;
+}
+
+/* Validate an optional clock sequence. cs_null means "not supplied" -> -1 (random).
+   A supplied value must be 0..0x3fff; out-of-range throws rather than truncating. */
+static zend_result fu_clockseq_arg(zend_long clockseq, zend_bool cs_null, int *out) {
+    if (cs_null) { *out = -1; return SUCCESS; }
+    if (clockseq < 0 || clockseq > 0x3fff) {
+        zend_throw_exception(fu_ex_invalid_arg, "clockSeq out of range (0..16383)", 0);
+        return FAILURE;
+    }
+    *out = (int)clockseq;
+    return SUCCESS;
+}
+
+/* Read whole seconds + sub-second microseconds off a DateTimeInterface. Throws
+   (returns FAILURE) if either call fails or raises. */
+static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t *micros) {
+    zval zdt; ZVAL_OBJ(&zdt, dtobj);
+    zval fn, ret;
+    ZVAL_STRING(&fn, "getTimestamp");
+    zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
+    zval_ptr_dtor(&fn);
+    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); return FAILURE; }
+    *secs = (int64_t)zval_get_long(&ret);
+    zval_ptr_dtor(&ret);
+    zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
+    cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
+    zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
+    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); return FAILURE; }
+    *micros = (uint32_t)zval_get_long(&ret); /* 0..999999 within the second */
+    zval_ptr_dtor(&ret);
     return SUCCESS;
 }
 
@@ -538,7 +612,8 @@ PHP_METHOD(FastUuid_Uuid, uuid1) {
     ZEND_PARSE_PARAMETERS_END();
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
-    unsigned char b[16]; if (fu_gen_v1_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
+    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    unsigned char b[16]; if (fu_gen_v1_ex(b, np, cseq) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid2) {
@@ -572,17 +647,23 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
             if (errno == ERANGE || end != sv + sl || v > 0xFFFFFFFFULL) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
             local_id = (uint32_t)v;
         } else { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier must be int|string|null", 0); RETURN_THROWS(); }
-    } else {
+    } else if (local_domain == 0 || local_domain == 1) {
+        /* only PERSON/GROUP auto-fill from the POSIX uid/gid */
 #ifndef PHP_WIN32
         local_id = (local_domain == 1) ? (uint32_t)getgid() : (uint32_t)getuid();
 #else
         local_id = 0;
 #endif
+    } else {
+        zend_throw_exception(fu_ex_invalid_arg,
+            "localIdentifier is required for DCE domains other than PERSON (0) and GROUP (1)", 0);
+        RETURN_THROWS();
     }
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
+    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     unsigned char b[16];
-    if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS();
+    if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cseq) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
 }
 
@@ -590,7 +671,7 @@ PHP_METHOD(FastUuid_Uuid, uuid3) {
     zval *zns; zend_string *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
-    if (!fu_resolve_ns(zns, ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_ns(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16]; fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
 }
 
@@ -603,7 +684,7 @@ PHP_METHOD(FastUuid_Uuid, uuid5) {
     zval *zns; zend_string *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
-    if (!fu_resolve_ns(zns, ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_ns(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16]; fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
 }
 
@@ -616,7 +697,8 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
     ZEND_PARSE_PARAMETERS_END();
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
-    unsigned char b[16]; if (fu_gen_v6_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
+    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    unsigned char b[16]; if (fu_gen_v6_ex(b, np, cseq) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid7) {
@@ -627,25 +709,21 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
     ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
     if (dtobj) {
-        zval zdt; ZVAL_OBJ(&zdt, dtobj);
-        zval fn, ret;
-        ZVAL_STRING(&fn, "getTimestamp");
-        zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
-        zval_ptr_dtor(&fn);
-        if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
-        zend_long sec = zval_get_long(&ret);
-        zval_ptr_dtor(&ret);
+        int64_t sec; uint32_t micros;
+        if (fu_dt_secs_micros(dtobj, &sec, &micros) == FAILURE) RETURN_THROWS();
         if (sec < 0) { /* v7 timestamps are unsigned ms since the unix epoch */
             zend_throw_exception(fu_ex_invalid_arg, "uuid7 does not support dates before 1970-01-01", 0);
             RETURN_THROWS();
         }
-        zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
-        cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
-        zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
-        if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
-        uint32_t micros = (uint32_t)zval_get_long(&ret); /* 0..999999 within the second */
-        zval_ptr_dtor(&ret);
+        if (sec > 281474976710LL) { /* sec*1000 must fit the 48-bit ms field (max ~year 10889) */
+            zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
+            RETURN_THROWS();
+        }
         uint64_t ms  = (uint64_t)sec * 1000ULL + micros / 1000ULL;
+        if (ms > 0xffffffffffffULL) { /* precise 48-bit ceiling (boundary second + sub-ms) */
+            zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
+            RETURN_THROWS();
+        }
         uint64_t sub = ((uint64_t)(micros % 1000) * 4096ULL) / 1000ULL; /* sub-ms us -> 12-bit */
         if (fu_gen_v7_at(b, ms, sub) == FAILURE) RETURN_THROWS();
     } else {
@@ -703,8 +781,11 @@ PHP_METHOD(FastUuid_Uuid, fromHexadecimal) {
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ZVAL(z) ZEND_PARSE_PARAMETERS_END();
     /* accept a 32-char hex string or any object stringifiable to one (ramsey Type\Hexadecimal) */
     if (Z_TYPE_P(z) == IS_STRING) { s = Z_STR_P(z); zend_string_addref(s); }
-    else if (Z_TYPE_P(z) == IS_OBJECT) { zval t; ZVAL_OBJ(&t, Z_OBJ_P(z)); s = zval_get_string(&t); }
-    else { zend_throw_exception(fu_ex_invalid_arg, "Expected hexadecimal string", 0); RETURN_THROWS(); }
+    else if (Z_TYPE_P(z) == IS_OBJECT && instanceof_function(Z_OBJCE_P(z), zend_ce_stringable)) {
+        zval t; ZVAL_OBJ(&t, Z_OBJ_P(z)); s = zval_get_string(&t);
+        if (EG(exception)) { if (s) zend_string_release(s); RETURN_THROWS(); } /* propagate a throwing __toString */
+    }
+    else { zend_throw_exception(fu_ex_invalid_arg, "Expected a hexadecimal string or Stringable", 0); RETURN_THROWS(); }
     unsigned char b[16];
     int ok = (ZSTR_LEN(s) == 32) && fu_parse(ZSTR_VAL(s), 32, b);
     zend_string_release(s);
@@ -720,27 +801,26 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
         Z_PARAM_ZVAL_OR_NULL(znode)
         Z_PARAM_LONG_OR_NULL(clockseq, cs_null)
     ZEND_PARSE_PARAMETERS_END();
-    zval zdt; ZVAL_OBJ(&zdt, dtobj);
-    /* read seconds + microseconds off the DateTimeInterface */
-    zval fn, ret;
-    ZVAL_STRING(&fn, "getTimestamp");
-    zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
-    zval_ptr_dtor(&fn);
-    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
-    int64_t secs = (int64_t)zval_get_long(&ret);
-    zval_ptr_dtor(&ret);
-    zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
-    cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
-    zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
-    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
-    uint32_t micros = (uint32_t)zval_get_long(&ret);
-    zval_ptr_dtor(&ret);
+    int64_t secs; uint32_t micros;
+    if (fu_dt_secs_micros(dtobj, &secs, &micros) == FAILURE) RETURN_THROWS();
 
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
-    /* signed: dates before 1970 give a negative unix-seconds value */
+    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    /* The v1 timestamp is a 60-bit count of 100ns ticks since 1582-10-15. Bound
+       secs first so the multiply can't overflow int64, then range-check the
+       Gregorian tick value precisely (valid window ~1582-10-15 .. ~year 5236).
+       signed: dates before 1970 give a negative unix-seconds value. */
+    if (secs < -200000000000LL || secs > 200000000000LL) {
+        zend_throw_exception(fu_ex_invalid_arg, "DateTime out of range for a v1 UUID timestamp", 0);
+        RETURN_THROWS();
+    }
     int64_t g = secs * 10000000LL + (int64_t)micros * 10LL + (int64_t)0x01B21DD213814000ULL;
-    unsigned char b[16]; if (fu_lay_v1(b, (uint64_t)g, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS();
+    if (g < 0 || (uint64_t)g > ((1ULL << 60) - 1)) {
+        zend_throw_exception(fu_ex_invalid_arg, "DateTime out of range for a v1 UUID timestamp (1582-10-15 .. ~5236)", 0);
+        RETURN_THROWS();
+    }
+    unsigned char b[16]; if (fu_lay_v1(b, (uint64_t)g, np, cseq) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
 }
 
@@ -1005,6 +1085,19 @@ static PHP_GINIT_FUNCTION(fast_uuid) {
 
 PHP_MINIT_FUNCTION(fast_uuid) {
     for (int i = 0; i < 256; i++) { fu_lut[i*2] = fu_hexd[i >> 4]; fu_lut[i*2+1] = fu_hexd[i & 0x0f]; }
+
+#ifndef PHP_WIN32
+    /* Fork-safety for the batched CSPRNG buffer. Registered once per process;
+       the handler pointer lives as long as the .so, which for an
+       extension=-loaded (persistent) module is the whole process lifetime.
+       Guard against a second MINIT (e.g. dl() after a static load) so we don't
+       stack duplicate handlers. */
+    static int atfork_registered = 0;
+    if (!atfork_registered) {
+        pthread_atfork(NULL, NULL, fu_atfork_child);
+        atfork_registered = 1;
+    }
+#endif
 
 #ifdef FU_X86
     __builtin_cpu_init();

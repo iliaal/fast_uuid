@@ -52,7 +52,21 @@ abstract class AbstractUuid implements UuidInterface
     public function __serialize(): array { return ['bytes' => $this->core->getBytes()]; }
     public function __unserialize(array $data): void
     {
+        if (!isset($data['bytes']) || !\is_string($data['bytes'])) {
+            throw new \FastUuid\Exception\InvalidArgumentException('Malformed serialized UUID payload');
+        }
+        $core = \FastUuid\Uuid::fromBytes($data['bytes']); // throws on wrong length
+        // Reject a payload whose bytes don't match the concrete wrapper class
+        // (e.g. a serialized UuidV4 tampered to carry v1 bytes).
+        $expected = (new UuidFactory())->wrap($core);
+        if (\get_class($expected) !== static::class) {
+            throw new \FastUuid\Exception\InvalidArgumentException(\sprintf(
+                'Serialized %s does not match its bytes (resolves to %s)',
+                static::class,
+                \get_class($expected),
+            ));
+        }
         // @phpstan-ignore-next-line readonly assigned in unserialize is allowed
-        $this->core = \FastUuid\Uuid::fromBytes($data['bytes']);
+        $this->core = $core;
     }
 }

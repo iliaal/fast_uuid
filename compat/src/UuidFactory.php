@@ -43,6 +43,13 @@ final class UuidFactory
     private ?ValidatorInterface $validator = null;
     private ?CodecInterface $codec = null;
 
+    // Whether the application *set* a custom provider. The get*() lazy defaults
+    // must not flip these, or merely inspecting a generator would route later
+    // generation off the C fast path.
+    private bool $customRandomGenerator = false;
+    private bool $customTimeGenerator = false;
+    private bool $customNodeProvider = false;
+
     public function getRandomGenerator(): RandomGeneratorInterface
     {
         return $this->randomGenerator ??= new DefaultRandomGenerator();
@@ -51,6 +58,7 @@ final class UuidFactory
     public function setRandomGenerator(RandomGeneratorInterface $generator): void
     {
         $this->randomGenerator = $generator;
+        $this->customRandomGenerator = true;
     }
 
     public function getTimeGenerator(): TimeGeneratorInterface
@@ -61,6 +69,7 @@ final class UuidFactory
     public function setTimeGenerator(TimeGeneratorInterface $generator): void
     {
         $this->timeGenerator = $generator;
+        $this->customTimeGenerator = true;
     }
 
     public function getNodeProvider(): NodeProviderInterface
@@ -71,6 +80,7 @@ final class UuidFactory
     public function setNodeProvider(NodeProviderInterface $provider): void
     {
         $this->nodeProvider = $provider;
+        $this->customNodeProvider = true;
     }
 
     public function getValidator(): ValidatorInterface
@@ -95,9 +105,9 @@ final class UuidFactory
 
     public function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        if ($this->timeGenerator !== null || $this->nodeProvider !== null) {
-            if ($node === null && $this->nodeProvider !== null) {
-                $node = \bin2hex($this->nodeProvider->getNode());
+        if ($this->customTimeGenerator || $this->customNodeProvider) {
+            if ($node === null && $this->customNodeProvider) {
+                $node = \bin2hex($this->getNodeProvider()->getNode());
             }
             return $this->wrap(\FastUuid\Uuid::fromBytes($this->getTimeGenerator()->generate($node, $clockSeq)));
         }
@@ -120,8 +130,8 @@ final class UuidFactory
 
     public function uuid4(): UuidInterface
     {
-        if ($this->randomGenerator !== null) {
-            $b = $this->randomGenerator->generate(16);
+        if ($this->customRandomGenerator) {
+            $b = $this->getRandomGenerator()->generate(16);
             if (\strlen($b) !== 16) {
                 throw new \FastUuid\Exception\InvalidArgumentException(
                     'Random generator must return exactly 16 bytes, got ' . \strlen($b)
@@ -141,8 +151,8 @@ final class UuidFactory
 
     public function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        if ($node === null && $this->nodeProvider !== null) {
-            $node = \bin2hex($this->nodeProvider->getNode());
+        if ($node === null && $this->customNodeProvider) {
+            $node = \bin2hex($this->getNodeProvider()->getNode());
         }
         return $this->wrap(\FastUuid\Uuid::uuid6($node, $clockSeq));
     }
