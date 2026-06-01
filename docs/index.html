@@ -164,6 +164,7 @@ $u = Uuid::<span class="fn">fromDateTime</span>(<span class="kw">new</span> Date
 $u-&gt;<span class="fn">getHex</span>();        $u-&gt;<span class="fn">getUrn</span>();      $u-&gt;<span class="fn">getBytes</span>();   <span class="cm">// 16 raw bytes</span>
 $u-&gt;<span class="fn">getVersion</span>();    $u-&gt;<span class="fn">getVariant</span>();  $u-&gt;<span class="fn">getInteger</span>();
 $u-&gt;<span class="fn">getFields</span>();     $u-&gt;<span class="fn">getDateTime</span>();
+$u-&gt;<span class="fn">getTimestampMillis</span>();             <span class="cm">// unix ms, no DateTime object built</span>
 $u-&gt;<span class="fn">equals</span>($other); $u-&gt;<span class="fn">compareTo</span>($other);
 
 <span class="cm">// ramsey/identifier-style aliases of the four get* converters above</span>
@@ -188,6 +189,7 @@ compareTo   -1   (00..01 vs 00..02)</pre>
   <div class="ex">
     <pre class="code">uuid_v1(); uuid_v3($ns, $name); uuid_v4(); uuid_v5($ns, $name);
 uuid_v6(); uuid_v7(); uuid_v8($bytes);
+uuid_v7_at($unixMillis);         <span class="cm">// v7 from a unix-ms int, no DateTime</span>
 uuid_v4_fast();                  <span class="cm">// non-crypto xoshiro256**, IDs only</span>
 uuid_to_bin($s);                 <span class="cm">// canonical -&gt; 16 bytes</span>
 uuid_from_bin($bytes);           <span class="cm">// 16 bytes -&gt; canonical</span>
