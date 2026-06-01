@@ -47,6 +47,31 @@ is not for security-sensitive identifiers.
 | v7        | 20.1x           | 28.8x            |
 | parse     | 3.4x            | 5.5x             |
 
+## Timestamp and DateTime APIs
+
+Generating a v7 from an explicit time, and reading a UUID's timestamp back, used
+to route through `call_user_function` (`getTimestamp()` + `format("u")`, or
+`DateTimeImmutable::createFromFormat`). These now read and write ext/date's
+internal `timelib_time` directly, which is roughly 3x faster, and a new
+integer-millisecond API skips DateTime objects entirely. Same machine and method
+as above; ramsey/uuid 4.9.2 for comparison.
+
+| Operation                  | fast_uuid (obj) | fast_uuid (proc) | ramsey/uuid |
+|----------------------------|----------------:|-----------------:|------------:|
+| v7 from DateTime           | **11.9**        | n/a              | 0.68        |
+| v7 from unix-ms int        | 13.4            | **21.2**         | n/a         |
+| fromDateTime (v1)          | **12.5**        | n/a              | n/a         |
+| getDateTime (read)         | **4.4**         | n/a              | 0.10        |
+| getTimestampMillis (read)  | n/a             | **24.0**         | n/a         |
+
+- `uuid7($dateTime)` runs ~17x faster than ramsey's; reading the embedded time
+  with `getDateTime()` is ~44x faster.
+- `uuid_v7_at($unixMillis)` and `Uuid::uuid7($int)` take a unix-millisecond
+  integer and build v7 with no DateTime object, matching plain `uuid_v7()` speed.
+  `getTimestampMillis()` reads the timestamp as an int without constructing a
+  `DateTimeImmutable`, ~5x faster than `getDateTime()`. ramsey has no integer
+  equivalent for either.
+
 ## Notes
 
 - The batched CSPRNG is why v4 generation is an order of magnitude faster than
