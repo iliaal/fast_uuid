@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+namespace FastUuid\Compat\Codec;
+
+use FastUuid\Compat\Uuid;
+use FastUuid\Compat\UuidInterface;
+use FastUuid\Exception\InvalidArgumentException;
+
+/**
+ * Binary ordering for version-1 UUIDs that sorts by time, for use as a MySQL
+ * BINARY(16) primary key. Reorders the time fields to time_hi | time_mid |
+ * time_low; the string form stays canonical. Mirrors
+ * Ramsey\Uuid\Codec\OrderedTimeCodec.
+ */
+final class OrderedTimeCodec extends StringCodec
+{
+    public function encodeBinary(UuidInterface $uuid): string
+    {
+        if ($uuid->getVersion() !== 1) {
+            throw new InvalidArgumentException('Expected a version 1 (time-based) UUID');
+        }
+        $b = $uuid->getBytes();
+
+        return $b[6] . $b[7] . $b[4] . $b[5] . $b[0] . $b[1] . $b[2] . $b[3] . \substr($b, 8);
+    }
+
+    public function decodeBytes(string $bytes): UuidInterface
+    {
+        if (\strlen($bytes) !== 16) {
+            throw new InvalidArgumentException('Expected 16 bytes');
+        }
+        $b = $bytes;
+        $restored = $b[4] . $b[5] . $b[6] . $b[7] . $b[2] . $b[3] . $b[0] . $b[1] . \substr($b, 8);
+
+        return Uuid::fromBytes($restored);
+    }
+}

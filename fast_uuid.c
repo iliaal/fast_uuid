@@ -39,6 +39,17 @@
 
 #include <time.h>
 #include <string.h>
+#include <stdlib.h>
+
+#ifndef PHP_WIN32
+# include <unistd.h>   /* getuid/getgid for uuid2 auto local-identifier */
+#endif
+
+#if defined(__x86_64__) || defined(__i386__)
+# include <immintrin.h>
+# define FU_X86 1
+static int fu_has_ssse3 = 0;   /* set in MINIT via __builtin_cpu_supports */
+#endif
 
 ZEND_DECLARE_MODULE_GLOBALS(fast_uuid)
 
@@ -102,21 +113,52 @@ static int fu_compare(zval *a, zval *b) {
 /* formatting / parsing                                               */
 /* ------------------------------------------------------------------ */
 
-/* canonical 8-4-4-4-12 into 36 bytes (no NUL). SIMD path can slot in here. */
-static inline void fu_format36(const unsigned char *b, char *o) {
+/* scalar 16-byte -> 32 lowercase hex chars (default / non-x86 / no-SSSE3) */
+static inline void fu_hex32_scalar(const unsigned char *b, char *o) {
     const char *L = fu_lut;
-#define P(i, k) do { o[i] = L[(b[k])*2]; o[(i)+1] = L[(b[k])*2+1]; } while (0)
-    P(0,0); P(2,1); P(4,2); P(6,3);   o[8]  = '-';
-    P(9,4); P(11,5);                  o[13] = '-';
-    P(14,6); P(16,7);                 o[18] = '-';
-    P(19,8); P(21,9);                 o[23] = '-';
-    P(24,10); P(26,11); P(28,12); P(30,13); P(32,14); P(34,15);
-#undef P
+    for (int i = 0; i < 16; i++) { o[i*2] = L[b[i]*2]; o[i*2+1] = L[b[i]*2+1]; }
+}
+
+#ifdef FU_X86
+/* SSSE3 pshufb-LUT path: 16 bytes -> 32 hex in a handful of vector ops.
+   x86 only and runtime-gated on fu_has_ssse3. AVX2 offers no win for a single
+   16-byte value (the work fits one XMM register); a batch API would be the
+   place for a 256-bit path. */
+__attribute__((target("ssse3")))
+static void fu_hex32_ssse3(const unsigned char *b, char *o) {
+    const __m128i v    = _mm_loadu_si128((const __m128i *)b);
+    const __m128i mask = _mm_set1_epi8(0x0f);
+    const __m128i lut  = _mm_setr_epi8('0','1','2','3','4','5','6','7',
+                                       '8','9','a','b','c','d','e','f');
+    __m128i hi = _mm_and_si128(_mm_srli_epi16(v, 4), mask);
+    __m128i lo = _mm_and_si128(v, mask);
+    __m128i hh = _mm_shuffle_epi8(lut, hi);
+    __m128i lh = _mm_shuffle_epi8(lut, lo);
+    _mm_storeu_si128((__m128i *)o,        _mm_unpacklo_epi8(hh, lh));
+    _mm_storeu_si128((__m128i *)(o + 16), _mm_unpackhi_epi8(hh, lh));
+}
+#endif
+
+static inline void fu_hex32(const unsigned char *b, char *o) {
+#ifdef FU_X86
+    if (fu_has_ssse3) { fu_hex32_ssse3(b, o); return; }
+#endif
+    fu_hex32_scalar(b, o);
+}
+
+/* canonical 8-4-4-4-12 into 36 bytes (no NUL) */
+static inline void fu_format36(const unsigned char *b, char *o) {
+    char h[32];
+    fu_hex32(b, h);
+    memcpy(o,      h,      8); o[8]  = '-';
+    memcpy(o + 9,  h + 8,  4); o[13] = '-';
+    memcpy(o + 14, h + 12, 4); o[18] = '-';
+    memcpy(o + 19, h + 16, 4); o[23] = '-';
+    memcpy(o + 24, h + 20, 12);
 }
 
 static inline void fu_format32(const unsigned char *b, char *o) {
-    const char *L = fu_lut;
-    for (int i = 0; i < 16; i++) { o[i*2] = L[b[i]*2]; o[i*2+1] = L[b[i]*2+1]; }
+    fu_hex32(b, o);
 }
 
 static inline int fu_nib(unsigned char c) {
@@ -274,6 +316,18 @@ static void fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clocks
 }
 
 static void fu_gen_v6(unsigned char *b) { fu_gen_v6_ex(b, NULL, -1); }
+
+/* DCE Security (v2): v1 time layout, but time_low := local identifier and
+   clock_seq_low := local domain; version nibble = 2. The low 32 timestamp bits
+   are sacrificed for the local id, so v2 time resolution is coarse. */
+static void fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
+                      const unsigned char *node, int clockseq) {
+    fu_lay_v1(b, fu_greg_now(), node, clockseq);
+    b[0] = (local_id >> 24) & 0xff; b[1] = (local_id >> 16) & 0xff;
+    b[2] = (local_id >> 8)  & 0xff; b[3] = local_id & 0xff;
+    b[6] = (b[6] & 0x0f) | 0x20;    /* version 2 */
+    b[9] = local_domain;            /* clock_seq_low := local domain */
+}
 
 static void fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t counter) {
     b[0]=(ms>>40)&0xff; b[1]=(ms>>32)&0xff; b[2]=(ms>>24)&0xff;
@@ -453,6 +507,42 @@ PHP_METHOD(FastUuid_Uuid, uuid1) {
         np = node;
     }
     unsigned char b[16]; fu_gen_v1_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)); fu_return_uuid(return_value, b);
+}
+
+PHP_METHOD(FastUuid_Uuid, uuid2) {
+    zend_long local_domain;
+    zval *zid = NULL, *znode = NULL; zend_long clockseq = -1; zend_bool cs_null = 1;
+    ZEND_PARSE_PARAMETERS_START(1, 4)
+        Z_PARAM_LONG(local_domain)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_ZVAL_OR_NULL(zid)
+        Z_PARAM_ZVAL_OR_NULL(znode)
+        Z_PARAM_LONG_OR_NULL(clockseq, cs_null)
+    ZEND_PARSE_PARAMETERS_END();
+    if (local_domain < 0 || local_domain > 0xff) {
+        zend_throw_exception(fu_ex_invalid_arg, "localDomain must be 0..255 (PERSON=0, GROUP=1, ORG=2)", 0);
+        RETURN_THROWS();
+    }
+    uint32_t local_id;
+    if (zid && Z_TYPE_P(zid) != IS_NULL) {
+        if (Z_TYPE_P(zid) == IS_LONG)        local_id = (uint32_t)Z_LVAL_P(zid);
+        else if (Z_TYPE_P(zid) == IS_STRING) local_id = (uint32_t)strtoull(Z_STRVAL_P(zid), NULL, 10);
+        else { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier must be int|string|null", 0); RETURN_THROWS(); }
+    } else {
+#ifndef PHP_WIN32
+        local_id = (local_domain == 1) ? (uint32_t)getgid() : (uint32_t)getuid();
+#else
+        local_id = 0;
+#endif
+    }
+    unsigned char node[6]; const unsigned char *np = NULL;
+    if (znode && Z_TYPE_P(znode) != IS_NULL) {
+        if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node", 0); RETURN_THROWS(); }
+        np = node;
+    }
+    unsigned char b[16];
+    fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cs_null ? -1 : (int)(clockseq & 0x3fff));
+    fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid3) {
@@ -675,6 +765,14 @@ PHP_METHOD(FastUuid_Uuid, getDateTime) {
         uint64_t unix100 = t60 - 0x01B21DD213814000ULL; /* 100ns since epoch */
         secs   = (int64_t)(unix100 / 10000000ULL);
         micros = (uint32_t)((unix100 % 10000000ULL) / 10ULL); /* 100ns -> us */
+    } else if (ver == 2) {
+        /* DCE v2: time_low holds the local identifier, so only the upper bits
+           of the 60-bit timestamp survive (coarse, ~429s resolution). */
+        uint64_t th = ((uint64_t)(u->b[6]&0x0f)<<8)|u->b[7];
+        uint64_t tm = ((uint64_t)u->b[4]<<8)|u->b[5];
+        uint64_t unix100 = ((th<<48)|(tm<<32)) - 0x01B21DD213814000ULL;
+        secs   = (int64_t)(unix100 / 10000000ULL);
+        micros = (uint32_t)((unix100 % 10000000ULL) / 10ULL);
     } else if (ver == 7) {
         uint64_t ms = ((uint64_t)u->b[0]<<40)|((uint64_t)u->b[1]<<32)|((uint64_t)u->b[2]<<24)
                      |((uint64_t)u->b[3]<<16)|((uint64_t)u->b[4]<<8)|u->b[5];
@@ -824,6 +922,11 @@ static PHP_GINIT_FUNCTION(fast_uuid) {
 PHP_MINIT_FUNCTION(fast_uuid) {
     for (int i = 0; i < 256; i++) { fu_lut[i*2] = fu_hexd[i >> 4]; fu_lut[i*2+1] = fu_hexd[i & 0x0f]; }
 
+#ifdef FU_X86
+    __builtin_cpu_init();
+    fu_has_ssse3 = __builtin_cpu_supports("ssse3");
+#endif
+
     fast_uuid_iface_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
     fast_uuid_ce = register_class_FastUuid_Uuid(fast_uuid_iface_ce);
     fast_uuid_ce->create_object = fu_create;
@@ -847,6 +950,11 @@ PHP_MINFO_FUNCTION(fast_uuid) {
     php_info_print_table_start();
     php_info_print_table_row(2, "fast_uuid support", "enabled");
     php_info_print_table_row(2, "version", PHP_FAST_UUID_VERSION);
+#ifdef FU_X86
+    php_info_print_table_row(2, "x86 SIMD hex formatter", fu_has_ssse3 ? "SSSE3" : "scalar (CPU lacks SSSE3)");
+#else
+    php_info_print_table_row(2, "x86 SIMD hex formatter", "n/a (non-x86 build)");
+#endif
 #ifdef HAVE_LIBUUID
     php_info_print_table_row(2, "libuuid (v1 backend)", "yes");
 #else

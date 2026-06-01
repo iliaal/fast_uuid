@@ -15,7 +15,12 @@ namespace FastUuid {
         public const NAMESPACE_OID  = "6ba7b812-9dad-11d1-80b4-00c04fd430c8";
         public const NAMESPACE_X500 = "6ba7b814-9dad-11d1-80b4-00c04fd430c8";
 
+        public const DCE_DOMAIN_PERSON = 0;
+        public const DCE_DOMAIN_GROUP  = 1;
+        public const DCE_DOMAIN_ORG    = 2;
+
         public static function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
+        public static function uuid2(int $localDomain, int|string|null $localIdentifier = null, int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
         public static function uuid3(UuidInterface|string $ns, string $name): UuidInterface {}
         public static function uuid4(): UuidInterface {}
         public static function uuid5(UuidInterface|string $ns, string $name): UuidInterface {}

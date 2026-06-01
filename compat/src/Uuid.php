@@ -20,6 +20,10 @@ final class Uuid
     public const NAMESPACE_OID  = '6ba7b812-9dad-11d1-80b4-00c04fd430c8';
     public const NAMESPACE_X500 = '6ba7b814-9dad-11d1-80b4-00c04fd430c8';
 
+    public const DCE_DOMAIN_PERSON = 0;
+    public const DCE_DOMAIN_GROUP  = 1;
+    public const DCE_DOMAIN_ORG    = 2;
+
     private static ?UuidFactory $factory = null;
 
     public static function getFactory(): UuidFactory
@@ -35,6 +39,15 @@ final class Uuid
     public static function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
     {
         return self::getFactory()->uuid1($node, $clockSeq);
+    }
+
+    public static function uuid2(
+        int $localDomain,
+        int|string|null $localIdentifier = null,
+        int|string|null $node = null,
+        ?int $clockSeq = null,
+    ): UuidInterface {
+        return self::getFactory()->uuid2($localDomain, $localIdentifier, $node, $clockSeq);
     }
 
     public static function uuid3(UuidInterface|string $ns, string $name): UuidInterface
@@ -95,8 +108,13 @@ final class Uuid
         return self::getFactory()->fromDateTime($dateTime, $node, $clockSeq);
     }
 
+    /**
+     * Canonical-form validation via the factory's validator (RFC 4122 shape).
+     * For the more permissive parser (bare 32-hex, urn:, braces) use
+     * \FastUuid\Uuid::isValid().
+     */
     public static function isValid(string $uuid): bool
     {
-        return \FastUuid\Uuid::isValid($uuid);
+        return self::getFactory()->getValidator()->validate($uuid);
     }
 }

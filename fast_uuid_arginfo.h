@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 69ea26f349bc8f6b84af302aaa114ba0bec0cd05 */
+ * Stub hash: 00a18253034e5577dc9fcd11c3a1a04b770222b4 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -38,6 +38,13 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_fast_uuid_random_bytes, 0, 1, IS
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid1, 0, 0, FastUuid\\\125uidInterface, 0)
+	ZEND_ARG_TYPE_MASK(0, node, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, clockSeq, IS_LONG, 1, "null")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid2, 0, 1, FastUuid\\\125uidInterface, 0)
+	ZEND_ARG_TYPE_INFO(0, localDomain, IS_LONG, 0)
+	ZEND_ARG_TYPE_MASK(0, localIdentifier, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
 	ZEND_ARG_TYPE_MASK(0, node, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, clockSeq, IS_LONG, 1, "null")
 ZEND_END_ARG_INFO()
@@ -133,6 +140,7 @@ ZEND_FUNCTION(uuid_from_bin);
 ZEND_FUNCTION(uuid_is_valid);
 ZEND_FUNCTION(fast_uuid_random_bytes);
 ZEND_METHOD(FastUuid_Uuid, uuid1);
+ZEND_METHOD(FastUuid_Uuid, uuid2);
 ZEND_METHOD(FastUuid_Uuid, uuid3);
 ZEND_METHOD(FastUuid_Uuid, uuid4);
 ZEND_METHOD(FastUuid_Uuid, uuid5);
@@ -177,6 +185,7 @@ static const zend_function_entry ext_functions[] = {
 
 static const zend_function_entry class_FastUuid_Uuid_methods[] = {
 	ZEND_ME(FastUuid_Uuid, uuid1, arginfo_class_FastUuid_Uuid_uuid1, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(FastUuid_Uuid, uuid2, arginfo_class_FastUuid_Uuid_uuid2, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(FastUuid_Uuid, uuid3, arginfo_class_FastUuid_Uuid_uuid3, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(FastUuid_Uuid, uuid4, arginfo_class_FastUuid_Uuid_uuid4, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(FastUuid_Uuid, uuid5, arginfo_class_FastUuid_Uuid_uuid5, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
@@ -266,6 +275,24 @@ static zend_class_entry *register_class_FastUuid_Uuid(zend_class_entry *class_en
 	zend_string *const_NAMESPACE_X500_name = zend_string_init_interned("NAMESPACE_X500", sizeof("NAMESPACE_X500") - 1, true);
 	zend_declare_class_constant_ex(class_entry, const_NAMESPACE_X500_name, &const_NAMESPACE_X500_value, ZEND_ACC_PUBLIC, NULL);
 	zend_string_release_ex(const_NAMESPACE_X500_name, true);
+
+	zval const_DCE_DOMAIN_PERSON_value;
+	ZVAL_LONG(&const_DCE_DOMAIN_PERSON_value, 0);
+	zend_string *const_DCE_DOMAIN_PERSON_name = zend_string_init_interned("DCE_DOMAIN_PERSON", sizeof("DCE_DOMAIN_PERSON") - 1, true);
+	zend_declare_class_constant_ex(class_entry, const_DCE_DOMAIN_PERSON_name, &const_DCE_DOMAIN_PERSON_value, ZEND_ACC_PUBLIC, NULL);
+	zend_string_release_ex(const_DCE_DOMAIN_PERSON_name, true);
+
+	zval const_DCE_DOMAIN_GROUP_value;
+	ZVAL_LONG(&const_DCE_DOMAIN_GROUP_value, 1);
+	zend_string *const_DCE_DOMAIN_GROUP_name = zend_string_init_interned("DCE_DOMAIN_GROUP", sizeof("DCE_DOMAIN_GROUP") - 1, true);
+	zend_declare_class_constant_ex(class_entry, const_DCE_DOMAIN_GROUP_name, &const_DCE_DOMAIN_GROUP_value, ZEND_ACC_PUBLIC, NULL);
+	zend_string_release_ex(const_DCE_DOMAIN_GROUP_name, true);
+
+	zval const_DCE_DOMAIN_ORG_value;
+	ZVAL_LONG(&const_DCE_DOMAIN_ORG_value, 2);
+	zend_string *const_DCE_DOMAIN_ORG_name = zend_string_init_interned("DCE_DOMAIN_ORG", sizeof("DCE_DOMAIN_ORG") - 1, true);
+	zend_declare_class_constant_ex(class_entry, const_DCE_DOMAIN_ORG_name, &const_DCE_DOMAIN_ORG_value, ZEND_ACC_PUBLIC, NULL);
+	zend_string_release_ex(const_DCE_DOMAIN_ORG_name, true);
 
 	return class_entry;
 }
