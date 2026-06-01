@@ -1,0 +1,14 @@
+// Windows build configuration for fast_uuid.
+// Mirrors config.m4: single .c source, no vendored dependencies. The SSSE3
+// hex formatter is gated on __x86_64__/__i386__, which only GCC and Clang
+// define, so MSVC builds take the scalar path automatically and need no SIMD
+// flags here.
+
+ARG_ENABLE("fast-uuid", "Enable fast_uuid support", "no");
+
+if (PHP_FAST_UUID != "no") {
+    EXTENSION("fast_uuid", "fast_uuid.c", null,
+        "/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
+    AC_DEFINE("HAVE_FAST_UUID", 1, "fast_uuid enabled");
+    PHP_INSTALL_HEADERS("ext/fast_uuid", "php_fast_uuid.h");
+}
