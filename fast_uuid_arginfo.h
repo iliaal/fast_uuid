@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 89ca0c317800542c81e2992bb9a5b75d0a62a1d1 */
+ * Stub hash: c2866682a0f7427447a5ebab4761bb8bcd153521 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -100,9 +100,15 @@ ZEND_END_ARG_INFO()
 
 #define arginfo_class_FastUuid_Uuid_getBytes arginfo_uuid_v1
 
+#define arginfo_class_FastUuid_Uuid_toBytes arginfo_uuid_v1
+
 #define arginfo_class_FastUuid_Uuid_getHex arginfo_uuid_v1
 
+#define arginfo_class_FastUuid_Uuid_toHexadecimal arginfo_uuid_v1
+
 #define arginfo_class_FastUuid_Uuid_getUrn arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_Uuid_toUrn arginfo_uuid_v1
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getVersion, 0, 0, IS_LONG, 1)
 ZEND_END_ARG_INFO()
@@ -110,6 +116,8 @@ ZEND_END_ARG_INFO()
 #define arginfo_class_FastUuid_Uuid_getVariant arginfo_class_FastUuid_Uuid_getVersion
 
 #define arginfo_class_FastUuid_Uuid_getInteger arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_Uuid_toInteger arginfo_uuid_v1
 
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_getDateTime, 0, 0, DateTimeImmutable, 0)
 ZEND_END_ARG_INFO()
@@ -210,11 +218,15 @@ static const zend_function_entry class_FastUuid_Uuid_methods[] = {
 	ZEND_ME(FastUuid_Uuid, toString, arginfo_class_FastUuid_Uuid_toString, ZEND_ACC_PUBLIC)
 	ZEND_RAW_FENTRY("__toString", zim_FastUuid_Uuid_toString, arginfo_class_FastUuid_Uuid___toString, ZEND_ACC_PUBLIC, NULL, NULL)
 	ZEND_ME(FastUuid_Uuid, getBytes, arginfo_class_FastUuid_Uuid_getBytes, ZEND_ACC_PUBLIC)
+	ZEND_RAW_FENTRY("toBytes", zim_FastUuid_Uuid_getBytes, arginfo_class_FastUuid_Uuid_toBytes, ZEND_ACC_PUBLIC, NULL, NULL)
 	ZEND_ME(FastUuid_Uuid, getHex, arginfo_class_FastUuid_Uuid_getHex, ZEND_ACC_PUBLIC)
+	ZEND_RAW_FENTRY("toHexadecimal", zim_FastUuid_Uuid_getHex, arginfo_class_FastUuid_Uuid_toHexadecimal, ZEND_ACC_PUBLIC, NULL, NULL)
 	ZEND_ME(FastUuid_Uuid, getUrn, arginfo_class_FastUuid_Uuid_getUrn, ZEND_ACC_PUBLIC)
+	ZEND_RAW_FENTRY("toUrn", zim_FastUuid_Uuid_getUrn, arginfo_class_FastUuid_Uuid_toUrn, ZEND_ACC_PUBLIC, NULL, NULL)
 	ZEND_ME(FastUuid_Uuid, getVersion, arginfo_class_FastUuid_Uuid_getVersion, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, getVariant, arginfo_class_FastUuid_Uuid_getVariant, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, getInteger, arginfo_class_FastUuid_Uuid_getInteger, ZEND_ACC_PUBLIC)
+	ZEND_RAW_FENTRY("toInteger", zim_FastUuid_Uuid_getInteger, arginfo_class_FastUuid_Uuid_toInteger, ZEND_ACC_PUBLIC, NULL, NULL)
 	ZEND_ME(FastUuid_Uuid, getDateTime, arginfo_class_FastUuid_Uuid_getDateTime, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, getFields, arginfo_class_FastUuid_Uuid_getFields, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, equals, arginfo_class_FastUuid_Uuid_equals, ZEND_ACC_PUBLIC)

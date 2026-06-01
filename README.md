@@ -61,8 +61,10 @@ toString(): string        __toString(): string      getBytes(): string        ge
 getUrn(): string          getVersion(): ?int        getVariant(): ?int        getInteger(): string
 getDateTime(): DateTimeImmutable                     getFields(): array        equals(mixed): bool
 compareTo(mixed): int     jsonSerialize(): string
+toBytes(): string         toHexadecimal(): string   toUrn(): string           toInteger(): string
 ```
 
+- `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max.
 - `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.

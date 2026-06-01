@@ -40,11 +40,19 @@ namespace FastUuid {
         /** @alias FastUuid\Uuid::toString */
         public function __toString(): string {}
         public function getBytes(): string {}
+        /** @alias FastUuid\Uuid::getBytes */
+        public function toBytes(): string {}
         public function getHex(): string {}
+        /** @alias FastUuid\Uuid::getHex */
+        public function toHexadecimal(): string {}
         public function getUrn(): string {}
+        /** @alias FastUuid\Uuid::getUrn */
+        public function toUrn(): string {}
         public function getVersion(): ?int {}
         public function getVariant(): ?int {}
         public function getInteger(): string {}
+        /** @alias FastUuid\Uuid::getInteger */
+        public function toInteger(): string {}
         public function getDateTime(): \DateTimeImmutable {}
         public function getFields(): array {}
         public function equals(mixed $other): bool {}
