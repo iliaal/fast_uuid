@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: c2866682a0f7427447a5ebab4761bb8bcd153521 */
+ * Stub hash: 4565d8d81e0ea5c859d4e5fce6f2399adb9e0123 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -18,6 +18,10 @@ ZEND_END_ARG_INFO()
 #define arginfo_uuid_v6 arginfo_uuid_v1
 
 #define arginfo_uuid_v7 arginfo_uuid_v1
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v7_at, 0, 1, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, unixMillis, IS_LONG, 0)
+ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v8, 0, 1, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, bytes, IS_STRING, 0)
@@ -62,7 +66,7 @@ ZEND_END_ARG_INFO()
 #define arginfo_class_FastUuid_Uuid_uuid6 arginfo_class_FastUuid_Uuid_uuid1
 
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid7, 0, 0, FastUuid\\\125uidInterface, 0)
-	ZEND_ARG_OBJ_INFO_WITH_DEFAULT_VALUE(0, dateTime, DateTimeInterface, 1, "null")
+	ZEND_ARG_OBJ_TYPE_MASK(0, dateTime, DateTimeInterface, MAY_BE_LONG|MAY_BE_NULL, "null")
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid8, 0, 1, FastUuid\\\125uidInterface, 0)
@@ -122,6 +126,9 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_getDateTime, 0, 0, DateTimeImmutable, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getTimestampMillis, 0, 0, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getFields, 0, 0, IS_ARRAY, 0)
 ZEND_END_ARG_INFO()
 
@@ -148,6 +155,7 @@ ZEND_FUNCTION(uuid_v4_fast);
 ZEND_FUNCTION(uuid_v5);
 ZEND_FUNCTION(uuid_v6);
 ZEND_FUNCTION(uuid_v7);
+ZEND_FUNCTION(uuid_v7_at);
 ZEND_FUNCTION(uuid_v8);
 ZEND_FUNCTION(uuid_to_bin);
 ZEND_FUNCTION(uuid_from_bin);
@@ -176,6 +184,7 @@ ZEND_METHOD(FastUuid_Uuid, getVersion);
 ZEND_METHOD(FastUuid_Uuid, getVariant);
 ZEND_METHOD(FastUuid_Uuid, getInteger);
 ZEND_METHOD(FastUuid_Uuid, getDateTime);
+ZEND_METHOD(FastUuid_Uuid, getTimestampMillis);
 ZEND_METHOD(FastUuid_Uuid, getFields);
 ZEND_METHOD(FastUuid_Uuid, equals);
 ZEND_METHOD(FastUuid_Uuid, compareTo);
@@ -191,6 +200,7 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(uuid_v5, arginfo_uuid_v5)
 	ZEND_FE(uuid_v6, arginfo_uuid_v6)
 	ZEND_FE(uuid_v7, arginfo_uuid_v7)
+	ZEND_FE(uuid_v7_at, arginfo_uuid_v7_at)
 	ZEND_FE(uuid_v8, arginfo_uuid_v8)
 	ZEND_FE(uuid_to_bin, arginfo_uuid_to_bin)
 	ZEND_FE(uuid_from_bin, arginfo_uuid_from_bin)
@@ -228,6 +238,7 @@ static const zend_function_entry class_FastUuid_Uuid_methods[] = {
 	ZEND_ME(FastUuid_Uuid, getInteger, arginfo_class_FastUuid_Uuid_getInteger, ZEND_ACC_PUBLIC)
 	ZEND_RAW_FENTRY("toInteger", zim_FastUuid_Uuid_getInteger, arginfo_class_FastUuid_Uuid_toInteger, ZEND_ACC_PUBLIC, NULL, NULL)
 	ZEND_ME(FastUuid_Uuid, getDateTime, arginfo_class_FastUuid_Uuid_getDateTime, ZEND_ACC_PUBLIC)
+	ZEND_ME(FastUuid_Uuid, getTimestampMillis, arginfo_class_FastUuid_Uuid_getTimestampMillis, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, getFields, arginfo_class_FastUuid_Uuid_getFields, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, equals, arginfo_class_FastUuid_Uuid_equals, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, compareTo, arginfo_class_FastUuid_Uuid_compareTo, ZEND_ACC_PUBLIC)
