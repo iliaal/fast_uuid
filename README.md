@@ -104,6 +104,14 @@ fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 
 Generation stays on the pure-C fast path; supplying a custom `RandomGeneratorInterface` / `TimeGeneratorInterface` / `NodeProviderInterface` intentionally routes off it (ramsey behaviour) so application-supplied generators win. Migration from `ramsey/uuid` is largely a `use` swap from `Ramsey\Uuid\Uuid` to `FastUuid\Compat\Uuid`. The compat package has no external dependencies beyond the extension itself.
 
+## Benchmarks
+
+On PHP 8.4 (NTS, non-debug, x86-64 with the SSSE3 formatter), generating a v4
+UUID and its canonical string runs at ~21M ops/sec via the procedural path and
+~13M via the object API, against ~1.1M for `ramsey/uuid` and ~0.48M for the PECL
+`uuid` extension. fast_uuid is 12x to 47x faster than ramsey across v1/v4/v7
+generation and parsing. Full table and method in [BENCHMARKS.md](BENCHMARKS.md).
+
 ## Testing
 
 ```sh
