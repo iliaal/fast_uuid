@@ -41,6 +41,8 @@
 #ifndef PHP_WIN32
 # include <unistd.h>   /* getuid/getgid for uuid2 auto local-identifier */
 # include <pthread.h>  /* pthread_atfork: invalidate the CSPRNG buffer in a forked child */
+#else
+# include <windows.h>  /* GetSystemTimePreciseAsFileTime: wall clock, no POSIX clock_gettime */
 #endif
 
 #if defined(__x86_64__) || defined(__i386__)
@@ -206,7 +208,7 @@ static zend_string *fu_str(fu_obj *u) {
     return zend_string_copy(s);
 }
 
-static int fu_cast(zend_object *o, zval *ret, int type) {
+static zend_result fu_cast(zend_object *o, zval *ret, int type) {
     if (type == IS_STRING) { ZVAL_STR(ret, fu_str(fu_from_zobj(o))); return SUCCESS; }
     return zend_std_cast_object_tostring(o, ret, type);
 }
@@ -331,10 +333,26 @@ static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *
     return fu_lay_clockseq_node(b, node, clockseq);
 }
 
-static inline uint64_t fu_greg_now(void) {
+/* Wall-clock nanoseconds since the Unix epoch. POSIX uses CLOCK_REALTIME;
+   Windows has no clock_gettime, so it reads GetSystemTimePreciseAsFileTime
+   (100ns FILETIME ticks since 1601-01-01), which keeps sub-microsecond
+   resolution for the v7 sub-ms field. */
+static inline uint64_t fu_unix_nanos(void) {
+#ifdef PHP_WIN32
+    FILETIME ft;
+    GetSystemTimePreciseAsFileTime(&ft);
+    uint64_t t100 = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    t100 -= 116444736000000000ULL; /* 1601-01-01 .. 1970-01-01 in 100ns ticks */
+    return t100 * 100ULL;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    uint64_t unix100 = (uint64_t)ts.tv_sec * 10000000ULL + (uint64_t)ts.tv_nsec / 100ULL;
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+#endif
+}
+
+static inline uint64_t fu_greg_now(void) {
+    uint64_t unix100 = fu_unix_nanos() / 100ULL;
     return unix100 + 0x01B21DD213814000ULL; /* 1582-10-15 .. 1970 in 100ns */
 }
 
@@ -391,10 +409,9 @@ static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t sub, uint64
 /* monotonic v7 using module-global state. The 60-bit time key (ms<<12 | sub)
    gives ~244ns resolution; rand_b breaks ties within a single tick. */
 static zend_result fu_gen_v7(unsigned char *b) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    uint64_t ms  = (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
-    uint64_t sub = ((uint64_t)(ts.tv_nsec % 1000000) * 4096ULL) / 1000000ULL; /* 0..4095 */
+    uint64_t ns  = fu_unix_nanos();
+    uint64_t ms  = ns / 1000000ULL;
+    uint64_t sub = ((ns % 1000000ULL) * 4096ULL) / 1000000ULL; /* 0..4095 */
     uint64_t key = (ms << 12) | sub;
     uint64_t randb;
     if (key > FAST_UUID_G(v7_key)) {
