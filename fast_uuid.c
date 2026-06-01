@@ -36,6 +36,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #ifndef PHP_WIN32
 # include <unistd.h>   /* getuid/getgid for uuid2 auto local-identifier */
@@ -213,18 +214,24 @@ static int fu_cast(zend_object *o, zval *ret, int type) {
 /* randomness                                                         */
 /* ------------------------------------------------------------------ */
 
-/* crypto-secure, batched */
-static void fu_rand(unsigned char *dst, size_t n) {
+/* crypto-secure, batched. Returns FAILURE (with an exception thrown by
+   php_random_bytes_throw) if the CSPRNG fails; dst is zeroed on failure so
+   callers never read uninitialized bytes. */
+static zend_result fu_rand(unsigned char *dst, size_t n) {
     if (UNEXPECTED(n > sizeof(FAST_UUID_G(rbuf)))) {
-        php_random_bytes_throw(dst, n);
-        return;
+        if (php_random_bytes_throw(dst, n) == FAILURE) { memset(dst, 0, n); return FAILURE; }
+        return SUCCESS;
     }
     if (FAST_UUID_G(rpos) + n > sizeof(FAST_UUID_G(rbuf))) {
-        php_random_bytes_throw(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf)));
+        if (php_random_bytes_throw(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
+            memset(dst, 0, n);
+            return FAILURE;
+        }
         FAST_UUID_G(rpos) = 0;
     }
     memcpy(dst, FAST_UUID_G(rbuf) + FAST_UUID_G(rpos), n);
     FAST_UUID_G(rpos) += n;
+    return SUCCESS;
 }
 
 /* non-crypto xoshiro256** for uuid_v4_fast() */
@@ -232,7 +239,7 @@ static inline uint64_t fu_rotl(uint64_t x, int k) { return (x << k) | (x >> (64 
 static uint64_t fu_xs_next(void) {
     uint64_t *s = FAST_UUID_G(prng_s);
     if (UNEXPECTED(!FAST_UUID_G(prng_seeded))) {
-        fu_rand((unsigned char *)s, 32);
+        if (fu_rand((unsigned char *)s, 32) == FAILURE) return 0; /* exception pending */
         if ((s[0]|s[1]|s[2]|s[3]) == 0) s[0] = 0x9e3779b97f4a7c15ULL;
         FAST_UUID_G(prng_seeded) = 1;
     }
@@ -420,6 +427,7 @@ static int fu_from_decimal(const char *s, size_t len, unsigned char out[16]) {
 /* ------------------------------------------------------------------ */
 
 static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
+    if (UNEXPECTED(EG(exception))) return; /* CSPRNG failure during generation */
     object_init_ex(rv, fast_uuid_ce);
     fu_obj *u = fu_from_zobj(Z_OBJ_P(rv));
     memcpy(u->b, b, 16);
@@ -518,9 +526,21 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
     }
     uint32_t local_id;
     if (zid && Z_TYPE_P(zid) != IS_NULL) {
-        if (Z_TYPE_P(zid) == IS_LONG)        local_id = (uint32_t)Z_LVAL_P(zid);
-        else if (Z_TYPE_P(zid) == IS_STRING) local_id = (uint32_t)strtoull(Z_STRVAL_P(zid), NULL, 10);
-        else { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier must be int|string|null", 0); RETURN_THROWS(); }
+        if (Z_TYPE_P(zid) == IS_LONG) {
+            zend_long lv = Z_LVAL_P(zid);
+            if (lv < 0 || lv > 0xFFFFFFFFLL) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
+            local_id = (uint32_t)lv;
+        } else if (Z_TYPE_P(zid) == IS_STRING) {
+            const char *sv = Z_STRVAL_P(zid); size_t sl = Z_STRLEN_P(zid);
+            if (sl == 0) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0); RETURN_THROWS(); }
+            for (size_t i = 0; i < sl; i++) {
+                if (sv[i] < '0' || sv[i] > '9') { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0); RETURN_THROWS(); }
+            }
+            errno = 0; char *end = NULL;
+            unsigned long long v = strtoull(sv, &end, 10);
+            if (errno == ERANGE || end != sv + sl || v > 0xFFFFFFFFULL) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
+            local_id = (uint32_t)v;
+        } else { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier must be int|string|null", 0); RETURN_THROWS(); }
     } else {
 #ifndef PHP_WIN32
         local_id = (local_domain == 1) ? (uint32_t)getgid() : (uint32_t)getuid();
@@ -575,15 +595,21 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid7) {
-    zval *zdt = NULL;
-    ZEND_PARSE_PARAMETERS_START(0, 1) Z_PARAM_OPTIONAL Z_PARAM_OBJECT_OR_NULL(zdt) ZEND_PARSE_PARAMETERS_END();
+    zend_object *dtobj = NULL;
+    ZEND_PARSE_PARAMETERS_START(0, 1)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_OBJ_OF_CLASS_OR_NULL(dtobj, php_date_get_interface_ce())
+    ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (zdt) {
+    if (dtobj) {
+        zval zdt; ZVAL_OBJ(&zdt, dtobj);
         zval fn, ret;
         ZVAL_STRING(&fn, "getTimestamp");
-        call_user_function(NULL, zdt, &fn, &ret, 0, NULL);
+        zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
+        zval_ptr_dtor(&fn);
+        if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
         zend_long sec = zval_get_long(&ret);
-        zval_ptr_dtor(&ret); zval_ptr_dtor(&fn);
+        zval_ptr_dtor(&ret);
         fu_gen_v7_at(b, (uint64_t)sec * 1000ULL);
     } else {
         fu_gen_v7(b);
@@ -605,7 +631,11 @@ PHP_METHOD(FastUuid_Uuid, fromString) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception_ex(fu_ex_invalid_str, 0, "Invalid UUID string: %s", ZSTR_VAL(s)); RETURN_THROWS(); }
+    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) {
+        zend_throw_exception_ex(fu_ex_invalid_str, 0, "Invalid UUID string (len=%zu): %.32s%s",
+            ZSTR_LEN(s), ZSTR_VAL(s), ZSTR_LEN(s) > 32 ? "..." : "");
+        RETURN_THROWS();
+    }
     fu_return_uuid(return_value, b);
 }
 
@@ -646,32 +676,37 @@ PHP_METHOD(FastUuid_Uuid, fromHexadecimal) {
 }
 
 PHP_METHOD(FastUuid_Uuid, fromDateTime) {
-    zval *zdt; zval *zclock = NULL; zval *znode = NULL;
+    zend_object *dtobj; zval *znode = NULL; zend_long clockseq = -1; zend_bool cs_null = 1;
     ZEND_PARSE_PARAMETERS_START(1, 3)
-        Z_PARAM_OBJECT(zdt)
+        Z_PARAM_OBJ_OF_CLASS(dtobj, php_date_get_interface_ce())
         Z_PARAM_OPTIONAL
         Z_PARAM_ZVAL_OR_NULL(znode)
-        Z_PARAM_ZVAL_OR_NULL(zclock) /* tolerated, ignored: signature parity */
+        Z_PARAM_LONG_OR_NULL(clockseq, cs_null)
     ZEND_PARSE_PARAMETERS_END();
-    (void)zclock;
+    zval zdt; ZVAL_OBJ(&zdt, dtobj);
     /* read seconds + microseconds off the DateTimeInterface */
     zval fn, ret;
     ZVAL_STRING(&fn, "getTimestamp");
-    call_user_function(NULL, zdt, &fn, &ret, 0, NULL);
+    zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
+    zval_ptr_dtor(&fn);
+    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
     int64_t secs = (int64_t)zval_get_long(&ret);
-    zval_ptr_dtor(&ret); zval_ptr_dtor(&fn);
+    zval_ptr_dtor(&ret);
     zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
-    call_user_function(NULL, zdt, &fn, &ret, 1, &afmt);
+    cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
+    zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
+    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
     uint32_t micros = (uint32_t)zval_get_long(&ret);
-    zval_ptr_dtor(&ret); zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
+    zval_ptr_dtor(&ret);
 
     unsigned char node[6]; const unsigned char *np = NULL;
     if (znode && Z_TYPE_P(znode) != IS_NULL) {
         if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node", 0); RETURN_THROWS(); }
         np = node;
     }
-    uint64_t g = (uint64_t)secs * 10000000ULL + (uint64_t)micros * 10ULL + 0x01B21DD213814000ULL;
-    unsigned char b[16]; fu_lay_v1(b, g, np, -1);
+    /* signed: dates before 1970 give a negative unix-seconds value */
+    int64_t g = secs * 10000000LL + (int64_t)micros * 10LL + (int64_t)0x01B21DD213814000ULL;
+    unsigned char b[16]; fu_lay_v1(b, (uint64_t)g, np, cs_null ? -1 : (int)(clockseq & 0x3fff));
     fu_return_uuid(return_value, b);
 }
 
@@ -755,17 +790,19 @@ PHP_METHOD(FastUuid_Uuid, getDateTime) {
                  |((uint64_t)u->b[3]<<28)|((uint64_t)u->b[4]<<20)|((uint64_t)u->b[5]<<12)
                  |((uint64_t)(u->b[6]&0x0f)<<8)|u->b[7];
         }
-        uint64_t unix100 = t60 - 0x01B21DD213814000ULL; /* 100ns since epoch */
-        secs   = (int64_t)(unix100 / 10000000ULL);
-        micros = (uint32_t)((unix100 % 10000000ULL) / 10ULL); /* 100ns -> us */
+        int64_t unix100 = (int64_t)(t60 - 0x01B21DD213814000ULL); /* signed: pre-1970 is negative */
+        int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
+        if (frac < 0) { s -= 1; frac += 10000000LL; } /* floor toward -inf, keep frac >= 0 */
+        secs = s; micros = (uint32_t)(frac / 10LL); /* 100ns -> us */
     } else if (ver == 2) {
         /* DCE v2: time_low holds the local identifier, so only the upper bits
            of the 60-bit timestamp survive (coarse, ~429s resolution). */
         uint64_t th = ((uint64_t)(u->b[6]&0x0f)<<8)|u->b[7];
         uint64_t tm = ((uint64_t)u->b[4]<<8)|u->b[5];
-        uint64_t unix100 = ((th<<48)|(tm<<32)) - 0x01B21DD213814000ULL;
-        secs   = (int64_t)(unix100 / 10000000ULL);
-        micros = (uint32_t)((unix100 % 10000000ULL) / 10ULL);
+        int64_t unix100 = (int64_t)(((th<<48)|(tm<<32)) - 0x01B21DD213814000ULL);
+        int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
+        if (frac < 0) { s -= 1; frac += 10000000LL; }
+        secs = s; micros = (uint32_t)(frac / 10LL);
     } else if (ver == 7) {
         uint64_t ms = ((uint64_t)u->b[0]<<40)|((uint64_t)u->b[1]<<32)|((uint64_t)u->b[2]<<24)
                      |((uint64_t)u->b[3]<<16)|((uint64_t)u->b[4]<<8)|u->b[5];
@@ -783,18 +820,14 @@ PHP_METHOD(FastUuid_Uuid, getFields) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     array_init(return_value);
-    char tl[9]; for (int i=0;i<4;i++){tl[i*2]=fu_lut[u->b[i]*2];tl[i*2+1]=fu_lut[u->b[i]*2+1];} tl[8]=0;
-    add_assoc_string(return_value, "time_low", tl);
-    char tm[5]; for (int i=0;i<2;i++){tm[i*2]=fu_lut[u->b[4+i]*2];tm[i*2+1]=fu_lut[u->b[4+i]*2+1];} tm[4]=0;
-    add_assoc_string(return_value, "time_mid", tm);
-    char th[5]; for (int i=0;i<2;i++){th[i*2]=fu_lut[u->b[6+i]*2];th[i*2+1]=fu_lut[u->b[6+i]*2+1];} th[4]=0;
-    add_assoc_string(return_value, "time_hi_and_version", th);
-    char cs[3]; cs[0]=fu_lut[u->b[8]*2]; cs[1]=fu_lut[u->b[8]*2+1]; cs[2]=0;
-    add_assoc_string(return_value, "clock_seq_hi_and_reserved", cs);
-    char cl[3]; cl[0]=fu_lut[u->b[9]*2]; cl[1]=fu_lut[u->b[9]*2+1]; cl[2]=0;
-    add_assoc_string(return_value, "clock_seq_low", cl);
-    char nd[13]; for (int i=0;i<6;i++){nd[i*2]=fu_lut[u->b[10+i]*2];nd[i*2+1]=fu_lut[u->b[10+i]*2+1];} nd[12]=0;
-    add_assoc_string(return_value, "node", nd);
+    char hx[32]; fu_hex32(u->b, hx);
+    char f[13];
+    memcpy(f, hx,     8); f[8]  = 0; add_assoc_string(return_value, "time_low", f);
+    memcpy(f, hx + 8,  4); f[4]  = 0; add_assoc_string(return_value, "time_mid", f);
+    memcpy(f, hx + 12, 4); f[4]  = 0; add_assoc_string(return_value, "time_hi_and_version", f);
+    memcpy(f, hx + 16, 2); f[2]  = 0; add_assoc_string(return_value, "clock_seq_hi_and_reserved", f);
+    memcpy(f, hx + 18, 2); f[2]  = 0; add_assoc_string(return_value, "clock_seq_low", f);
+    memcpy(f, hx + 20, 12); f[12] = 0; add_assoc_string(return_value, "node", f);
 }
 
 PHP_METHOD(FastUuid_Uuid, equals) {
@@ -827,12 +860,35 @@ PHP_METHOD(FastUuid_Uuid, jsonSerialize) {
     RETURN_STR(fu_str(fu_from_zobj(Z_OBJ_P(getThis()))));
 }
 
+/* Serialize the raw 16 bytes so the value survives sessions/queues/caches.
+   The default object serializer would emit an empty property bag and restore
+   as the nil UUID, silently corrupting the identifier. */
+PHP_METHOD(FastUuid_Uuid, __serialize) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
+    array_init_size(return_value, 1);
+    add_index_stringl(return_value, 0, (char *)u->b, 16);
+}
+
+PHP_METHOD(FastUuid_Uuid, __unserialize) {
+    HashTable *data;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ARRAY_HT(data) ZEND_PARSE_PARAMETERS_END();
+    zval *zb = zend_hash_index_find(data, 0);
+    if (!zb || Z_TYPE_P(zb) != IS_STRING || Z_STRLEN_P(zb) != 16) {
+        zend_throw_exception(fu_ex_invalid_arg, "Invalid serialized UUID payload", 0);
+        RETURN_THROWS();
+    }
+    fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
+    memcpy(u->b, Z_STRVAL_P(zb), 16);
+}
+
 /* ------------------------------------------------------------------ */
 /* procedural fast-path (zend_string return, no object alloc)         */
 /* ------------------------------------------------------------------ */
 
 #define FU_RETURN_FORMATTED(b) do { \
     const unsigned char *_fu_src = (b); \
+    if (UNEXPECTED(EG(exception))) { RETURN_THROWS(); } \
     zend_string *_fu_s = zend_string_alloc(36, 0); \
     fu_format36(_fu_src, ZSTR_VAL(_fu_s)); ZSTR_VAL(_fu_s)[36] = '\0'; \
     RETURN_STR(_fu_s); } while (0)
@@ -896,7 +952,7 @@ PHP_FUNCTION(fast_uuid_random_bytes) {
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(n) ZEND_PARSE_PARAMETERS_END();
     if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); RETURN_THROWS(); }
     zend_string *s = zend_string_alloc((size_t)n, 0);
-    fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n);
+    if (fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n) == FAILURE) { zend_string_release(s); RETURN_THROWS(); }
     ZSTR_VAL(s)[n] = '\0';
     RETURN_STR(s);
 }

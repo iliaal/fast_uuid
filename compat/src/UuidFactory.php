@@ -122,6 +122,11 @@ final class UuidFactory
     {
         if ($this->randomGenerator !== null) {
             $b = $this->randomGenerator->generate(16);
+            if (\strlen($b) !== 16) {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'Random generator must return exactly 16 bytes, got ' . \strlen($b)
+                );
+            }
             $b[6] = \chr((\ord($b[6]) & 0x0f) | 0x40);
             $b[8] = \chr((\ord($b[8]) & 0x3f) | 0x80);
             return $this->wrap(\FastUuid\Uuid::fromBytes($b));

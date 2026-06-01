@@ -6,6 +6,7 @@ namespace FastUuid {
 
     interface UuidInterface extends \JsonSerializable, \Stringable {}
 
+    /** @strict-properties */
     final class Uuid implements UuidInterface
     {
         public const NIL = "00000000-0000-0000-0000-000000000000";
@@ -49,6 +50,8 @@ namespace FastUuid {
         public function equals(mixed $other): bool {}
         public function compareTo(mixed $other): int {}
         public function jsonSerialize(): string {}
+        public function __serialize(): array {}
+        public function __unserialize(array $data): void {}
     }
 }
 
