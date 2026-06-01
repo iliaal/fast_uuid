@@ -31,7 +31,7 @@ namespace FastUuid {
         public static function fromString(string $uuid): UuidInterface {}
         public static function fromBytes(string $bytes): UuidInterface {}
         public static function fromInteger(string $integer): UuidInterface {}
-        public static function fromHexadecimal(string $hex): UuidInterface {}
+        public static function fromHexadecimal(\Stringable|string $hex): UuidInterface {}
         public static function fromDateTime(\DateTimeInterface $dateTime, int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
         public static function isValid(string $uuid): bool {}
 

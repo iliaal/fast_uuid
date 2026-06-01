@@ -474,8 +474,24 @@ static int fu_parse_node(zval *z, unsigned char node[6]) {
     return 0;
 }
 
+/* Parse an optional node argument (12-hex string or int) into a 6-byte buffer.
+   Sets *out to the buffer when a non-null node was given, else NULL. Throws and
+   returns FAILURE on a present-but-invalid node. */
+static zend_result fu_node_arg(zval *znode, unsigned char node[6], const unsigned char **out) {
+    if (znode && Z_TYPE_P(znode) != IS_NULL) {
+        if (!fu_parse_node(znode, node)) {
+            zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0);
+            return FAILURE;
+        }
+        *out = node;
+    } else {
+        *out = NULL;
+    }
+    return SUCCESS;
+}
+
 /* build a DateTimeImmutable from whole seconds + microseconds, preserving sub-second */
-static void fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
+static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
     zend_string *buf = strpprintf(0, "%lld.%06u", (long long)secs, micros);
     zval callable, args[2], ret;
     array_init(&callable);
@@ -483,15 +499,20 @@ static void fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
     add_next_index_string(&callable, "createFromFormat");
     ZVAL_STRING(&args[0], "U.u");
     ZVAL_STR(&args[1], buf); /* transfers buf ref */
+    zend_result ok = FAILURE;
     if (call_user_function(NULL, NULL, &callable, &ret, 2, args) == SUCCESS && Z_TYPE(ret) == IS_OBJECT) {
         ZVAL_COPY_VALUE(rv, &ret);
+        ok = SUCCESS;
     } else {
         zval_ptr_dtor(&ret);
-        ZVAL_NULL(rv);
     }
     zval_ptr_dtor(&callable);
     zval_ptr_dtor(&args[0]);
     zval_ptr_dtor(&args[1]);
+    if (ok != SUCCESS && !EG(exception)) {
+        zend_throw_exception(fu_ex_unsupported, "Could not build DateTimeImmutable from UUID timestamp", 0);
+    }
+    return ok;
 }
 
 /* arginfo, method/function tables, and class registrators are generated from
@@ -509,11 +530,8 @@ PHP_METHOD(FastUuid_Uuid, uuid1) {
         Z_PARAM_ZVAL_OR_NULL(znode)
         Z_PARAM_LONG_OR_NULL(clockseq, cs_null)
     ZEND_PARSE_PARAMETERS_END();
-    unsigned char node[6]; const unsigned char *np = NULL;
-    if (znode && Z_TYPE_P(znode) != IS_NULL) {
-        if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0); RETURN_THROWS(); }
-        np = node;
-    }
+    unsigned char node[6]; const unsigned char *np;
+    if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
     unsigned char b[16]; if (fu_gen_v1_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
@@ -555,11 +573,8 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
         local_id = 0;
 #endif
     }
-    unsigned char node[6]; const unsigned char *np = NULL;
-    if (znode && Z_TYPE_P(znode) != IS_NULL) {
-        if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node", 0); RETURN_THROWS(); }
-        np = node;
-    }
+    unsigned char node[6]; const unsigned char *np;
+    if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
     unsigned char b[16];
     if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
@@ -593,11 +608,8 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
         Z_PARAM_ZVAL_OR_NULL(znode)
         Z_PARAM_LONG_OR_NULL(clockseq, cs_null)
     ZEND_PARSE_PARAMETERS_END();
-    unsigned char node[6]; const unsigned char *np = NULL;
-    if (znode && Z_TYPE_P(znode) != IS_NULL) {
-        if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0); RETURN_THROWS(); }
-        np = node;
-    }
+    unsigned char node[6]; const unsigned char *np;
+    if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
     unsigned char b[16]; if (fu_gen_v6_ex(b, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
@@ -617,6 +629,10 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
         if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
         zend_long sec = zval_get_long(&ret);
         zval_ptr_dtor(&ret);
+        if (sec < 0) { /* v7 timestamps are unsigned ms since the unix epoch */
+            zend_throw_exception(fu_ex_invalid_arg, "uuid7 does not support dates before 1970-01-01", 0);
+            RETURN_THROWS();
+        }
         if (fu_gen_v7_at(b, (uint64_t)sec * 1000ULL) == FAILURE) RETURN_THROWS();
     } else {
         if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
@@ -706,11 +722,8 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
     uint32_t micros = (uint32_t)zval_get_long(&ret);
     zval_ptr_dtor(&ret);
 
-    unsigned char node[6]; const unsigned char *np = NULL;
-    if (znode && Z_TYPE_P(znode) != IS_NULL) {
-        if (!fu_parse_node(znode, node)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid node", 0); RETURN_THROWS(); }
-        np = node;
-    }
+    unsigned char node[6]; const unsigned char *np;
+    if (fu_node_arg(znode, node, &np) == FAILURE) RETURN_THROWS();
     /* signed: dates before 1970 give a negative unix-seconds value */
     int64_t g = secs * 10000000LL + (int64_t)micros * 10LL + (int64_t)0x01B21DD213814000ULL;
     unsigned char b[16]; if (fu_lay_v1(b, (uint64_t)g, np, cs_null ? -1 : (int)(clockseq & 0x3fff)) == FAILURE) RETURN_THROWS();
@@ -819,7 +832,7 @@ PHP_METHOD(FastUuid_Uuid, getDateTime) {
         zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
         RETURN_THROWS();
     }
-    fu_make_datetime(return_value, secs, micros);
+    if (fu_make_datetime(return_value, secs, micros) == FAILURE) RETURN_THROWS();
 }
 
 PHP_METHOD(FastUuid_Uuid, getFields) {
