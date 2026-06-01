@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-01
+
+### Fixed
+
+- Windows builds: added the `config.w32` that `php-windows-builder` needs, so
+  the prebuilt Windows DLLs (8.3/8.4/8.5 x x86/x64 x NTS/TS) now attach to the
+  release. 0.1.0 shipped Linux and macOS binaries only.
+
 ## [0.1.0] - 2026-06-01
 
 ### Added
@@ -37,5 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.1.1...HEAD
+[0.1.1]: https://github.com/iliaal/fast_uuid/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/iliaal/fast_uuid/releases/tag/0.1.0
