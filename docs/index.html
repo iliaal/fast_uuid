@@ -164,7 +164,10 @@ $u = Uuid::<span class="fn">fromDateTime</span>(<span class="kw">new</span> Date
 $u-&gt;<span class="fn">getHex</span>();        $u-&gt;<span class="fn">getUrn</span>();      $u-&gt;<span class="fn">getBytes</span>();   <span class="cm">// 16 raw bytes</span>
 $u-&gt;<span class="fn">getVersion</span>();    $u-&gt;<span class="fn">getVariant</span>();  $u-&gt;<span class="fn">getInteger</span>();
 $u-&gt;<span class="fn">getFields</span>();     $u-&gt;<span class="fn">getDateTime</span>();
-$u-&gt;<span class="fn">equals</span>($other); $u-&gt;<span class="fn">compareTo</span>($other);</pre>
+$u-&gt;<span class="fn">equals</span>($other); $u-&gt;<span class="fn">compareTo</span>($other);
+
+<span class="cm">// ramsey/identifier-style aliases of the four get* converters above</span>
+$u-&gt;<span class="fn">toBytes</span>();      $u-&gt;<span class="fn">toHexadecimal</span>();   $u-&gt;<span class="fn">toUrn</span>();   $u-&gt;<span class="fn">toInteger</span>();</pre>
     <pre class="out">getHex      6ba7b8109dad11d180b400c04fd430c8
 getUrn      urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8
 getVersion  1        getVariant  2
@@ -173,6 +176,7 @@ getFields   {"time_low":"6ba7b810","time_mid":"9dad","time_hi_and_version":"11d1
              "clock_seq_hi_and_reserved":"80","clock_seq_low":"b4","node":"00c04fd430c8"}
 compareTo   -1   (00..01 vs 00..02)</pre>
   </div>
+  <p><code>toBytes()</code>, <code>toHexadecimal()</code>, <code>toUrn()</code> and <code>toInteger()</code> are aliases of <code>getBytes()</code>, <code>getHex()</code>, <code>getUrn()</code> and <code>getInteger()</code>, following the <code>get*</code>&rarr;<code>to*</code> naming of the newer <code>ramsey/identifier</code> library.</p>
   <p><code>getDateTime()</code> works for the time-based versions (1, 2, 6, 7) and raises <code>UnsupportedOperationException</code> for the others. The object is <code>JsonSerializable</code> and <code>Stringable</code>, so it drops straight into <code>json_encode</code>:</p>
   <div class="ex">
     <pre class="code"><span class="kw">echo</span> <span class="fn">json_encode</span>([<span class="str">'id'</span> =&gt; $u]);</pre>

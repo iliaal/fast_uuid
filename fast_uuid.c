@@ -334,46 +334,52 @@ static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char 
     return SUCCESS;
 }
 
-static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t counter) {
-    unsigned char r[4]; if (fu_rand(r, 4) == FAILURE) return FAILURE;
+/* rand_a holds 12 bits of sub-millisecond clock precision (RFC 9562 6.2,
+   Method 3): floor(fraction_of_ms * 4096). rand_b (62 bits) carries the
+   monotonic counter / randomness. */
+static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t sub, uint64_t randb) {
     b[0]=(ms>>40)&0xff; b[1]=(ms>>32)&0xff; b[2]=(ms>>24)&0xff;
     b[3]=(ms>>16)&0xff; b[4]=(ms>>8)&0xff;  b[5]=ms&0xff;
-    b[6]=0x70 | ((counter>>38)&0x0f);
-    b[7]=(counter>>30)&0xff;
-    b[8]=0x80 | ((counter>>24)&0x3f);
-    b[9]=(counter>>16)&0xff; b[10]=(counter>>8)&0xff; b[11]=counter&0xff;
-    memcpy(b+12, r, 4);
+    b[6]=0x70 | ((sub>>8)&0x0f);
+    b[7]=sub&0xff;
+    b[8]=0x80 | ((randb>>56)&0x3f);
+    b[9]=(randb>>48)&0xff; b[10]=(randb>>40)&0xff; b[11]=(randb>>32)&0xff;
+    b[12]=(randb>>24)&0xff; b[13]=(randb>>16)&0xff; b[14]=(randb>>8)&0xff; b[15]=randb&0xff;
     return SUCCESS;
 }
 
-/* monotonic v7 using module-global state */
+/* monotonic v7 using module-global state. The 60-bit time key (ms<<12 | sub)
+   gives ~244ns resolution; rand_b breaks ties within a single tick. */
 static zend_result fu_gen_v7(unsigned char *b) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    uint64_t ms = (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
-    uint64_t counter;
-    if (ms > FAST_UUID_G(v7_ts)) {
-        unsigned char r[6]; if (fu_rand(r, 6) == FAILURE) return FAILURE; /* draw before mutating state */
-        counter = (((uint64_t)r[0]<<34)|((uint64_t)r[1]<<26)|((uint64_t)r[2]<<18)
-                  |((uint64_t)r[3]<<10)|((uint64_t)r[4]<<2)|((uint64_t)r[5]>>6));
-        counter &= (1ULL<<40) - 1; /* leave 2 high bits as overflow headroom */
-        FAST_UUID_G(v7_ts) = ms;
-        FAST_UUID_G(v7_counter) = counter;
+    uint64_t ms  = (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+    uint64_t sub = ((uint64_t)(ts.tv_nsec % 1000000) * 4096ULL) / 1000000ULL; /* 0..4095 */
+    uint64_t key = (ms << 12) | sub;
+    uint64_t randb;
+    if (key > FAST_UUID_G(v7_key)) {
+        unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE; /* draw before mutating state */
+        randb = (((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
+                |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7]);
+        randb &= (1ULL<<60) - 1; /* seed 60 bits, leave 2 high bits as overflow headroom */
+        FAST_UUID_G(v7_key) = key;
+        FAST_UUID_G(v7_randb) = randb;
     } else {
-        counter = FAST_UUID_G(v7_counter) + 1;
-        if (counter > ((1ULL<<42)-1)) { FAST_UUID_G(v7_ts)++; counter = 0; }
-        FAST_UUID_G(v7_counter) = counter;
-        ms = FAST_UUID_G(v7_ts);
+        key = FAST_UUID_G(v7_key);
+        randb = FAST_UUID_G(v7_randb) + 1;
+        if (randb > ((1ULL<<62)-1)) { key++; randb = 0; } /* carry into sub, then ms */
+        FAST_UUID_G(v7_key) = key;
+        FAST_UUID_G(v7_randb) = randb;
     }
-    return fu_lay_v7(b, ms, counter);
+    return fu_lay_v7(b, key >> 12, key & 0xfff, randb);
 }
 
-/* non-monotonic v7 at an explicit timestamp */
-static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms) {
-    unsigned char r[6]; if (fu_rand(r, 6) == FAILURE) return FAILURE;
-    uint64_t counter = (((uint64_t)r[0]<<34)|((uint64_t)r[1]<<26)|((uint64_t)r[2]<<18)
-                       |((uint64_t)r[3]<<10)|((uint64_t)r[4]<<2)|((uint64_t)r[5]>>6)) & ((1ULL<<42)-1);
-    return fu_lay_v7(b, ms, counter);
+/* non-monotonic v7 at an explicit timestamp (ms + 12-bit sub-ms fraction) */
+static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
+    unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE;
+    uint64_t randb = (((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
+                     |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7]) & ((1ULL<<62)-1);
+    return fu_lay_v7(b, ms, sub, randb);
 }
 
 static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
@@ -633,7 +639,15 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
             zend_throw_exception(fu_ex_invalid_arg, "uuid7 does not support dates before 1970-01-01", 0);
             RETURN_THROWS();
         }
-        if (fu_gen_v7_at(b, (uint64_t)sec * 1000ULL) == FAILURE) RETURN_THROWS();
+        zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
+        cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
+        zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
+        if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); RETURN_THROWS(); }
+        uint32_t micros = (uint32_t)zval_get_long(&ret); /* 0..999999 within the second */
+        zval_ptr_dtor(&ret);
+        uint64_t ms  = (uint64_t)sec * 1000ULL + micros / 1000ULL;
+        uint64_t sub = ((uint64_t)(micros % 1000) * 4096ULL) / 1000ULL; /* sub-ms us -> 12-bit */
+        if (fu_gen_v7_at(b, ms, sub) == FAILURE) RETURN_THROWS();
     } else {
         if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
     }
