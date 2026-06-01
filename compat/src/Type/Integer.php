@@ -19,7 +19,8 @@ final class Integer implements \JsonSerializable, \Stringable
         if (!\preg_match('/^[0-9]+$/', $digits)) {
             throw new InvalidArgumentException('Value must be a signed integer or a string containing only digits');
         }
-        $this->value = ($neg ? '-' : '') . ltrim($digits, '0') ?: '0';
+        $digits = ltrim($digits, '0');
+        $this->value = $digits === '' ? '0' : ($neg ? '-' : '') . $digits;
     }
 
     public function isNegative(): bool { return str_starts_with($this->value, '-'); }

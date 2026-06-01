@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 00a18253034e5577dc9fcd11c3a1a04b770222b4 */
+ * Stub hash: 5c09122841b93cddd2eb29e5bfa9866fdd03edd9 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -127,6 +127,12 @@ ZEND_END_ARG_INFO()
 
 #define arginfo_class_FastUuid_Uuid_jsonSerialize arginfo_uuid_v1
 
+#define arginfo_class_FastUuid_Uuid___serialize arginfo_class_FastUuid_Uuid_getFields
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___unserialize, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, data, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_FUNCTION(uuid_v1);
 ZEND_FUNCTION(uuid_v3);
 ZEND_FUNCTION(uuid_v4);
@@ -166,6 +172,8 @@ ZEND_METHOD(FastUuid_Uuid, getFields);
 ZEND_METHOD(FastUuid_Uuid, equals);
 ZEND_METHOD(FastUuid_Uuid, compareTo);
 ZEND_METHOD(FastUuid_Uuid, jsonSerialize);
+ZEND_METHOD(FastUuid_Uuid, __serialize);
+ZEND_METHOD(FastUuid_Uuid, __unserialize);
 
 static const zend_function_entry ext_functions[] = {
 	ZEND_FE(uuid_v1, arginfo_uuid_v1)
@@ -212,6 +220,8 @@ static const zend_function_entry class_FastUuid_Uuid_methods[] = {
 	ZEND_ME(FastUuid_Uuid, equals, arginfo_class_FastUuid_Uuid_equals, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, compareTo, arginfo_class_FastUuid_Uuid_compareTo, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, jsonSerialize, arginfo_class_FastUuid_Uuid_jsonSerialize, ZEND_ACC_PUBLIC)
+	ZEND_ME(FastUuid_Uuid, __serialize, arginfo_class_FastUuid_Uuid___serialize, ZEND_ACC_PUBLIC)
+	ZEND_ME(FastUuid_Uuid, __unserialize, arginfo_class_FastUuid_Uuid___unserialize, ZEND_ACC_PUBLIC)
 	ZEND_FE_END
 };
 
@@ -231,7 +241,7 @@ static zend_class_entry *register_class_FastUuid_Uuid(zend_class_entry *class_en
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "FastUuid", "Uuid", class_FastUuid_Uuid_methods);
-	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL);
+	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL|ZEND_ACC_NO_DYNAMIC_PROPERTIES);
 	zend_class_implements(class_entry, 1, class_entry_FastUuid_UuidInterface);
 
 	zval const_NIL_value;

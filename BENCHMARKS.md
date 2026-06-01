@@ -9,8 +9,8 @@ extension (1.3.0, libuuid-backed).
   define `uuid_is_valid()`, so they cannot be loaded together; separate
   processes also keep the engines isolated.
 - PHP 8.4.22 NTS, non-debug, no sanitizers (a debug or ASan build inflates and
-  reorders these numbers). `fast_uuid` built with libuuid; the SSSE3 hex
-  formatter is active (x86-64).
+  reorders these numbers). The SSSE3 hex formatter is active (x86-64);
+  `fast_uuid` has no external library dependency.
 - Each operation runs 500,000 iterations after a 20,000-iteration warmup;
   reported figure is the best of 5 runs (ops/sec). A checksum accumulates each
   result so the work is not optimized away.
