@@ -304,7 +304,21 @@ factory uuid4 ver   4</pre>
       <tr><td>parse</td><td>3.4x</td><td class="win">5.5x</td></tr>
     </tbody>
   </table>
-  <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.48M. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
+  <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.48M.</p>
+
+  <h3>Timestamp and DateTime APIs</h3>
+  <p>Building v7 from an explicit time, and reading a UUID's timestamp back, read and write ext/date's internal <code>timelib_time</code> directly instead of routing through <code>call_user_function</code> (about 3x faster), and an integer-millisecond API skips DateTime objects entirely. Same machine; <code>ramsey/uuid</code> 4.9.2.</p>
+  <table>
+    <thead><tr><th>Operation</th><th>fast_uuid (object)</th><th>fast_uuid (procedural)</th><th>ramsey/uuid</th></tr></thead>
+    <tbody>
+      <tr><td>v7 from DateTime</td><td class="win">11.9M</td><td>n/a</td><td>0.68M</td></tr>
+      <tr><td>v7 from unix-ms int</td><td>13.4M</td><td class="win">21.2M</td><td>n/a</td></tr>
+      <tr><td>fromDateTime (v1)</td><td class="win">12.5M</td><td>n/a</td><td>n/a</td></tr>
+      <tr><td>getDateTime (read)</td><td class="win">4.4M</td><td>n/a</td><td>0.10M</td></tr>
+      <tr><td>getTimestampMillis (read)</td><td>n/a</td><td class="win">24.0M</td><td>n/a</td></tr>
+    </tbody>
+  </table>
+  <p><code>uuid7($dateTime)</code> runs ~17x faster than ramsey's and <code>getDateTime()</code> ~44x. <code>uuid_v7_at($unixMillis)</code> and <code>getTimestampMillis()</code> are integer-native with no DateTime object, and ramsey has no equivalent. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
 
   <footer>
     <a href="https://github.com/iliaal/fast_uuid">GitHub</a>
