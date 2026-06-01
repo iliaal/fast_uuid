@@ -9,7 +9,14 @@ use FastUuid\Compat\Type\Hexadecimal;
 final class Fields implements FieldsInterface
 {
     /** @param string $bytes 16 raw bytes */
-    public function __construct(private string $bytes) {}
+    public function __construct(private string $bytes)
+    {
+        if (\strlen($bytes) !== 16) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'Fields expects exactly 16 bytes, got ' . \strlen($bytes),
+            );
+        }
+    }
 
     public function getBytes(): string { return $this->bytes; }
 
