@@ -243,7 +243,7 @@ factory uuid4 ver   4</pre>
   </div>
 
   <h2 id="bench">Benchmarks</h2>
-  <p>Throughput against <code>ramsey/uuid</code> 4.9.2 and the PECL <code>uuid</code> extension 1.3.0, on PHP 8.4.22 NTS (non-debug, x86-64 with the SSSE3 formatter). Best of 5 runs, 500k iterations each. Each engine ran in its own process. Higher is faster.</p>
+  <p>Throughput against <code>ramsey/uuid</code> 4.9.2 and the PECL <code>uuid</code> extension 1.3.0, on PHP 8.4.22 NTS (non-debug, x86-64 with the SSSE3 formatter). Best of 40 runs, 300k iterations each. Each engine ran in its own process. Higher is faster. The <code>fast_uuid</code> operations run in ~50&nbsp;ns, so scheduler noise gives the peak roughly &plusmn;10% run-to-run variance; ramsey and PECL reproduce to ~3%.</p>
 
   <div class="diagram">
   <div class="legend">
@@ -264,31 +264,31 @@ factory uuid4 ver   4</pre>
     </g>
     <text x="12" y="64" font-size="13" font-weight="600">v4 generate &rarr; string</text>
     <g font-size="11">
-      <rect x="200" y="70" width="365" height="14" fill="#b04a3a"/><text x="570" y="81">21.0M</text>
-      <rect x="200" y="87" width="646" height="14" fill="#e6c0ad" stroke="#b04a3a" stroke-dasharray="3 2"/><text x="651" y="98">37.2M v4_fast</text>
-      <rect x="200" y="104" width="226" height="14" fill="#d08a6c"/><text x="431" y="115">13.0M</text>
-      <rect x="200" y="121" width="8" height="14" fill="#4f7799"/><text x="213" y="132" fill="#4f7799">0.48M PECL</text>
-      <rect x="200" y="138" width="19" height="14" fill="#9a9488"/><text x="224" y="149" fill="#6b6b6b">1.11M ramsey</text>
+      <rect x="200" y="70" width="339" height="14" fill="#b04a3a"/><text x="544" y="81">19.5M</text>
+      <rect x="200" y="87" width="618" height="14" fill="#e6c0ad" stroke="#b04a3a" stroke-dasharray="3 2"/><text x="623" y="98">35.6M v4_fast</text>
+      <rect x="200" y="104" width="219" height="14" fill="#d08a6c"/><text x="424" y="115">12.6M</text>
+      <rect x="200" y="121" width="8" height="14" fill="#4f7799"/><text x="213" y="132" fill="#4f7799">0.47M PECL</text>
+      <rect x="200" y="138" width="19" height="14" fill="#9a9488"/><text x="224" y="149" fill="#6b6b6b">1.10M ramsey</text>
     </g>
     <text x="12" y="172" font-size="13" font-weight="600">v1 generate &rarr; string</text>
     <g font-size="11">
-      <rect x="200" y="178" width="271" height="14" fill="#b04a3a"/><text x="476" y="189">15.6M</text>
-      <rect x="200" y="195" width="189" height="14" fill="#d08a6c"/><text x="394" y="206">10.9M</text>
-      <rect x="200" y="212" width="147" height="14" fill="#4f7799"/><text x="352" y="223" fill="#4f7799">8.47M PECL</text>
+      <rect x="200" y="178" width="287" height="14" fill="#b04a3a"/><text x="492" y="189">16.5M</text>
+      <rect x="200" y="195" width="214" height="14" fill="#d08a6c"/><text x="419" y="206">12.3M</text>
+      <rect x="200" y="212" width="143" height="14" fill="#4f7799"/><text x="348" y="223" fill="#4f7799">8.22M PECL</text>
       <rect x="200" y="229" width="5" height="14" fill="#9a9488"/><text x="210" y="240" fill="#6b6b6b">0.29M ramsey</text>
     </g>
     <text x="12" y="263" font-size="13" font-weight="600">v7 generate &rarr; string</text>
     <g font-size="11">
-      <rect x="200" y="269" width="335" height="14" fill="#b04a3a"/><text x="540" y="280">19.3M</text>
-      <rect x="200" y="286" width="234" height="14" fill="#d08a6c"/><text x="439" y="297">13.5M</text>
-      <rect x="200" y="303" width="12" height="14" fill="#9a9488"/><text x="217" y="314" fill="#6b6b6b">0.67M ramsey (PECL n/a)</text>
+      <rect x="200" y="269" width="344" height="14" fill="#b04a3a"/><text x="549" y="280">19.8M</text>
+      <rect x="200" y="286" width="210" height="14" fill="#d08a6c"/><text x="415" y="297">12.1M</text>
+      <rect x="200" y="303" width="11" height="14" fill="#9a9488"/><text x="216" y="314" fill="#6b6b6b">0.66M ramsey (PECL n/a)</text>
     </g>
     <text x="12" y="337" font-size="13" font-weight="600">parse &rarr; 16 bytes</text>
     <g font-size="11">
-      <rect x="200" y="343" width="320" height="14" fill="#b04a3a"/><text x="525" y="354">18.4M</text>
-      <rect x="200" y="360" width="201" height="14" fill="#d08a6c"/><text x="406" y="371">11.6M</text>
-      <rect x="200" y="377" width="97" height="14" fill="#4f7799"/><text x="302" y="388" fill="#4f7799">5.57M PECL</text>
-      <rect x="200" y="394" width="59" height="14" fill="#9a9488"/><text x="264" y="405" fill="#6b6b6b">3.37M ramsey</text>
+      <rect x="200" y="343" width="281" height="14" fill="#b04a3a"/><text x="486" y="354">16.2M</text>
+      <rect x="200" y="360" width="181" height="14" fill="#d08a6c"/><text x="386" y="371">10.4M</text>
+      <rect x="200" y="377" width="92" height="14" fill="#4f7799"/><text x="297" y="388" fill="#4f7799">5.28M PECL</text>
+      <rect x="200" y="394" width="55" height="14" fill="#9a9488"/><text x="260" y="405" fill="#6b6b6b">3.18M ramsey</text>
     </g>
   </svg>
   <p class="diagram-caption">Procedural and PECL paths return a string directly; the object and ramsey paths build an object then format. Compare procedural to PECL and object to ramsey for like-for-like.</p>
@@ -298,13 +298,13 @@ factory uuid4 ver   4</pre>
   <table>
     <thead><tr><th>Operation</th><th>fast_uuid (object)</th><th>fast_uuid (procedural)</th></tr></thead>
     <tbody>
-      <tr><td>v4</td><td>11.7x</td><td class="win">18.9x</td></tr>
-      <tr><td>v1</td><td>37.6x</td><td class="win">53.8x</td></tr>
-      <tr><td>v7</td><td>20.1x</td><td class="win">28.8x</td></tr>
-      <tr><td>parse</td><td>3.4x</td><td class="win">5.5x</td></tr>
+      <tr><td>v4</td><td>11.5x</td><td class="win">17.7x</td></tr>
+      <tr><td>v1</td><td>42x</td><td class="win">57x</td></tr>
+      <tr><td>v7</td><td>18.3x</td><td class="win">30x</td></tr>
+      <tr><td>parse</td><td>3.3x</td><td class="win">5.1x</td></tr>
     </tbody>
   </table>
-  <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.48M.</p>
+  <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.47M.</p>
 
   <h3>Timestamp and DateTime APIs</h3>
   <p>Building v7 from an explicit time, and reading a UUID's timestamp back, read and write ext/date's internal <code>timelib_time</code> directly instead of routing through <code>call_user_function</code> (about 3x faster), and an integer-millisecond API skips DateTime objects entirely. Same machine; <code>ramsey/uuid</code> 4.9.2.</p>
