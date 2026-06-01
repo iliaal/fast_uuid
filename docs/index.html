@@ -80,8 +80,10 @@ phpize &amp;&amp; ./configure --enable-fast-uuid &amp;&amp; make &amp;&amp; make
 <span class="cm"># or with PIE</span>
 pie install iliaal/fast_uuid
 
-<span class="cm"># the ramsey-compat layer (optional, separate package)</span>
-composer require iliaal/fast-uuid-compat</pre></div>
+<span class="cm"># the ramsey-compat layer (optional) ships in this repo's compat/ directory,</span>
+<span class="cm"># not on Packagist; add it as a Composer path repository from your checkout:</span>
+composer config repositories.fast-uuid-compat path /path/to/fast_uuid/compat
+composer require iliaal/fast-uuid-compat:@dev</pre></div>
   <p>No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set); v3 and v5 use PHP's bundled MD5 and SHA1.</p>
 
   <h2 id="quickstart">Quick start</h2>
