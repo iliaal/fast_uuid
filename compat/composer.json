@@ -1,0 +1,13 @@
+{
+    "name": "iliaal/fast-uuid-compat",
+    "description": "ramsey/uuid-shaped object API over the fast_uuid C extension. The extension is the engine; this layer provides the cold-path ergonomics (per-version classes, Fields, Type objects, factory).",
+    "type": "library",
+    "license": "BSD-3-Clause",
+    "require": {
+        "php": ">=8.3",
+        "ext-fast_uuid": "*"
+    },
+    "autoload": {
+        "psr-4": { "FastUuid\\Compat\\": "src/" }
+    }
+}

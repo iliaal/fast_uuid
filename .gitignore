@@ -1,0 +1,53 @@
+# phpize / configure / make build artifacts
+*.lo
+*.la
+*.o
+*.dep
+.libs/
+.deps
+modules/
+build/
+Makefile
+Makefile.fragments
+Makefile.global
+Makefile.objects
+autom4te.cache/
+configure
+configure.ac
+config.h
+config.h.in
+config.guess
+config.sub
+config.log
+config.status
+config.nice
+*.orig
+acinclude.m4
+aclocal.m4
+install-sh
+ltmain.sh
+libtool
+missing
+mkinstalldirs
+run-tests.php
+
+# run-tests.php leftovers (only *.phpt is tracked)
+tests/*.diff
+tests/*.out
+tests/*.exp
+tests/*.log
+tests/*.sh
+tests/*.mem
+tests/*.php
+
+# import scaffolding (not part of the repo)
+_inspect/
+*.tar.gz
+
+# editor backups
+*~
+
+# local AI tooling: per-developer scaffolding, not checked in
+/.claude/
+/AGENTS.md
+/CLAUDE.md
