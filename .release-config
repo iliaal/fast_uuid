@@ -14,5 +14,6 @@ configure_base: "--enable-fast-uuid"
 
 # Optional
 asan_test: true                       # RFC byte-layout + RNG buffer code; verify under ASAN on release
-windows_ci: false
+windows_ci: true                      # .github/workflows/release-windows.yml (split pattern, fires on release:[published])
+linux_prebuilt: true                  # .github/workflows/release-linux.yml: Linux glibc x86_64+arm64, macOS arm64
 smoke_test: ""
