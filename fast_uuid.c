@@ -299,22 +299,36 @@ static zend_result fu_gen_v4_fast(unsigned char *b) {
     return SUCCESS;
 }
 
+/* fill clock_seq (b[8] variant+hi, b[9] low) and node (b[10..15]). When both
+   are randomized a single 8-byte CSPRNG draw supplies them; otherwise each is
+   drawn only as needed. Shared by the v1 and v6 layouts. */
+static zend_result fu_lay_clockseq_node(unsigned char *b, const unsigned char *node, int clockseq) {
+    unsigned char rnode[6];
+    if (clockseq < 0 && !node) {
+        unsigned char r[8];
+        if (fu_rand(r, 8) == FAILURE) return FAILURE;
+        memcpy(rnode, r, 6); rnode[0] |= 0x01; node = rnode; /* multicast bit per RFC 9562 */
+        clockseq = ((r[6] << 8) | r[7]) & 0x3fff;
+    } else {
+        if (clockseq < 0) { unsigned char rc[2]; if (fu_rand(rc, 2) == FAILURE) return FAILURE; clockseq = ((rc[0]<<8)|rc[1]) & 0x3fff; }
+        if (!node)        { if (fu_rand(rnode, 6) == FAILURE) return FAILURE; rnode[0] |= 0x01; node = rnode; }
+    }
+    b[8] = ((clockseq >> 8) & 0x3f) | 0x80; /* variant + clock_seq_hi */
+    b[9] = clockseq & 0xff;                 /* clock_seq_low */
+    memcpy(b + 10, node, 6);
+    return SUCCESS;
+}
+
 /* lay out a v1 UUID from a Gregorian 100ns timestamp; node (6 bytes) and
    clockseq (0..0x3fff) optional — pass NULL / -1 to randomize them. */
 static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
     uint32_t tl = (uint32_t)(g & 0xffffffffULL);
     uint16_t tm = (uint16_t)((g >> 32) & 0xffff);
     uint16_t th = (uint16_t)((g >> 48) & 0x0fff) | 0x1000; /* version 1 */
-    if (clockseq < 0) { unsigned char r[2]; if (fu_rand(r, 2) == FAILURE) return FAILURE; clockseq = ((r[0]<<8)|r[1]) & 0x3fff; }
-    unsigned char rnode[6];
-    if (!node) { if (fu_rand(rnode, 6) == FAILURE) return FAILURE; rnode[0] |= 0x01; node = rnode; }
     b[0]=tl>>24; b[1]=tl>>16; b[2]=tl>>8; b[3]=tl;
     b[4]=tm>>8;  b[5]=tm;
     b[6]=th>>8;  b[7]=th;
-    b[8]=((clockseq>>8) & 0x3f) | 0x80;  /* variant + clock_seq_hi */
-    b[9]=clockseq & 0xff;                /* clock_seq_low */
-    memcpy(b+10, node, 6);
-    return SUCCESS;
+    return fu_lay_clockseq_node(b, node, clockseq);
 }
 
 static inline uint64_t fu_greg_now(void) {
@@ -330,19 +344,19 @@ static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int
 
 static zend_result fu_gen_v1(unsigned char *b) { return fu_gen_v1_ex(b, NULL, -1); }
 
-static zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
-    unsigned char v1[16];
-    if (fu_gen_v1_ex(v1, node, clockseq) == FAILURE) return FAILURE;
-    uint64_t th = ((uint64_t)(v1[6] & 0x0f) << 8) | v1[7];
-    uint64_t tm = ((uint64_t)v1[4] << 8) | v1[5];
-    uint64_t tl = ((uint64_t)v1[0] << 24) | ((uint64_t)v1[1] << 16) | ((uint64_t)v1[2] << 8) | v1[3];
-    uint64_t t60 = (th << 48) | (tm << 32) | tl;
+/* lay out a v6 UUID directly: the 60-bit Gregorian timestamp is stored
+   most-significant-first across bytes 0..7, no v1 temp / re-extraction. */
+static zend_result fu_lay_v6(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
+    uint64_t t60 = g & ((1ULL << 60) - 1);
     b[0]=(t60>>52)&0xff; b[1]=(t60>>44)&0xff; b[2]=(t60>>36)&0xff; b[3]=(t60>>28)&0xff;
     b[4]=(t60>>20)&0xff; b[5]=(t60>>12)&0xff;
-    b[6]=0x60 | ((t60>>8)&0x0f);
+    b[6]=0x60 | ((t60>>8)&0x0f); /* version 6 */
     b[7]=t60 & 0xff;
-    memcpy(b+8, v1+8, 8); /* variant + clock_seq + node preserved */
-    return SUCCESS;
+    return fu_lay_clockseq_node(b, node, clockseq);
+}
+
+static zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+    return fu_lay_v6(b, fu_greg_now(), node, clockseq);
 }
 
 static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1); }
@@ -553,6 +567,22 @@ static zend_result fu_clockseq_arg(zend_long clockseq, zend_bool cs_null, int *o
 /* Read whole seconds + sub-second microseconds off a DateTimeInterface. Throws
    (returns FAILURE) if either call fails or raises. */
 static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t *micros) {
+    /* Fast path: read the unix timestamp and microseconds straight off the
+       object's timelib_time when the seconds-since-epoch cache is current (the
+       usual case for a freshly-constructed DateTime). This is exactly what
+       getTimestamp() + format("u") return, without two userland method calls.
+       Restricted to the exact built-in classes: a DateTime[Immutable] subclass
+       may override getTimestamp(), so it must go through the method call. An
+       out-of-date or uninitialized object falls back too (timelib_update_ts is
+       not exported to extensions). */
+    if (dtobj->ce == php_date_get_immutable_ce() || dtobj->ce == php_date_get_date_ce()) {
+        php_date_obj *dobj = php_date_obj_from_obj(dtobj);
+        if (dobj->time && dobj->time->sse_uptodate) {
+            *secs = (int64_t)dobj->time->sse;
+            *micros = (uint32_t)dobj->time->us;
+            return SUCCESS;
+        }
+    }
     zval zdt; ZVAL_OBJ(&zdt, dtobj);
     zval fn, ret;
     ZVAL_STRING(&fn, "getTimestamp");
@@ -570,8 +600,17 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
     return SUCCESS;
 }
 
-/* build a DateTimeImmutable from whole seconds + microseconds, preserving sub-second */
+/* build a DateTimeImmutable (UTC) from whole seconds + microseconds, preserving
+   sub-second. 8.4+ uses ext/date's internal constructor (PHPAPI) directly; 8.3
+   lacks php_date_initialize_from_ts_long, so it falls back to a dynamic
+   DateTimeImmutable::createFromFormat("U.u", ...) call. */
 static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
+#if PHP_VERSION_ID >= 80400
+    php_date_instantiate(php_date_get_immutable_ce(), rv);
+    php_date_obj *dobj = php_date_obj_from_obj(Z_OBJ_P(rv));
+    php_date_initialize_from_ts_long(dobj, (zend_long)secs, (int)micros);
+    return SUCCESS;
+#else
     zend_string *buf = strpprintf(0, "%lld.%06u", (long long)secs, micros);
     zval callable, args[2], ret;
     array_init(&callable);
@@ -593,6 +632,7 @@ static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
         zend_throw_exception(fu_ex_unsupported, "Could not build DateTimeImmutable from UUID timestamp", 0);
     }
     return ok;
+#endif
 }
 
 /* arginfo, method/function tables, and class registrators are generated from
@@ -701,14 +741,28 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
     unsigned char b[16]; if (fu_gen_v6_ex(b, np, cseq) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
+/* non-monotonic v7 from a unix-millisecond integer (sub-ms fraction = 0) */
+static zend_result fu_v7_at_ms(unsigned char *b, zend_long ms) {
+    if (ms < 0 || (uint64_t)ms > 0xffffffffffffULL) {
+        zend_throw_exception(fu_ex_invalid_arg, "v7 millisecond timestamp out of range (0 .. 281474976710655)", 0);
+        return FAILURE;
+    }
+    return fu_gen_v7_at(b, (uint64_t)ms, 0);
+}
+
 PHP_METHOD(FastUuid_Uuid, uuid7) {
-    zend_object *dtobj = NULL;
+    zval *when = NULL;
     ZEND_PARSE_PARAMETERS_START(0, 1)
         Z_PARAM_OPTIONAL
-        Z_PARAM_OBJ_OF_CLASS_OR_NULL(dtobj, php_date_get_interface_ce())
+        Z_PARAM_ZVAL_OR_NULL(when)
     ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (dtobj) {
+    if (when && Z_TYPE_P(when) == IS_LONG) {
+        /* explicit unix-millisecond timestamp, no DateTime object */
+        if (fu_v7_at_ms(b, Z_LVAL_P(when)) == FAILURE) RETURN_THROWS();
+    } else if (when && Z_TYPE_P(when) == IS_OBJECT &&
+               instanceof_function(Z_OBJ_P(when)->ce, php_date_get_interface_ce())) {
+        zend_object *dtobj = Z_OBJ_P(when);
         int64_t sec; uint32_t micros;
         if (fu_dt_secs_micros(dtobj, &sec, &micros) == FAILURE) RETURN_THROWS();
         if (sec < 0) { /* v7 timestamps are unsigned ms since the unix epoch */
@@ -726,8 +780,12 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
         }
         uint64_t sub = ((uint64_t)(micros % 1000) * 4096ULL) / 1000ULL; /* sub-ms us -> 12-bit */
         if (fu_gen_v7_at(b, ms, sub) == FAILURE) RETURN_THROWS();
-    } else {
+    } else if (when == NULL || Z_TYPE_P(when) == IS_NULL) {
         if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
+    } else {
+        zend_argument_type_error(1, "must be of type int|DateTimeInterface|null, %s given",
+                                 zend_zval_value_name(when));
+        RETURN_THROWS();
     }
     fu_return_uuid(return_value, b);
 }
@@ -887,46 +945,69 @@ PHP_METHOD(FastUuid_Uuid, getInteger) {
     RETURN_STR(fu_to_decimal(u->b)); /* numeric string (ramsey wraps in IntegerObject) */
 }
 
-PHP_METHOD(FastUuid_Uuid, getDateTime) {
-    ZEND_PARSE_PARAMETERS_NONE();
-    fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
-    int ver = (u->b[6] >> 4) & 0x0f;
-    int64_t secs = 0; uint32_t micros = 0;
+/* Decode the embedded timestamp of a time-based UUID into unix seconds +
+   microseconds. Returns 1 for v1/v2/v6/v7, 0 for versions with no timestamp. */
+static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micros) {
+    int ver = (b[6] >> 4) & 0x0f;
     if (ver == 1 || ver == 6) {
         uint64_t t60;
         if (ver == 1) {
-            uint64_t th = ((uint64_t)(u->b[6]&0x0f)<<8)|u->b[7];
-            uint64_t tm = ((uint64_t)u->b[4]<<8)|u->b[5];
-            uint64_t tl = ((uint64_t)u->b[0]<<24)|((uint64_t)u->b[1]<<16)|((uint64_t)u->b[2]<<8)|u->b[3];
+            uint64_t th = ((uint64_t)(b[6]&0x0f)<<8)|b[7];
+            uint64_t tm = ((uint64_t)b[4]<<8)|b[5];
+            uint64_t tl = ((uint64_t)b[0]<<24)|((uint64_t)b[1]<<16)|((uint64_t)b[2]<<8)|b[3];
             t60 = (th<<48)|(tm<<32)|tl;
         } else {
-            t60 = ((uint64_t)u->b[0]<<52)|((uint64_t)u->b[1]<<44)|((uint64_t)u->b[2]<<36)
-                 |((uint64_t)u->b[3]<<28)|((uint64_t)u->b[4]<<20)|((uint64_t)u->b[5]<<12)
-                 |((uint64_t)(u->b[6]&0x0f)<<8)|u->b[7];
+            t60 = ((uint64_t)b[0]<<52)|((uint64_t)b[1]<<44)|((uint64_t)b[2]<<36)
+                 |((uint64_t)b[3]<<28)|((uint64_t)b[4]<<20)|((uint64_t)b[5]<<12)
+                 |((uint64_t)(b[6]&0x0f)<<8)|b[7];
         }
         int64_t unix100 = (int64_t)(t60 - 0x01B21DD213814000ULL); /* signed: pre-1970 is negative */
         int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
         if (frac < 0) { s -= 1; frac += 10000000LL; } /* floor toward -inf, keep frac >= 0 */
-        secs = s; micros = (uint32_t)(frac / 10LL); /* 100ns -> us */
-    } else if (ver == 2) {
+        *secs = s; *micros = (uint32_t)(frac / 10LL); /* 100ns -> us */
+        return 1;
+    }
+    if (ver == 2) {
         /* DCE v2: time_low holds the local identifier, so only the upper bits
            of the 60-bit timestamp survive (coarse, ~429s resolution). */
-        uint64_t th = ((uint64_t)(u->b[6]&0x0f)<<8)|u->b[7];
-        uint64_t tm = ((uint64_t)u->b[4]<<8)|u->b[5];
+        uint64_t th = ((uint64_t)(b[6]&0x0f)<<8)|b[7];
+        uint64_t tm = ((uint64_t)b[4]<<8)|b[5];
         int64_t unix100 = (int64_t)(((th<<48)|(tm<<32)) - 0x01B21DD213814000ULL);
         int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
         if (frac < 0) { s -= 1; frac += 10000000LL; }
-        secs = s; micros = (uint32_t)(frac / 10LL);
-    } else if (ver == 7) {
-        uint64_t ms = ((uint64_t)u->b[0]<<40)|((uint64_t)u->b[1]<<32)|((uint64_t)u->b[2]<<24)
-                     |((uint64_t)u->b[3]<<16)|((uint64_t)u->b[4]<<8)|u->b[5];
-        secs   = (int64_t)(ms / 1000ULL);
-        micros = (uint32_t)((ms % 1000ULL) * 1000ULL);
-    } else {
+        *secs = s; *micros = (uint32_t)(frac / 10LL);
+        return 1;
+    }
+    if (ver == 7) {
+        uint64_t ms = ((uint64_t)b[0]<<40)|((uint64_t)b[1]<<32)|((uint64_t)b[2]<<24)
+                     |((uint64_t)b[3]<<16)|((uint64_t)b[4]<<8)|b[5];
+        *secs   = (int64_t)(ms / 1000ULL);
+        *micros = (uint32_t)((ms % 1000ULL) * 1000ULL);
+        return 1;
+    }
+    return 0;
+}
+
+PHP_METHOD(FastUuid_Uuid, getDateTime) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
+    int64_t secs; uint32_t micros;
+    if (!fu_decode_time(u->b, &secs, &micros)) {
         zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
         RETURN_THROWS();
     }
     if (fu_make_datetime(return_value, secs, micros) == FAILURE) RETURN_THROWS();
+}
+
+PHP_METHOD(FastUuid_Uuid, getTimestampMillis) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
+    int64_t secs; uint32_t micros;
+    if (!fu_decode_time(u->b, &secs, &micros)) {
+        zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
+        RETURN_THROWS();
+    }
+    RETURN_LONG((zend_long)(secs * 1000LL + (int64_t)(micros / 1000)));
 }
 
 PHP_METHOD(FastUuid_Uuid, getFields) {
@@ -1012,6 +1093,11 @@ PHP_FUNCTION(uuid_v4) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (f
 PHP_FUNCTION(uuid_v4_fast) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4_fast(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
 PHP_FUNCTION(uuid_v6) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v6(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
 PHP_FUNCTION(uuid_v7) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v7(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v7_at) {
+    zend_long ms;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(ms) ZEND_PARSE_PARAMETERS_END();
+    unsigned char b[16]; if (fu_v7_at_ms(b, ms) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b);
+}
 
 PHP_FUNCTION(uuid_v3) {
     zend_string *zns, *name;

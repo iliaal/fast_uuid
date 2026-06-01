@@ -200,13 +200,16 @@ final class UuidFactory
      * first, then the RFC 4122 per-version classes, falling back to the
      * nonstandard wrapper for non-RFC variants and unassigned versions.
      */
+    private const NIL_BYTES = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+    private const MAX_BYTES = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
+
     public function wrap(\FastUuid\Uuid $core): UuidInterface
     {
         $bytes = $core->getBytes();
-        if ($bytes === \str_repeat("\x00", 16)) {
+        if ($bytes === self::NIL_BYTES) {
             return new NilUuid($core);
         }
-        if ($bytes === \str_repeat("\xff", 16)) {
+        if ($bytes === self::MAX_BYTES) {
             return new MaxUuid($core);
         }
 

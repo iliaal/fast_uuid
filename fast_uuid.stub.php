@@ -26,7 +26,7 @@ namespace FastUuid {
         public static function uuid4(): UuidInterface {}
         public static function uuid5(UuidInterface|string $ns, string $name): UuidInterface {}
         public static function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
-        public static function uuid7(?\DateTimeInterface $dateTime = null): UuidInterface {}
+        public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface {}
         public static function uuid8(string $bytes): UuidInterface {}
         public static function fromString(string $uuid): UuidInterface {}
         public static function fromBytes(string $bytes): UuidInterface {}
@@ -54,6 +54,7 @@ namespace FastUuid {
         /** @alias FastUuid\Uuid::getInteger */
         public function toInteger(): string {}
         public function getDateTime(): \DateTimeImmutable {}
+        public function getTimestampMillis(): int {}
         public function getFields(): array {}
         public function equals(mixed $other): bool {}
         public function compareTo(mixed $other): int {}
@@ -77,6 +78,7 @@ namespace {
     function uuid_v5(string $ns, string $name): string {}
     function uuid_v6(): string {}
     function uuid_v7(): string {}
+    function uuid_v7_at(int $unixMillis): string {}
     function uuid_v8(string $bytes): string {}
     function uuid_to_bin(string $uuid): string {}
     function uuid_from_bin(string $bytes): string {}
