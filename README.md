@@ -44,7 +44,7 @@ uuid3(UuidInterface|string $ns, string $name)
 uuid4()
 uuid5(UuidInterface|string $ns, string $name)
 uuid6(int|string|null $node = null, ?int $clockSeq = null)
-uuid7(?DateTimeInterface $dateTime = null)
+uuid7(int|DateTimeInterface|null $dateTime = null)   // int = unix milliseconds
 uuid8(string $bytes)                       // 16 raw bytes
 fromString(string $uuid)                   // canonical, urn:uuid:, {braced}, bare 32-hex, any case
 fromBytes(string $bytes)                   // 16 raw bytes
@@ -60,11 +60,13 @@ Instance methods:
 toString(): string        __toString(): string      getBytes(): string        getHex(): string
 getUrn(): string          getVersion(): ?int        getVariant(): ?int        getInteger(): string
 getDateTime(): DateTimeImmutable                     getFields(): array        equals(mixed): bool
-compareTo(mixed): int     jsonSerialize(): string
+compareTo(mixed): int     jsonSerialize(): string   getTimestampMillis(): int
 toBytes(): string         toHexadecimal(): string   toUrn(): string           toInteger(): string
 ```
 
 - `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
+- `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for the time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for v3/v4/v5/v8.
+- `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max.
 - `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
@@ -94,6 +96,7 @@ The local identifier occupies bytes 0 to 3 (big-endian); the local domain is sto
 
 ```
 uuid_v1() uuid_v3($ns, $name) uuid_v4() uuid_v4_fast() uuid_v5($ns, $name) uuid_v6() uuid_v7() uuid_v8($bytes)
+uuid_v7_at($unixMillis)  // v7 from a unix-millisecond int (no DateTime)
 uuid_to_bin($uuid)   // canonical/parsed string -> 16 raw bytes
 uuid_from_bin($bytes)// 16 raw bytes -> canonical string
 uuid_is_valid($uuid) // bool
