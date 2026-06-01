@@ -43,4 +43,24 @@ ZEND_EXTERN_MODULE_GLOBALS(fast_uuid)
 ZEND_TSRMLS_CACHE_EXTERN()
 #endif
 
+/* gen_stub (PHP master) emits 8.4+ constructs into the generated arginfo:
+   zend_register_internal_class_with_flags(), and the 6-argument ZEND_RAW_FENTRY
+   used for the __toString alias. Polyfill both so the same fast_uuid_arginfo.h
+   compiles on PHP 8.3. Must be defined before fast_uuid_arginfo.h is included. */
+#if PHP_VERSION_ID < 80400
+static zend_always_inline zend_class_entry *zend_register_internal_class_with_flags(
+        zend_class_entry *class_entry, zend_class_entry *parent_ce, uint32_t ce_flags) {
+    zend_class_entry *ce = zend_register_internal_class_ex(class_entry, parent_ce);
+    if (ce && ce_flags) {
+        ce->ce_flags |= ce_flags;
+    }
+    return ce;
+}
+# undef ZEND_RAW_FENTRY
+# define ZEND_RAW_FENTRY(zend_name, name, arg_info, flags, ...) \
+    { zend_name, name, arg_info, \
+      (uint32_t) (sizeof(arg_info)/sizeof(struct _zend_internal_arg_info)-1), \
+      flags },
+#endif
+
 #endif /* PHP_FAST_UUID_H */
