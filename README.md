@@ -17,7 +17,19 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 - x86-64 gets the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
 - No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 and v5 use PHP's bundled MD5/SHA1.
 
-## Build
+## Install
+
+The quickest path is [PIE](https://github.com/php/pie), which resolves a prebuilt
+binary for your platform (Windows `x86`/`x64` `NTS`/`TS`, Linux glibc
+`x86_64`/`arm64`, macOS `arm64`) and falls back to a source build otherwise:
+
+```sh
+pie install iliaal/fast_uuid
+```
+
+Then enable it with `extension=fast_uuid` in your `php.ini`.
+
+## Build from source
 
 ```sh
 phpize
@@ -67,6 +79,7 @@ toBytes(): string         toHexadecimal(): string   toUrn(): string           to
 - `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
 - `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for the time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for v3/v4/v5/v8.
 - `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
+- UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order. `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max.
 - `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
@@ -91,6 +104,8 @@ The local identifier occupies bytes 0 to 3 (big-endian); the local domain is sto
 - `FastUuid\Exception\InvalidArgumentException` (extends `\InvalidArgumentException`): a bad length, node, or integer.
 - `FastUuid\Exception\InvalidUuidStringException` (extends the above): an unparseable UUID string.
 - `FastUuid\Exception\UnsupportedOperationException` (extends `\RuntimeException`): raised by `getDateTime()` on a non-time-based version.
+
+Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp past the 48-bit millisecond field, a `fromDateTime` instant outside the v1 Gregorian window, a node outside `0..2^48-1`, a clock sequence outside `0..0x3fff`, or `uuid2` without an explicit local identifier for a non-PERSON/GROUP domain all throw `InvalidArgumentException`.
 
 ## Procedural API
 
