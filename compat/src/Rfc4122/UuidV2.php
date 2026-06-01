@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\AbstractUuid;
+use FastUuid\Compat\Type\Integer as IntegerObject;
 
 /**
  * RFC 4122 DCE Security (version 2). The local identifier occupies time_low
@@ -17,8 +18,8 @@ final class UuidV2 extends AbstractUuid
         return \ord($this->core->getBytes()[9]);
     }
 
-    public function getLocalIdentifier(): int
+    public function getLocalIdentifier(): IntegerObject
     {
-        return \unpack('N', \substr($this->core->getBytes(), 0, 4))[1];
+        return new IntegerObject(\unpack('N', \substr($this->core->getBytes(), 0, 4))[1]);
     }
 }
