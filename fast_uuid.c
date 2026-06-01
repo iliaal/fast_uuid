@@ -691,9 +691,7 @@ PHP_METHOD(FastUuid_Uuid, getFields) {
     /* NOTE: ramsey returns a FieldsInterface object; scaffold returns a hex array. */
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
-    char hx[12];
     array_init(return_value);
-    fu_format32(u->b, hx); /* reuse: writes 8 chars for 4 bytes below via slices */
     char tl[9]; for (int i=0;i<4;i++){tl[i*2]=fu_lut[u->b[i]*2];tl[i*2+1]=fu_lut[u->b[i]*2+1];} tl[8]=0;
     add_assoc_string(return_value, "time_low", tl);
     char tm[5]; for (int i=0;i<2;i++){tm[i*2]=fu_lut[u->b[4+i]*2];tm[i*2+1]=fu_lut[u->b[4+i]*2+1];} tm[4]=0;
@@ -706,7 +704,6 @@ PHP_METHOD(FastUuid_Uuid, getFields) {
     add_assoc_string(return_value, "clock_seq_low", cl);
     char nd[13]; for (int i=0;i<6;i++){nd[i*2]=fu_lut[u->b[10+i]*2];nd[i*2+1]=fu_lut[u->b[10+i]*2+1];} nd[12]=0;
     add_assoc_string(return_value, "node", nd);
-    (void)hx;
 }
 
 PHP_METHOD(FastUuid_Uuid, equals) {
