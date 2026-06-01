@@ -158,6 +158,23 @@ $u = Uuid::<span class="fn">fromDateTime</span>(<span class="kw">new</span> Date
 <span class="kw">echo</span> $u-&gt;<span class="fn">getVersion</span>(), <span class="str">' '</span>, $u-&gt;<span class="fn">getDateTime</span>()-&gt;<span class="fn">format</span>(<span class="str">'Y-m-d'</span>);</pre>
     <pre class="out">1 2024-01-01</pre>
   </div>
+  <div class="ex">
+    <pre class="code"><span class="cm">// v7 carries sub-millisecond precision (RFC 9562 method 3): two v7s in the</span>
+<span class="cm">// same millisecond but microseconds apart still sort in time order</span>
+$utc = <span class="kw">new</span> DateTimeZone(<span class="str">'UTC'</span>);
+$a = Uuid::<span class="fn">uuid7</span>(<span class="kw">new</span> DateTimeImmutable(<span class="str">'2024-01-01 00:00:00.000100'</span>, $utc));
+$b = Uuid::<span class="fn">uuid7</span>(<span class="kw">new</span> DateTimeImmutable(<span class="str">'2024-01-01 00:00:00.000900'</span>, $utc));
+<span class="kw">echo</span> $a, <span class="str">"\n"</span>, $b, <span class="str">"\n"</span>;
+<span class="kw">var_dump</span>($a-&gt;<span class="fn">compareTo</span>($b) &lt; 0);    <span class="cm">// ordered by the sub-ms fraction</span>
+
+<span class="cm">// integer-millisecond API: build and read v7 with no DateTime object</span>
+$u = <span class="fn">uuid_v7_at</span>(<span class="str">1704067200123</span>);
+<span class="kw">echo</span> Uuid::<span class="fn">fromString</span>($u)-&gt;<span class="fn">getTimestampMillis</span>();</pre>
+    <pre class="out">018cc251-f400-7199-9088-32b2a89d9aaa   <span style="color:#9a9488">(sample; sub-ms 0x199 in the 3rd group)</span>
+018cc251-f400-7e66-8fc2-8b98b1b54214   <span style="color:#9a9488">(same ms 018cc251-f400, sub-ms 0xe66, so a &lt; b)</span>
+bool(true)
+1704067200123</pre>
+  </div>
 
   <h2 id="inspect">Reading a UUID</h2>
   <div class="ex">
