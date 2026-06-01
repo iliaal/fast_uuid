@@ -23,7 +23,8 @@ $f->getNodeProvider();   // inspect only
 $f->getTimeGenerator();
 $f->getRandomGenerator();
 $rc = new ReflectionObject($f);
-$flag = function (string $p) use ($rc, $f) { $x = $rc->getProperty($p); $x->setAccessible(true); return $x->getValue($f); };
+// no setAccessible(): private access is implicit since PHP 8.1, and the call is deprecated in 8.5
+$flag = function (string $p) use ($rc, $f) { return $rc->getProperty($p)->getValue($f); };
 var_dump($flag('customNodeProvider') === false);
 var_dump($flag('customTimeGenerator') === false);
 var_dump($flag('customRandomGenerator') === false);
