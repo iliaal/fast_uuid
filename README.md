@@ -107,17 +107,17 @@ fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 
 ## ramsey/uuid compatibility layer (`FastUuid\Compat`)
 
-`compat/` is a separate Composer package (`iliaal/fast-uuid-compat`, PSR-4 `FastUuid\Compat\`) that provides the cold-path ramsey ergonomics on top of the C engine: `UuidFactory`, the per-version `Rfc4122\UuidV1`…`UuidV8` / `NilUuid` / `MaxUuid` / `Nonstandard\Uuid` classes, `Rfc4122\UuidV2` with `getLocalDomain()` / `getLocalIdentifier()`, `Rfc4122\Fields` (`FieldsInterface`), `Type\Hexadecimal`, `Type\Integer`, the codecs (`StringCodec`, `OrderedTimeCodec`, `TimestampFirstCombCodec`, `TimestampLastCombCodec`, `GuidStringCodec`), `Guid\Guid`, the providers (`RandomGeneratorInterface`, `NodeProviderInterface`, `TimeGeneratorInterface` + defaults), and the validators (`GenericValidator`, `NonstandardValidator`).
+`compat/` is a PSR-4 (`FastUuid\Compat\`) companion package (`iliaal/fast-uuid-compat`) that provides the cold-path ramsey ergonomics on top of the C engine. It ships in this repo's `compat/` directory and is not on Packagist yet; install it as a Composer [path repository](https://getcomposer.org/doc/05-repositories.md#path) (`composer config repositories.fast-uuid-compat path /path/to/fast_uuid/compat && composer require iliaal/fast-uuid-compat:@dev`) or autoload `FastUuid\Compat\` to `compat/src/`. It provides: `UuidFactory`, the per-version `Rfc4122\UuidV1`…`UuidV8` / `NilUuid` / `MaxUuid` / `Nonstandard\Uuid` classes, `Rfc4122\UuidV2` with `getLocalDomain()` / `getLocalIdentifier()`, `Rfc4122\Fields` (`FieldsInterface`), `Type\Hexadecimal`, `Type\Integer`, the codecs (`StringCodec`, `OrderedTimeCodec`, `TimestampFirstCombCodec`, `TimestampLastCombCodec`, `GuidStringCodec`), `Guid\Guid`, the providers (`RandomGeneratorInterface`, `NodeProviderInterface`, `TimeGeneratorInterface` + defaults), and the validators (`GenericValidator`, `NonstandardValidator`).
 
 Generation stays on the pure-C fast path; supplying a custom `RandomGeneratorInterface` / `TimeGeneratorInterface` / `NodeProviderInterface` intentionally routes off it (ramsey behaviour) so application-supplied generators win. Migration from `ramsey/uuid` is largely a `use` swap from `Ramsey\Uuid\Uuid` to `FastUuid\Compat\Uuid`. The compat package has no external dependencies beyond the extension itself.
 
 ## Benchmarks
 
 On PHP 8.4 (NTS, non-debug, x86-64 with the SSSE3 formatter), generating a v4
-UUID and its canonical string runs at ~21M ops/sec via the procedural path and
-~13M via the object API, against ~1.1M for `ramsey/uuid` and ~0.48M for the PECL
-`uuid` extension. fast_uuid runs 12x to 54x faster than ramsey on v1/v4/v7
-generation, and 3x to 6x faster on parsing. Full table and method in
+UUID and its canonical string runs at ~19.5M ops/sec via the procedural path and
+~12.6M via the object API, against ~1.1M for `ramsey/uuid` and ~0.47M for the PECL
+`uuid` extension. fast_uuid runs 11x to 57x faster than ramsey on v1/v4/v7
+generation, and 3x to 5x faster on parsing. Full table and method in
 [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Testing
