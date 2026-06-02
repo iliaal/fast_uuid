@@ -51,3 +51,5 @@ _inspect/
 /.claude/
 /AGENTS.md
 /CLAUDE.md
+.codesage/findings/
+.codesage/reviews/
