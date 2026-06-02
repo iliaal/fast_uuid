@@ -1116,6 +1116,7 @@ PHP_METHOD(FastUuid_Uuid, __unserialize) {
         RETURN_THROWS();
     }
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
+    if (u->str) { zend_string_release(u->str); u->str = NULL; }
     memcpy(u->b, Z_STRVAL_P(zb), 16);
 }
 
