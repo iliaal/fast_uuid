@@ -1,10 +1,18 @@
 # fast_uuid
 
-A high-performance PHP C extension for RFC 9562 / RFC 4122 UUID generation. It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace, and procedural functions give a zero-allocation fast path for the hottest call sites.
+[![Tests](https://github.com/iliaal/fast_uuid/actions/workflows/tests.yml/badge.svg)](https://github.com/iliaal/fast_uuid/actions/workflows/tests.yml)
+[![Windows Build](https://github.com/iliaal/fast_uuid/actions/workflows/release-windows.yml/badge.svg)](https://github.com/iliaal/fast_uuid/actions/workflows/release-windows.yml)
+[![Version](https://img.shields.io/github/v/release/iliaal/fast_uuid)](https://github.com/iliaal/fast_uuid/releases)
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-green.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Follow @iliaa](https://img.shields.io/badge/Follow-@iliaa-000000?style=flat&logo=x&logoColor=white)](https://x.com/intent/follow?screen_name=iliaa)
+
+![fast_uuid: RFC 9562 UUIDs for PHP in pure C, 11x to 57x faster than ramsey/uuid](images/fast_uuid-hero.jpg)
+
+A high-performance PHP C extension for RFC 9562 / RFC 4122 UUID generation, **11x to 57x faster than `ramsey/uuid`** on v1/v4/v7 generation and 3x to 5x faster on parsing. It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace, and procedural functions give a zero-allocation fast path for the hottest call sites.
 
 Full API reference with runnable examples: [docs/index.html](docs/index.html). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md).
 
-## Why it's fast
+## ⚡ Why it's fast
 
 - **Batched CSPRNG**: `getrandom()` is amortized across ~500 v4s via an 8 KB per-thread buffer instead of one syscall per UUID. ramsey's per-call `random_bytes()` is the usual bottleneck.
 - **No property table**: the object is 16 inline bytes plus a lazily-cached canonical string. No `HashTable`, no declared properties, custom create/free/clone/compare/cast handlers.
@@ -17,7 +25,7 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 - x86-64 and ARM64 get the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
 - No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 and v5 use PHP's bundled MD5/SHA1.
 
-## Install
+## 📦 Install
 
 The quickest path is [PIE](https://github.com/php/pie), which resolves a prebuilt
 binary for your platform (Windows `x86`/`x64` `NTS`/`TS`, Linux glibc
@@ -29,7 +37,7 @@ pie install iliaal/fast_uuid
 
 Then enable it with `extension=fast_uuid` in your `php.ini`.
 
-## Build from source
+## 🛠️ Build from source
 
 ```sh
 phpize
@@ -126,13 +134,29 @@ fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 
 Generation stays on the pure-C fast path; supplying a custom `RandomGeneratorInterface` / `TimeGeneratorInterface` / `NodeProviderInterface` intentionally routes off it (ramsey behaviour) so application-supplied generators win. Migration from `ramsey/uuid` is largely a `use` swap from `Ramsey\Uuid\Uuid` to `FastUuid\Compat\Uuid`. The compat package has no external dependencies beyond the extension itself.
 
-## Benchmarks
+## 📊 Benchmarks
 
-On PHP 8.4 (NTS, non-debug, x86-64 with the SSSE3 formatter), generating a v4
-UUID and its canonical string runs at ~19.5M ops/sec via the procedural path and
-~12.6M via the object API, against ~1.1M for `ramsey/uuid` and ~0.47M for the PECL
-`uuid` extension. fast_uuid runs 11x to 57x faster than ramsey on v1/v4/v7
-generation, and 3x to 5x faster on parsing. Full table and method in
+Throughput against `ramsey/uuid` 4.9.2 and the PECL `uuid` extension 1.3.0
+(libuuid-backed). PHP 8.4.22 NTS, non-debug, no sanitizers; SSSE3 hex formatter
+active (x86-64). Each operation runs 300,000 iterations after a 20,000-iteration
+warmup; reported figure is the best of 40 runs. Million ops/sec, higher is
+better:
+
+| Operation        | fast_uuid (obj) | fast_uuid (proc) | ramsey/uuid | PECL uuid |
+|------------------|----------------:|-----------------:|------------:|----------:|
+| v4 gen→string    | 12.6            | **19.5**         | 1.10        | 0.47      |
+| v1 gen→string    | 12.3            | **16.5**         | 0.29        | 8.22      |
+| v7 gen→string    | 12.1            | **19.8**         | 0.66        | n/a       |
+| parse→16 bytes   | 10.4            | **16.2**         | 3.18        | 5.28      |
+
+Speedup over `ramsey/uuid`: v4 11.5x to 17.7x, v1 42x to 57x, v7 18.3x to 30x,
+parse 3.3x to 5.1x.
+
+The `fast_uuid` operations are fast enough (~50 ns) that scheduler noise
+dominates a single run, so read the `fast_uuid` columns as order-of-magnitude,
+not three-significant-digit (roughly ±10% run-to-run). `ramsey/uuid` (~900 ns)
+and PECL (~2 µs) reproduce to within ~3%. Full table, the ARM64/NEON numbers,
+the timestamp/DateTime API breakdown, and how to reproduce are in
 [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Testing
@@ -151,6 +175,21 @@ Build instructions, the stub-to-arginfo workflow, and the test conventions are i
 
 Report a vulnerability by email to ilia@ilia.ws. Details and scope are in [SECURITY.md](SECURITY.md).
 
+## 🔗 PHP Performance Toolkit
+
+Companion native PHP extensions for high-throughput PHP workloads:
+
+- **[php_excel](https://github.com/iliaal/php_excel)**: native Excel I/O. 7-10x faster than PhpSpreadsheet, full XLS/XLSX with formulas, formatting, and styling. Powered by LibXL.
+- **[mdparser](https://github.com/iliaal/mdparser)**: native CommonMark + GFM parser. 15-30x faster than pure-PHP alternatives, 652/652 spec examples pass.
+- **[php_clickhouse](https://github.com/iliaal/php_clickhouse)**: native ClickHouse client speaking the wire protocol directly. Picks up where SeasClick left off.
+- **[fastchart](https://github.com/iliaal/fastchart)**: native chart-rendering extension. 19 chart types behind one fluent OO API; composes with caller-owned `\GdImage` canvases.
+- **[fastjson](https://github.com/iliaal/fastjson)**: drop-in faster `ext/json`, backed by yyjson. 6x encode, 2.7x decode, 5x validate.
+- **[phpser](https://github.com/iliaal/phpser)**: decoder-optimized binary serializer for cache workloads. Faster than igbinary on packed numerics and DTO batches.
+
 ## License
 
 BSD-3-Clause. See [LICENSE](LICENSE).
+
+---
+
+[Follow @iliaa on X](https://x.com/iliaa) • [Blog](https://ilia.ws) • If this sped up your UUID generation, ⭐ star it!
