@@ -7,6 +7,8 @@ version_macro: PHP_FAST_UUID_VERSION  # from php_fast_uuid.h
 version_file: php_fast_uuid.h
 repo: iliaal/fast_uuid                # composer.json name; no git remote configured yet
 build_matrix:
+  - PHP-8.1
+  - PHP-8.2
   - PHP-8.3
   - PHP-8.4
   - PHP-8.5

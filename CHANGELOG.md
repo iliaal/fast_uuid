@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PHP 8.1 support (lowered the minimum from 8.3).
 - ARM64 builds now use a NEON table-lookup hex formatter for UUID string output,
   matching the existing SSSE3 fast path on x86-64.
 
