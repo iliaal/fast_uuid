@@ -21,7 +21,7 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 
 ## Requirements
 
-- PHP 8.3 through 8.6, NTS or ZTS. PHP 8.3 builds via two small `#if PHP_VERSION_ID < 80400` polyfills.
+- PHP 8.1 through 8.6, NTS or ZTS. PHP 8.1/8.2/8.3 build via small `#if PHP_VERSION_ID` polyfills.
 - x86-64 and ARM64 get the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
 - No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 and v5 use PHP's bundled MD5/SHA1.
 

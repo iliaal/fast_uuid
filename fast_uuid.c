@@ -826,7 +826,12 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
         if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
     } else {
         zend_argument_type_error(1, "must be of type int|DateTimeInterface|null, %s given",
+#if PHP_VERSION_ID >= 80300
                                  zend_zval_value_name(when));
+#else
+                                 /* zend_zval_value_name is 8.3+; 8.1/8.2 use the type-name form */
+                                 zend_zval_type_name(when));
+#endif
         RETURN_THROWS();
     }
     fu_return_uuid(return_value, b);
