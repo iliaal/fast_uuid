@@ -165,7 +165,7 @@ the timestamp/DateTime API breakdown, and how to reproduce are in
 make test                                  # run-tests.php against the built .so
 ```
 
-The suite (`tests/*.phpt`) covers every version, all parse forms, per-version `getDateTime`, fields/integer, node/clockSeq, the exception hierarchy, the procedural functions, the SIMD formatter, and the full compat layer. Verified green on PHP 8.3 / 8.4 / 8.4-ZTS / 8.5 / 8.6 (0 compiler warnings) and clean under an ASan/UBSan-instrumented build.
+The suite (`tests/*.phpt`) covers every version, all parse forms, per-version `getDateTime`, fields/integer, node/clockSeq, the exception hierarchy, the procedural functions, the SIMD formatter, and the full compat layer. Verified green on PHP 8.1 / 8.2 / 8.3 / 8.4 / 8.4-ZTS / 8.5 / 8.6 (0 compiler warnings) and clean under an ASan/UBSan-instrumented build.
 
 ## Contributing
 
