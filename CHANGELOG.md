@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-06
+
+### Fixed
+
+- Windows 32-bit (x86) builds for PHP 8.1 and 8.2 now link. The high-resolution
+  wall clock (`GetSystemTimePreciseAsFileTime`) is resolved at runtime via
+  `GetProcAddress` instead of import-linked, because the x86 import library in
+  the 8.1/8.2 Windows build SDK omits the symbol (`LNK2019`). Pre-Win8 hosts
+  fall back to `GetSystemTimeAsFileTime`. 0.2.0 attached no Windows DLLs for any
+  version because the x86 8.1/8.2 link failure blocked the upload step.
+
 ## [0.2.0] - 2026-06-06
 
 ### Added
@@ -71,7 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.2.1...HEAD
+[0.2.1]: https://github.com/iliaal/fast_uuid/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/iliaal/fast_uuid/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/iliaal/fast_uuid/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/iliaal/fast_uuid/compare/0.1.0...0.1.1

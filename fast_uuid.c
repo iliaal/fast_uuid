@@ -358,6 +358,16 @@ static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *
     return fu_lay_clockseq_node(b, node, clockseq);
 }
 
+#ifdef PHP_WIN32
+/* GetSystemTimePreciseAsFileTime is resolved at runtime, not import-linked: the
+   x86 import library shipped with the PHP 8.1/8.2 Windows build SDK omits it, so
+   a direct call fails at link time (LNK2019) for those 32-bit targets. MINIT
+   resolves the pointer once (single-threaded, so the file-static is race-free);
+   pre-Win8 hosts that lack the symbol fall back to GetSystemTimeAsFileTime. */
+typedef void (WINAPI *fu_precise_time_fn)(LPFILETIME);
+static fu_precise_time_fn fu_precise_time = NULL;
+#endif
+
 /* Wall-clock nanoseconds since the Unix epoch. POSIX uses CLOCK_REALTIME;
    Windows has no clock_gettime, so it reads GetSystemTimePreciseAsFileTime
    (100ns FILETIME ticks since 1601-01-01), which keeps sub-microsecond
@@ -365,7 +375,11 @@ static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *
 static inline uint64_t fu_unix_nanos(void) {
 #ifdef PHP_WIN32
     FILETIME ft;
-    GetSystemTimePreciseAsFileTime(&ft);
+    if (fu_precise_time) {
+        fu_precise_time(&ft);
+    } else {
+        GetSystemTimeAsFileTime(&ft);
+    }
     uint64_t t100 = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
     t100 -= 116444736000000000ULL; /* 1601-01-01 .. 1970-01-01 in 100ns ticks */
     return t100 * 100ULL;
@@ -1230,6 +1244,13 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     if (!atfork_registered) {
         pthread_atfork(NULL, NULL, fu_atfork_child);
         atfork_registered = 1;
+    }
+#else
+    {
+        HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
+        if (k32) {
+            fu_precise_time = (fu_precise_time_fn)GetProcAddress(k32, "GetSystemTimePreciseAsFileTime");
+        }
     }
 #endif
 
