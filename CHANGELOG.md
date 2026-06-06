@@ -7,11 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-06
+
 ### Added
 
-- PHP 8.1 support (lowered the minimum from 8.3).
+- PHP 8.1 and 8.2 support (lowered the minimum from 8.3).
 - ARM64 builds now use a NEON table-lookup hex formatter for UUID string output,
   matching the existing SSSE3 fast path on x86-64.
+
+### Fixed
+
+- Direct `$uuid->__unserialize([0 => $bytes])` on an already-stringified object
+  now invalidates the cached canonical string, so the string accessors
+  (`toString`/`__toString`/`getHex`/`getUrn`/`jsonSerialize`) and the byte
+  accessors agree after re-init. The normal `unserialize()` path was never
+  affected.
 
 ## [0.1.2] - 2026-06-01
 
@@ -61,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/iliaal/fast_uuid/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/iliaal/fast_uuid/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/iliaal/fast_uuid/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/iliaal/fast_uuid/releases/tag/0.1.0
