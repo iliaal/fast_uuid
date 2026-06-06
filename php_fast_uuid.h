@@ -18,7 +18,7 @@
 extern zend_module_entry fast_uuid_module_entry;
 #define phpext_fast_uuid_ptr &fast_uuid_module_entry
 
-#define PHP_FAST_UUID_VERSION "0.2.0"
+#define PHP_FAST_UUID_VERSION "0.2.1"
 
 #ifdef ZTS
 #include "TSRM.h"
