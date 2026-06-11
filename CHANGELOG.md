@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-11
+
+### Fixed
+
+- `getVersion()` now returns `null` for UUIDs whose variant bits are not RFC 4122
+  (`10x`), matching ramsey/uuid. Previously it read the version nibble
+  unconditionally and returned a meaningless value for NCS/Microsoft/future-variant
+  UUIDs.
+- `getDateTime()` no longer overflows for far-future v7 timestamps that exceed
+  `zend_long`'s range on 32-bit PHP; it falls back to string-based
+  `DateTimeImmutable` construction in that case.
+- `getTimestampMillis()` throws `FastUuid\Exception\UnsupportedOperationException`
+  on 32-bit builds when the millisecond value can't be represented as a platform
+  integer, instead of silently returning a truncated value.
+
 ## [0.2.1] - 2026-06-06
 
 ### Fixed
@@ -82,7 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.2.1...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.2.2...HEAD
+[0.2.2]: https://github.com/iliaal/fast_uuid/compare/0.2.1...0.2.2
 [0.2.1]: https://github.com/iliaal/fast_uuid/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/iliaal/fast_uuid/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/iliaal/fast_uuid/compare/0.1.1...0.1.2
