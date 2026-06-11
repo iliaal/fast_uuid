@@ -88,7 +88,7 @@ toBytes(): string         toHexadecimal(): string   toUrn(): string           to
 - `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for the time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for v3/v4/v5/v8.
 - `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
 - UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order. `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
-- `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max.
+- `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max and non-RFC variants.
 - `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
 - `equals()` accepts another UUID object or its canonical string.

@@ -656,17 +656,7 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
     return SUCCESS;
 }
 
-/* build a DateTimeImmutable (UTC) from whole seconds + microseconds, preserving
-   sub-second. 8.4+ uses ext/date's internal constructor (PHPAPI) directly; 8.3
-   lacks php_date_initialize_from_ts_long, so it falls back to a dynamic
-   DateTimeImmutable::createFromFormat("U.u", ...) call. */
-static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
-#if PHP_VERSION_ID >= 80400
-    php_date_instantiate(php_date_get_immutable_ce(), rv);
-    php_date_obj *dobj = php_date_obj_from_obj(Z_OBJ_P(rv));
-    php_date_initialize_from_ts_long(dobj, (zend_long)secs, (int)micros);
-    return SUCCESS;
-#else
+static zend_result fu_make_datetime_from_string(zval *rv, int64_t secs, uint32_t micros) {
     zend_string *buf = strpprintf(0, "%lld.%06u", (long long)secs, micros);
     zval callable, args[2], ret;
     array_init(&callable);
@@ -688,7 +678,22 @@ static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
         zend_throw_exception(fu_ex_unsupported, "Could not build DateTimeImmutable from UUID timestamp", 0);
     }
     return ok;
+}
+
+/* build a DateTimeImmutable (UTC) from whole seconds + microseconds, preserving
+   sub-second. 8.4+ uses ext/date's internal constructor (PHPAPI) directly when
+   the seconds fit zend_long; older versions and 32-bit overflow cases fall back
+   to DateTimeImmutable::createFromFormat("U.u"). */
+static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
+#if PHP_VERSION_ID >= 80400
+    if (secs >= (int64_t) ZEND_LONG_MIN && secs <= (int64_t) ZEND_LONG_MAX) {
+        php_date_instantiate(php_date_get_immutable_ce(), rv);
+        php_date_obj *dobj = php_date_obj_from_obj(Z_OBJ_P(rv));
+        php_date_initialize_from_ts_long(dobj, (zend_long)secs, (int)micros);
+        return SUCCESS;
+    }
 #endif
+    return fu_make_datetime_from_string(rv, secs, micros);
 }
 
 /* arginfo, method/function tables, and class registrators are generated from
@@ -987,6 +992,7 @@ PHP_METHOD(FastUuid_Uuid, getVersion) {
     int allz = 1, allf = 1;
     for (int i = 0; i < 16; i++) { if (u->b[i]) allz = 0; if (u->b[i] != 0xff) allf = 0; }
     if (allz || allf) RETURN_NULL();
+    if ((u->b[8] & 0xC0) != 0x80) RETURN_NULL();
     RETURN_LONG((u->b[6] >> 4) & 0x0f);
 }
 
@@ -1068,7 +1074,12 @@ PHP_METHOD(FastUuid_Uuid, getTimestampMillis) {
         zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
         RETURN_THROWS();
     }
-    RETURN_LONG((zend_long)(secs * 1000LL + (int64_t)(micros / 1000)));
+    int64_t millis = secs * 1000LL + (int64_t)(micros / 1000);
+    if (millis < (int64_t) ZEND_LONG_MIN || millis > (int64_t) ZEND_LONG_MAX) {
+        zend_throw_exception(fu_ex_unsupported, "UUID timestamp cannot be represented as an integer on this PHP build", 0);
+        RETURN_THROWS();
+    }
+    RETURN_LONG((zend_long) millis);
 }
 
 PHP_METHOD(FastUuid_Uuid, getFields) {
