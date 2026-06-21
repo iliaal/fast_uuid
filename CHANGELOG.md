@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `ramsey/uuid` compat layer: `Fields::getTimestamp()` truncated v1/v6 timestamps on 32-bit PHP (a 48-bit `hexdec()` became a float, then the bit-shifts dropped precision). It now rebuilds the value as a hex string, exact on 32- and 64-bit.
+
 ## [0.2.2] - 2026-06-11
 
 ### Fixed
