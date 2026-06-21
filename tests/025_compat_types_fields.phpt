@@ -36,8 +36,17 @@ var_dump($fields->getClockSeqLow() instanceof Hexadecimal);
 
 $nil = Uuid::fromString(Uuid::NIL);
 var_dump($nil->getFields()->isNil() === true);
+
+// getTimestamp reassembles the 60-bit value as a hex string (no hexdec()/float),
+// so it stays exact on 32-bit PHP. Fixed vectors computed from the RFC layout.
+$v6 = Uuid::fromString('1ec9414c-232a-668f-8a1b-2c3d4e5f6071');
+var_dump((string) $v6->getFields()->getTimestamp() === '1ec9414c232a68f');
+$v1 = Uuid::fromString('aabbccdd-eeff-1199-8b1c-2d3e4f506172');
+var_dump((string) $v1->getFields()->getTimestamp() === '199eeffaabbccdd');
 ?>
 --EXPECT--
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)
