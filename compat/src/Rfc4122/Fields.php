@@ -8,6 +8,9 @@ use FastUuid\Compat\Type\Hexadecimal;
 
 final class Fields implements FieldsInterface
 {
+    private const NIL_BYTES = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+    private const MAX_BYTES = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
+
     /** @param string $bytes 16 raw bytes */
     public function __construct(private string $bytes)
     {
@@ -62,24 +65,26 @@ final class Fields implements FieldsInterface
     {
         $b = $this->bytes;
         $v = $this->getVersion();
+        // Reassemble as a hex string rather than hexdec()+shifts: the 60-bit
+        // value exceeds PHP_INT_MAX on 32-bit PHP, where hexdec() returns float
+        // and the bit-ops silently truncate. String slicing stays exact.
         if ($v === 6) {
-            // v6: time is stored most-significant first across bytes 0..7
+            // v6: most-significant first across bytes 0..7, version nibble at
+            // hex offset 12 — concat the 48 high bits with the 12 low bits.
             $hex = bin2hex(substr($b, 0, 8));
-            $t = (hexdec(substr($hex, 0, 12)) << 12) | (hexdec(substr($hex, 13, 3)));
-            return new Hexadecimal(sprintf('%015x', $t));
+            return new Hexadecimal(substr($hex, 0, 12) . substr($hex, 13, 3));
         }
         if ($v === 7) {
             // v7: 48-bit unix_ts_ms
             return new Hexadecimal(bin2hex(substr($b, 0, 6)));
         }
-        // v1 (default): reassemble timeHi<<48 | timeMid<<32 | timeLow
-        $timeLow = hexdec(bin2hex(substr($b, 0, 4)));
-        $timeMid = hexdec(bin2hex(substr($b, 4, 2)));
-        $timeHi  = hexdec(bin2hex(substr($b, 6, 2))) & 0x0fff;
-        $t = ($timeHi << 48) | ($timeMid << 32) | $timeLow;
-        return new Hexadecimal(sprintf('%015x', $t));
+        // v1 (default): timeHi(12 bits) . timeMid(16) . timeLow(32) = 15 nibbles.
+        $timeLow = bin2hex(substr($b, 0, 4));            // 8 hex
+        $timeMid = bin2hex(substr($b, 4, 2));            // 4 hex
+        $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1); // drop version nibble -> 3 hex
+        return new Hexadecimal($timeHi . $timeMid . $timeLow);
     }
 
-    public function isNil(): bool { return $this->bytes === str_repeat("\x00", 16); }
-    public function isMax(): bool { return $this->bytes === str_repeat("\xff", 16); }
+    public function isNil(): bool { return $this->bytes === self::NIL_BYTES; }
+    public function isMax(): bool { return $this->bytes === self::MAX_BYTES; }
 }
