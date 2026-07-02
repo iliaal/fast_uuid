@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 4565d8d81e0ea5c859d4e5fce6f2399adb9e0123 */
+ * Stub hash: e18fac27001a01ed78721726a09c37f009ada864 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -148,6 +148,10 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___unserializ
 	ZEND_ARG_TYPE_INFO(0, data, IS_ARRAY, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___set_state, 0, 1, IS_STATIC, 0)
+	ZEND_ARG_TYPE_INFO(0, an_array, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_FUNCTION(uuid_v1);
 ZEND_FUNCTION(uuid_v3);
 ZEND_FUNCTION(uuid_v4);
@@ -191,6 +195,7 @@ ZEND_METHOD(FastUuid_Uuid, compareTo);
 ZEND_METHOD(FastUuid_Uuid, jsonSerialize);
 ZEND_METHOD(FastUuid_Uuid, __serialize);
 ZEND_METHOD(FastUuid_Uuid, __unserialize);
+ZEND_METHOD(FastUuid_Uuid, __set_state);
 
 static const zend_function_entry ext_functions[] = {
 	ZEND_FE(uuid_v1, arginfo_uuid_v1)
@@ -245,6 +250,7 @@ static const zend_function_entry class_FastUuid_Uuid_methods[] = {
 	ZEND_ME(FastUuid_Uuid, jsonSerialize, arginfo_class_FastUuid_Uuid_jsonSerialize, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, __serialize, arginfo_class_FastUuid_Uuid___serialize, ZEND_ACC_PUBLIC)
 	ZEND_ME(FastUuid_Uuid, __unserialize, arginfo_class_FastUuid_Uuid___unserialize, ZEND_ACC_PUBLIC)
+	ZEND_ME(FastUuid_Uuid, __set_state, arginfo_class_FastUuid_Uuid___set_state, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_FE_END
 };
 

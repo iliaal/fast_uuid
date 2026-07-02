@@ -7,6 +7,7 @@ namespace FastUuid\Compat\Codec;
 use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
+use FastUuid\Exception\UnsupportedOperationException;
 
 /**
  * Binary ordering for version-1 UUIDs that sorts by time, for use as a MySQL
@@ -34,6 +35,13 @@ final class OrderedTimeCodec extends StringCodec
         $b = $bytes;
         $restored = $b[4] . $b[5] . $b[6] . $b[7] . $b[2] . $b[3] . $b[0] . $b[1] . \substr($b, 8);
 
-        return Uuid::fromBytes($restored);
+        $uuid = Uuid::fromBytes($restored);
+        if ($uuid->getVersion() !== 1) {
+            throw new UnsupportedOperationException(
+                'Attempting to decode a non-time-based UUID using OrderedTimeCodec'
+            );
+        }
+
+        return $uuid;
     }
 }

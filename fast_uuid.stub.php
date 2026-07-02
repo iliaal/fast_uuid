@@ -61,6 +61,7 @@ namespace FastUuid {
         public function jsonSerialize(): string {}
         public function __serialize(): array {}
         public function __unserialize(array $data): void {}
+        public static function __set_state(array $an_array): static {}
     }
 }
 

@@ -33,7 +33,9 @@ use FastUuid\Compat\Validator\ValidatorInterface;
  *
  * The fast path is pure C. Swapping in a RandomGeneratorInterface,
  * TimeGeneratorInterface or NodeProviderInterface intentionally routes off the
- * C fast path (ramsey-compat behaviour) so application-supplied generators win.
+ * C fast path (ramsey-compat behaviour) so application-supplied generators win
+ * for uuid1/uuid4/uuid6. uuid2 always uses the C core — ramsey's uuid2
+ * likewise bypasses a later-set time generator via its fixed DCE generator.
  */
 final class UuidFactory
 {
@@ -109,7 +111,8 @@ final class UuidFactory
             if ($node === null && $this->customNodeProvider) {
                 $node = \bin2hex($this->getNodeProvider()->getNode());
             }
-            return $this->wrap(\FastUuid\Uuid::fromBytes($this->getTimeGenerator()->generate($node, $clockSeq)));
+            $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
+            return $this->wrap(\FastUuid\Uuid::fromBytes($b));
         }
         return $this->wrap(\FastUuid\Uuid::uuid1($node, $clockSeq));
     }
@@ -153,6 +156,16 @@ final class UuidFactory
     {
         if ($node === null && $this->customNodeProvider) {
             $node = \bin2hex($this->getNodeProvider()->getNode());
+        }
+        if ($this->customTimeGenerator) {
+            // ramsey parity: v6 is built from the time generator's v1 bytes
+            // with the timestamp reordered most-significant-first.
+            $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
+            $hex = \bin2hex(\substr($b, 0, 8));
+            // 60-bit timestamp from the v1 layout: timeHi . timeMid . timeLow
+            $ts = \substr($hex, 13, 3) . \substr($hex, 8, 4) . \substr($hex, 0, 8);
+            $head = \hex2bin(\substr($ts, 0, 12) . '6' . \substr($ts, 12, 3));
+            return $this->wrap(\FastUuid\Uuid::fromBytes($head . \substr($b, 8)));
         }
         return $this->wrap(\FastUuid\Uuid::uuid6($node, $clockSeq));
     }
@@ -236,5 +249,22 @@ final class UuidFactory
     private function coreNamespace(UuidInterface|string $ns): \FastUuid\Uuid|string
     {
         return $ns instanceof UuidInterface ? $ns->getCore() : $ns;
+    }
+
+    /**
+     * ramsey parity (uuidFromBytesAndVersion): the factory owns the version
+     * and variant nibbles, so generators ported from ramsey — whose contract
+     * leaves the nibbles to the factory — produce valid RFC bytes here too.
+     */
+    private static function applyVersionAndVariant(string $b, int $version): string
+    {
+        if (\strlen($b) !== 16) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'Time generator must return exactly 16 bytes, got ' . \strlen($b)
+            );
+        }
+        $b[6] = \chr((\ord($b[6]) & 0x0f) | ($version << 4));
+        $b[8] = \chr((\ord($b[8]) & 0x3f) | 0x80);
+        return $b;
     }
 }

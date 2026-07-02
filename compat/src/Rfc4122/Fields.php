@@ -37,6 +37,10 @@ final class Fields implements FieldsInterface
 
     public function getClockSeq(): Hexadecimal
     {
+        if ($this->isMax()) {
+            // ramsey parity: the max UUID reports the unmasked ffff
+            return new Hexadecimal('ffff');
+        }
         $hi = \ord($this->bytes[8]);
         // variant bits masked off per RFC layout
         $clockSeq = (($hi & 0x3f) << 8) | \ord($this->bytes[9]);
@@ -46,6 +50,11 @@ final class Fields implements FieldsInterface
     public function getVersion(): ?int
     {
         if ($this->isNil() || $this->isMax()) {
+            return null;
+        }
+        // Non-RFC variants carry no version field. Keep in sync with the C
+        // getVersion (fast_uuid.c, variant guard on byte 8).
+        if ($this->getVariant() !== 2) {
             return null;
         }
         return (\ord($this->bytes[6]) >> 4) & 0x0f;
@@ -75,8 +84,17 @@ final class Fields implements FieldsInterface
             return new Hexadecimal(substr($hex, 0, 12) . substr($hex, 13, 3));
         }
         if ($v === 7) {
-            // v7: 48-bit unix_ts_ms
-            return new Hexadecimal(bin2hex(substr($b, 0, 6)));
+            // v7: 48-bit unix_ts_ms, zero-padded to 15 nibbles (ramsey returns
+            // a 60-bit value for consistency across versions).
+            return new Hexadecimal('000' . bin2hex(substr($b, 0, 6)));
+        }
+        if ($v === 2) {
+            // v2 (DCE): time_low carries the local identifier, so only the
+            // upper 28 timestamp bits survive. Zero the low 32 like ramsey
+            // and the C decoder (fu_decode_time).
+            $timeMid = bin2hex(substr($b, 4, 2));
+            $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
+            return new Hexadecimal($timeHi . $timeMid . '00000000');
         }
         // v1 (default): timeHi(12 bits) . timeMid(16) . timeLow(32) = 15 nibbles.
         $timeLow = bin2hex(substr($b, 0, 4));            // 8 hex
