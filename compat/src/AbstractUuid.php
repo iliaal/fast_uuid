@@ -39,6 +39,9 @@ abstract class AbstractUuid implements UuidInterface
         if ($other instanceof UuidInterface) {
             return $this->core->equals($other->getCore());
         }
+        if ($other instanceof \FastUuid\Uuid) {
+            return $this->core->equals($other);
+        }
         return false;
     }
 

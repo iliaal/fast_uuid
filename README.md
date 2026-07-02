@@ -69,7 +69,7 @@ uuid8(string $bytes)                       // 16 raw bytes
 fromString(string $uuid)                   // canonical, urn:uuid:, {braced}, bare 32-hex, any case
 fromBytes(string $bytes)                   // 16 raw bytes
 fromInteger(string $integer)               // decimal string
-fromHexadecimal(string $hex)               // 32 hex chars
+fromHexadecimal(Stringable|string $hex)    // 32 hex chars; Stringable covers ramsey's Type\Hexadecimal
 fromDateTime(DateTimeInterface $dt, int|string|null $node = null, ?int $clockSeq = null)
 isValid(string $uuid): bool
 ```
@@ -87,11 +87,12 @@ toBytes(): string         toHexadecimal(): string   toUrn(): string           to
 - `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
 - `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for the time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for v3/v4/v5/v8.
 - `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
-- UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order. `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
+- UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order (the tie-breaking counter is per process — per thread under ZTS — so ~244 ns ties across threads or processes carry no order). `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max and non-RFC variants.
 - `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
-- `equals()` accepts another UUID object or its canonical string.
+- `equals()` and `compareTo()` accept another UUID object (native, a compat wrapper, or any `Stringable` whose string form parses as a UUID) or its canonical string.
+- `var_dump()` shows the value as a virtual `uuid` property, and `var_export()` output rebuilds through `Uuid::__set_state()`.
 
 Constants: `NIL`, `MAX`, `NAMESPACE_DNS`, `NAMESPACE_URL`, `NAMESPACE_OID`, `NAMESPACE_X500`, `DCE_DOMAIN_PERSON`, `DCE_DOMAIN_GROUP`, `DCE_DOMAIN_ORG`.
 
@@ -105,7 +106,7 @@ $u->getVersion();        // 2
 $u = \FastUuid\Uuid::uuid2(\FastUuid\Uuid::DCE_DOMAIN_GROUP, 4242);
 ```
 
-The local identifier occupies bytes 0 to 3 (big-endian); the local domain is stored in byte 9. With domain PERSON or GROUP and a null identifier, the extension uses the process uid or gid.
+The local identifier occupies bytes 0 to 3 (big-endian); the local domain is stored in byte 9. With domain PERSON or GROUP and a null identifier, the extension uses the process uid or gid; on Windows, where there is no POSIX uid/gid, an explicit `localIdentifier` is required.
 
 ## Exceptions
 

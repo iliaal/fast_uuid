@@ -238,6 +238,30 @@ static zend_result fu_cast(zend_object *o, zval *ret, int type) {
     return zend_std_cast_object_tostring(o, ret, type);
 }
 
+/* The object stores its state in fu_obj, not in the property table, so the
+   std handlers show var_dump() an empty object and var_export() emits an
+   unrebuildable __set_state(array()). Surface a virtual "uuid" string for
+   both; __set_state() (below) parses it back. */
+static HashTable *fu_get_debug_info(zend_object *o, int *is_temp) {
+    zval zv;
+    HashTable *ht = zend_new_array(1);
+    ZVAL_STR(&zv, fu_str(fu_from_zobj(o)));
+    zend_hash_str_update(ht, "uuid", sizeof("uuid") - 1, &zv);
+    *is_temp = 1;
+    return ht;
+}
+
+static zend_array *fu_get_properties_for(zend_object *o, zend_prop_purpose purpose) {
+    if (purpose == ZEND_PROP_PURPOSE_VAR_EXPORT) {
+        zval zv;
+        zend_array *ht = zend_new_array(1);
+        ZVAL_STR(&zv, fu_str(fu_from_zobj(o)));
+        zend_hash_str_update(ht, "uuid", sizeof("uuid") - 1, &zv);
+        return ht;
+    }
+    return zend_std_get_properties_for(o, purpose);
+}
+
 /* ------------------------------------------------------------------ */
 /* randomness                                                         */
 /* ------------------------------------------------------------------ */
@@ -296,6 +320,12 @@ static zend_result fu_rand_u64(uint64_t *out) {
    to that thread's globals under ZTS (pcntl_fork always forks a PHP thread with
    a live TSRM cache). */
 static void fu_atfork_child(void) {
+#ifdef ZTS
+    /* A fork() issued by a native thread that never entered PHP (another
+       extension, an embedded library) has no TSRM cache; FAST_UUID_G would
+       offset off a NULL base. That thread has no PHP globals to reset. */
+    if (!tsrm_get_ls_cache()) return;
+#endif
     FAST_UUID_G(rpos) = sizeof(FAST_UUID_G(rbuf)); /* force refill on next fu_rand */
     FAST_UUID_G(prng_seeded) = 0;                  /* force xoshiro reseed */
     FAST_UUID_G(v7_key) = 0;                        /* force v7 reseed (new key > 0) */
@@ -539,12 +569,13 @@ static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
     memcpy(u->b, b, 16);
 }
 
-/* Resolve a namespace argument to 16 bytes. Accepts a native Uuid (zero-copy),
-   any Stringable (incl. a userland FastUuid\UuidInterface) by parsing its string
-   form, or a UUID string. Returns 0 on a non-match or unparseable value; on a
-   throwing __toString it leaves EG(exception) set, which the caller must honor
-   rather than overwrite. */
-static int fu_resolve_ns(zval *z, unsigned char ns[16]) {
+/* Resolve a UUID-valued argument (namespace, equals, compareTo) to 16 bytes.
+   Accepts a native Uuid (zero-copy), any Stringable (incl. a userland or
+   compat FastUuid UuidInterface) by parsing its string form, or a UUID string.
+   Returns 0 on a non-match or unparseable value; on a throwing __toString it
+   leaves EG(exception) set, which the caller must honor rather than
+   overwrite. */
+static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
     if (Z_TYPE_P(z) == IS_OBJECT) {
         zend_class_entry *ce = Z_OBJCE_P(z);
         if (instanceof_function(ce, fast_uuid_ce)) {
@@ -698,7 +729,8 @@ static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
 
 /* arginfo, method/function tables, and class registrators are generated from
    fast_uuid.stub.php into fast_uuid_arginfo.h (included near the top of this
-   file). Regenerate with /php-stub-regen after any signature change. */
+   file). Regenerate with php-src's build/gen_stub.php after any signature
+   change. */
 
 /* ------------------------------------------------------------------ */
 /* static factories                                                   */
@@ -753,7 +785,10 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
 #ifndef PHP_WIN32
         local_id = (local_domain == 1) ? (uint32_t)getgid() : (uint32_t)getuid();
 #else
-        local_id = 0;
+        /* No POSIX uid/gid: a silent 0 would be indistinguishable from root. */
+        zend_throw_exception(fu_ex_invalid_arg,
+            "localIdentifier is required on Windows (no process uid/gid to fall back to)", 0);
+        RETURN_THROWS();
 #endif
     } else {
         zend_throw_exception(fu_ex_invalid_arg,
@@ -772,7 +807,7 @@ PHP_METHOD(FastUuid_Uuid, uuid3) {
     zval *zns; zend_string *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
-    if (!fu_resolve_ns(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_uuid(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16]; fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
 }
 
@@ -785,7 +820,7 @@ PHP_METHOD(FastUuid_Uuid, uuid5) {
     zval *zns; zend_string *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
-    if (!fu_resolve_ns(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_uuid(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16]; fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
 }
 
@@ -1083,7 +1118,8 @@ PHP_METHOD(FastUuid_Uuid, getTimestampMillis) {
 }
 
 PHP_METHOD(FastUuid_Uuid, getFields) {
-    /* NOTE: ramsey returns a FieldsInterface object; scaffold returns a hex array. */
+    /* ramsey returns a FieldsInterface object; this returns a hex array by
+       design — the compat layer supplies the FieldsInterface shape. */
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     array_init(return_value);
@@ -1102,10 +1138,10 @@ PHP_METHOD(FastUuid_Uuid, equals) {
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ZVAL(o) ZEND_PARSE_PARAMETERS_END();
     fu_obj *self = fu_from_zobj(Z_OBJ_P(getThis()));
     unsigned char b[16];
-    if (Z_TYPE_P(o) == IS_OBJECT && instanceof_function(Z_OBJCE_P(o), fast_uuid_ce))
-        memcpy(b, fu_from_zobj(Z_OBJ_P(o))->b, 16);
-    else if (Z_TYPE_P(o) == IS_STRING && fu_parse(Z_STRVAL_P(o), Z_STRLEN_P(o), b)) {}
-    else RETURN_FALSE;
+    if (!fu_resolve_uuid(o, b)) {
+        if (UNEXPECTED(EG(exception))) RETURN_THROWS();
+        RETURN_FALSE;
+    }
     RETURN_BOOL(memcmp(self->b, b, 16) == 0);
 }
 
@@ -1114,10 +1150,11 @@ PHP_METHOD(FastUuid_Uuid, compareTo) {
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ZVAL(o) ZEND_PARSE_PARAMETERS_END();
     fu_obj *self = fu_from_zobj(Z_OBJ_P(getThis()));
     unsigned char b[16];
-    if (Z_TYPE_P(o) == IS_OBJECT && instanceof_function(Z_OBJCE_P(o), fast_uuid_ce))
-        memcpy(b, fu_from_zobj(Z_OBJ_P(o))->b, 16);
-    else if (Z_TYPE_P(o) == IS_STRING && fu_parse(Z_STRVAL_P(o), Z_STRLEN_P(o), b)) {}
-    else { zend_throw_exception(fu_ex_invalid_arg, "Not comparable", 0); RETURN_THROWS(); }
+    if (!fu_resolve_uuid(o, b)) {
+        if (UNEXPECTED(EG(exception))) RETURN_THROWS();
+        zend_throw_exception(fu_ex_invalid_arg, "Not comparable", 0);
+        RETURN_THROWS();
+    }
     int r = memcmp(self->b, b, 16);
     RETURN_LONG(r < 0 ? -1 : (r > 0 ? 1 : 0));
 }
@@ -1148,6 +1185,19 @@ PHP_METHOD(FastUuid_Uuid, __unserialize) {
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     if (u->str) { zend_string_release(u->str); u->str = NULL; }
     memcpy(u->b, Z_STRVAL_P(zb), 16);
+}
+
+/* Rebuild from var_export() output (see fu_get_properties_for). */
+PHP_METHOD(FastUuid_Uuid, __set_state) {
+    HashTable *data;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ARRAY_HT(data) ZEND_PARSE_PARAMETERS_END();
+    zval *zs = zend_hash_str_find(data, "uuid", sizeof("uuid") - 1);
+    unsigned char b[16];
+    if (!zs || Z_TYPE_P(zs) != IS_STRING || !fu_parse(Z_STRVAL_P(zs), Z_STRLEN_P(zs), b)) {
+        zend_throw_exception(fu_ex_invalid_arg, "Invalid __set_state payload; expected ['uuid' => <uuid string>]", 0);
+        RETURN_THROWS();
+    }
+    fu_return_uuid(return_value, b);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1250,7 +1300,10 @@ PHP_MINIT_FUNCTION(fast_uuid) {
        the handler pointer lives as long as the .so, which for an
        extension=-loaded (persistent) module is the whole process lifetime.
        Guard against a second MINIT (e.g. dl() after a static load) so we don't
-       stack duplicate handlers. */
+       stack duplicate handlers. There is no unregister API: glibc drops a
+       DSO's atfork handlers at dlclose, musl does NOT — on musl, unloading
+       this .so (dl() teardown) leaves a dangling handler and the next fork()
+       crashes. Load via extension=, not dl(), on musl/Alpine. */
     static int atfork_registered = 0;
     if (!atfork_registered) {
         pthread_atfork(NULL, NULL, fu_atfork_child);
@@ -1275,11 +1328,13 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     fast_uuid_ce->create_object = fu_create;
 
     memcpy(&fu_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
-    fu_handlers.offset      = offsetof(fu_obj, std);
-    fu_handlers.free_obj    = fu_free;
-    fu_handlers.clone_obj   = fu_clone;
-    fu_handlers.compare     = fu_compare;
-    fu_handlers.cast_object = fu_cast;
+    fu_handlers.offset             = offsetof(fu_obj, std);
+    fu_handlers.free_obj           = fu_free;
+    fu_handlers.clone_obj          = fu_clone;
+    fu_handlers.compare            = fu_compare;
+    fu_handlers.cast_object        = fu_cast;
+    fu_handlers.get_debug_info     = fu_get_debug_info;
+    fu_handlers.get_properties_for = fu_get_properties_for;
 
     /* exception hierarchy (ramsey-shaped): InvalidUuidString <- InvalidArgument <- \InvalidArgumentException */
     fu_ex_invalid_arg = register_class_FastUuid_Exception_InvalidArgumentException(spl_ce_InvalidArgumentException);

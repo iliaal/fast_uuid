@@ -6,7 +6,9 @@ namespace FastUuid\Compat\Provider;
 
 /**
  * Mirrors Ramsey\Uuid\Generator\TimeGeneratorInterface. Returns the 16 raw
- * bytes of a time-based (v1) UUID for the given node / clock sequence.
+ * bytes of a time-based (v1) UUID for the given node / clock sequence. The
+ * factory forces the version/variant nibbles afterwards (ramsey parity), so
+ * a generator does not need to set them itself.
  */
 interface TimeGeneratorInterface
 {

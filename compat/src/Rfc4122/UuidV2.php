@@ -20,6 +20,8 @@ final class UuidV2 extends AbstractUuid
 
     public function getLocalIdentifier(): IntegerObject
     {
-        return new IntegerObject(\unpack('N', \substr($this->core->getBytes(), 0, 4))[1]);
+        // %u keeps identifiers >= 2^31 positive on 32-bit PHP, where
+        // unpack('N') yields a signed int.
+        return new IntegerObject(\sprintf('%u', \unpack('N', \substr($this->core->getBytes(), 0, 4))[1]));
     }
 }

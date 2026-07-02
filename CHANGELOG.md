@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `ramsey/uuid` compat layer: `Fields::getTimestamp()` truncated v1/v6 timestamps on 32-bit PHP (a 48-bit `hexdec()` became a float, then the bit-shifts dropped precision). It now rebuilds the value as a hex string, exact on 32- and 64-bit.
+- Compat `TimestampFirstCombCodec` used a byte rotation instead of ramsey's first-6/last-6 swap, so COMBs written by ramsey/uuid decoded to a *different* UUID (and vice versa). The layout now matches ramsey; COMB columns interop correctly.
+- Compat `Fields::getTimestamp()` had no v2 branch: a DCE UUID's 32-bit local identifier leaked into the low timestamp bits. It now zeroes them, matching ramsey and the C decoder.
+- Compat `Fields::getVersion()` now returns `null` for non-RFC variants, mirroring the 0.2.2 C-layer fix that had not been applied to the compat side.
+- Compat `Fields::getClockSeq()` returns `ffff` for the max UUID (ramsey parity; previously the variant mask clipped it to `3fff`).
+- Compat `Fields::getTimestamp()` zero-pads the v7 value to 15 hex digits (60 bits), matching ramsey's string form.
+- Compat `UuidV2::getLocalIdentifier()` returned a negative value on 32-bit PHP for identifiers >= 2^31 (`unpack('N')` signedness); now formatted through `%u`.
+- Compat `OrderedTimeCodec::decodeBytes()` now throws `UnsupportedOperationException` when the restored bytes are not a version-1 UUID (ramsey parity; previously mis-ordered input silently produced a plausible wrong UUID).
+- `equals()`/`compareTo()` on the C extension now accept any `Stringable` UUID object (including compat wrappers), and compat `equals()` accepts a raw `\FastUuid\Uuid` — previously the package's own two object layers reported `false`/"Not comparable" for identical bytes.
+- Compat `UuidFactory`: a custom `TimeGeneratorInterface` is now honored by `uuid6()` (v1 bytes reordered per RFC 9562), and the factory forces the version/variant nibbles on generator output (`uuid1()`/`uuid6()`), so generators ported from ramsey — whose contract leaves the nibbles to the factory — work unchanged.
+- `uuid2()` with a null `localIdentifier` now throws on Windows instead of silently embedding identifier 0 (indistinguishable from uid 0); there is no POSIX uid/gid to fall back to there.
+- Compat `Type\Hexadecimal`/`Type\Integer` validation regexes no longer accept a trailing newline (`/D` modifier; hardening beyond ramsey, which shares the unanchored pattern).
+- `compat/composer.json` still required PHP >= 8.3; lowered to the project floor of 8.1.
+- The ZTS `pthread_atfork` child handler now no-ops for a `fork()` issued from a native thread that never entered PHP, instead of resolving module globals off a missing TSRM cache.
+
+### Added
+- `var_dump()` on a `FastUuid\Uuid` now shows the value as a virtual `uuid` property, and `var_export()` emits `FastUuid\Uuid::__set_state(['uuid' => ...])` that rebuilds the object (previously the export was empty and fatal to re-evaluate).
+- Test coverage for previously untested surfaces: the v8 success path (core, procedural, compat mapping), procedural `uuid_v3()`/`uuid_v5()`, `getVariant()` Microsoft/future branches, `fromInteger()` rejection (out-of-range and non-numeric), right-length/bad-content and embedded-NUL parser rejections, the default compat node/time providers, and ramsey-parity vectors for the compat codecs and `Fields`.
 
 ## [0.2.2] - 2026-06-11
 

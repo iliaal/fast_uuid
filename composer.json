@@ -1,6 +1,6 @@
 {
     "name": "iliaal/fast_uuid",
-    "description": "Fast RFC 9562 UUID generation (v1/v2/v3/v4/v6/v7/v8 + nil/max) as a PHP C extension, with a ramsey/uuid-shaped object API and procedural fast-path functions.",
+    "description": "Fast RFC 9562 UUID generation (v1/v2/v3/v4/v5/v6/v7/v8 + nil/max) as a PHP C extension, with a ramsey/uuid-shaped object API and procedural fast-path functions.",
     "type": "php-ext",
     "license": "BSD-3-Clause",
     "keywords": ["uuid", "guid", "rfc9562", "rfc4122", "extension", "uuid7"],
