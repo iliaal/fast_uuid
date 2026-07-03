@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-03
+
 ### Added
 - Procedural binary generators that return the raw 16-byte value with no canonical formatting: `uuid_v1_bin()`, `uuid_v3_bin()`, `uuid_v4_bin()`, `uuid_v4_fast_bin()`, `uuid_v5_bin()`, `uuid_v6_bin()`, `uuid_v7_bin()`, `uuid_v7_at_bin()`, and `uuid_v8_bin()`. Store UUIDs in a `BINARY(16)` column or write them to a wire format without a string round-trip.
 - Bulk generators that build many UUIDs in one call: `uuid_v4_batch($n)` and `uuid_v7_batch($n)` return an array of canonical strings; `uuid_v4_bin_batch($n)` and `uuid_v7_bin_batch($n)` return an array of raw 16-byte strings. They amortize the per-call overhead across the batch (roughly +15% to +47% per UUID at a batch of 100), and v7 batches stay monotonic within the call.
@@ -27,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compat `Fields::getTimestamp()` zero-pads the v7 value to 15 hex digits (60 bits), matching ramsey's string form.
 - Compat `UuidV2::getLocalIdentifier()` returned a negative value on 32-bit PHP for identifiers >= 2^31 (`unpack('N')` signedness); now formatted through `%u`.
 - Compat `OrderedTimeCodec::decodeBytes()` now throws `UnsupportedOperationException` when the restored bytes are not a version-1 UUID (ramsey parity; previously mis-ordered input silently produced a plausible wrong UUID).
-- `equals()`/`compareTo()` on the C extension now accept any `Stringable` UUID object (including compat wrappers), and compat `equals()` accepts a raw `\FastUuid\Uuid` — previously the package's own two object layers reported `false`/"Not comparable" for identical bytes.
-- Compat `UuidFactory`: a custom `TimeGeneratorInterface` is now honored by `uuid6()` (v1 bytes reordered per RFC 9562), and the factory forces the version/variant nibbles on generator output (`uuid1()`/`uuid6()`), so generators ported from ramsey — whose contract leaves the nibbles to the factory — work unchanged.
+- `equals()`/`compareTo()` on the C extension now accept any `Stringable` UUID object (including compat wrappers), and compat `equals()` accepts a raw `\FastUuid\Uuid`; previously the package's own two object layers reported `false`/"Not comparable" for identical bytes.
+- Compat `UuidFactory`: a custom `TimeGeneratorInterface` is now honored by `uuid6()` (v1 bytes reordered per RFC 9562), and the factory forces the version/variant nibbles on generator output (`uuid1()`/`uuid6()`), so generators ported from ramsey (whose contract leaves the nibbles to the factory) work unchanged.
 - `uuid2()` with a null `localIdentifier` now throws on Windows instead of silently embedding identifier 0 (indistinguishable from uid 0); there is no POSIX uid/gid to fall back to there.
 - Compat `Type\Hexadecimal`/`Type\Integer` validation regexes no longer accept a trailing newline (`/D` modifier; hardening beyond ramsey, which shares the unanchored pattern).
 - `compat/composer.json` still required PHP >= 8.3; lowered to the project floor of 8.1.
@@ -124,7 +126,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.2.2...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/iliaal/fast_uuid/compare/0.2.2...0.3.0
 [0.2.2]: https://github.com/iliaal/fast_uuid/compare/0.2.1...0.2.2
 [0.2.1]: https://github.com/iliaal/fast_uuid/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/iliaal/fast_uuid/compare/0.1.2...0.2.0
