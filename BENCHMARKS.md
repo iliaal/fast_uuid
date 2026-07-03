@@ -37,10 +37,14 @@ per engine in its own process.
 | v4 (non-crypto)  | n/a             | **35.6**         | n/a         | n/a       |
 | v1 gen→string    | 12.3            | **16.5**         | 0.29        | 8.22      |
 | v7 gen→string    | 12.1            | **19.8**         | 0.66        | n/a       |
-| parse→16 bytes   | 10.4            | **16.2**         | 3.18        | 5.28      |
+| parse→16 bytes   | 23              | **36**           | 3.18        | 5.28      |
 
 `v4 (non-crypto)` is `uuid_v4_fast()` (xoshiro256**), included for reference; it
 is not for security-sensitive identifiers.
+
+The parse path decodes hex through a 256-entry nibble table and an unrolled
+16-byte loop instead of a per-character branch, which roughly doubled it over
+the 0.2.x figures (16.2 → 36 proc).
 
 ## Speedup vs ramsey/uuid
 
@@ -49,7 +53,31 @@ is not for security-sensitive identifiers.
 | v4        | 11.5x           | 17.7x            |
 | v1        | 42x             | 57x              |
 | v7        | 18.3x           | 30x              |
-| parse     | 3.3x            | 5.1x             |
+| parse     | 7.2x            | 11.3x            |
+
+## Bulk generation
+
+`uuid_v4_batch($n)` / `uuid_v7_batch($n)` build `$n` UUIDs in one call and return
+them as an array, amortizing the per-call ZPP and return-value setup across the
+batch. The `_bin_batch` forms return raw 16-byte strings instead of canonical
+36-char strings and skip the hex formatter. Per-UUID throughput at a batch size
+of 100, same machine and method as above (single-call `uuid_v4()`/`uuid_v7()`
+shown for reference):
+
+| Operation             | fast_uuid (proc) | vs single-call |
+|-----------------------|-----------------:|---------------:|
+| `uuid_v4()` (single)  | 19.5             | n/a            |
+| `uuid_v4_batch`       | 22.5             | +15%           |
+| `uuid_v4_bin_batch`   | 25               | +28%           |
+| `uuid_v7()` (single)  | 19.8             | n/a            |
+| `uuid_v7_batch`       | 25               | +26%           |
+| `uuid_v7_bin_batch`   | **29**           | +47%           |
+
+The single-call binary forms (`uuid_v4_bin()`, `uuid_v7_bin()`, and the
+name-based `uuid_v3_bin()`/`uuid_v5_bin()`) return the same raw bytes without
+formatting, but generation is CSPRNG-bound, so on a single call they run within
+noise of their string counterparts; the win is in the batch and in avoiding a
+format-then-reparse round trip when the caller wants bytes.
 
 ## Timestamp and DateTime APIs
 
@@ -89,6 +117,12 @@ as above; ramsey/uuid 4.9.2 for comparison.
   same batched CSPRNG, with no MAC lookup or clock-file coordination.
 
 ## ARM64 / NEON
+
+These aarch64 figures predate the nibble-table parse rewrite, so the
+`uuid_to_bin` / `parse→16 bytes` rows below still show the old scalar decoder
+(~10.6). The optimization is SIMD-independent (a lookup table plus an unrolled
+loop, no NEON), so it improves aarch64 in the same proportion as x86-64; these
+numbers stay as originally measured rather than estimated.
 
 On aarch64 a NEON table-lookup formatter (`vqtbl1q_u8`) replaces the scalar hex
 path, mirroring the SSSE3 path on x86-64. Measured on a Neoverse-N1
