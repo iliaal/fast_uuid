@@ -65,6 +65,7 @@ static zend_object_handlers fu_handlers;
 
 /* byte->2hex lookup, built in MINIT */
 static char fu_lut[512];
+static int8_t fu_nib_lut[256];
 static const char fu_hexd[] = "0123456789abcdef";
 
 /* ------------------------------------------------------------------ */
@@ -187,11 +188,15 @@ static inline void fu_format32(const unsigned char *b, char *o) {
 }
 
 static inline int fu_nib(unsigned char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    c |= 0x20;
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    return -1;
+    return fu_nib_lut[c];
 }
+
+#define FU_PARSE_HEX_BYTE_AT(pos, outidx) do { \
+    int hi = fu_nib_lut[(unsigned char)s[(pos)]]; \
+    int lo = fu_nib_lut[(unsigned char)s[(pos) + 1]]; \
+    if (UNEXPECTED((hi | lo) < 0)) return 0; \
+    out[(outidx)] = (unsigned char)((hi << 4) | lo); \
+} while (0)
 
 /* tolerant parser: accepts canonical 36, bare 32-hex, optional urn:uuid:/{} */
 static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
@@ -202,14 +207,22 @@ static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
 
     if (len == 36) {
         if (s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-') return 0;
-        int j = 0;
-        for (size_t i = 0; i < 36; i++) {
-            if (i==8||i==13||i==18||i==23) continue;
-            int hi = fu_nib((unsigned char)s[i]);   i++;
-            int lo = fu_nib((unsigned char)s[i]);
-            if (hi < 0 || lo < 0) return 0;
-            out[j++] = (unsigned char)((hi << 4) | lo);
-        }
+        FU_PARSE_HEX_BYTE_AT(0, 0);
+        FU_PARSE_HEX_BYTE_AT(2, 1);
+        FU_PARSE_HEX_BYTE_AT(4, 2);
+        FU_PARSE_HEX_BYTE_AT(6, 3);
+        FU_PARSE_HEX_BYTE_AT(9, 4);
+        FU_PARSE_HEX_BYTE_AT(11, 5);
+        FU_PARSE_HEX_BYTE_AT(14, 6);
+        FU_PARSE_HEX_BYTE_AT(16, 7);
+        FU_PARSE_HEX_BYTE_AT(19, 8);
+        FU_PARSE_HEX_BYTE_AT(21, 9);
+        FU_PARSE_HEX_BYTE_AT(24, 10);
+        FU_PARSE_HEX_BYTE_AT(26, 11);
+        FU_PARSE_HEX_BYTE_AT(28, 12);
+        FU_PARSE_HEX_BYTE_AT(30, 13);
+        FU_PARSE_HEX_BYTE_AT(32, 14);
+        FU_PARSE_HEX_BYTE_AT(34, 15);
         return 1;
     }
     if (len == 32) {
@@ -223,6 +236,8 @@ static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
     }
     return 0;
 }
+
+#undef FU_PARSE_HEX_BYTE_AT
 
 static zend_string *fu_str(fu_obj *u) {
     if (u->str) return zend_string_copy(u->str);
@@ -1211,15 +1226,54 @@ PHP_METHOD(FastUuid_Uuid, __set_state) {
     fu_format36(_fu_src, ZSTR_VAL(_fu_s)); ZSTR_VAL(_fu_s)[36] = '\0'; \
     RETURN_STR(_fu_s); } while (0)
 
+#define FU_RETURN_BYTES(b) do { \
+    const unsigned char *_fu_src = (b); \
+    if (UNEXPECTED(EG(exception))) { RETURN_THROWS(); } \
+    RETURN_STRINGL((const char *)_fu_src, 16); } while (0)
+
+static zend_result fu_batch_count_arg(zend_long count, uint32_t *out) {
+    if (count <= 0) {
+        zend_throw_exception(fu_ex_invalid_arg, "count must be > 0", 0);
+        return FAILURE;
+    }
+    if ((zend_ulong)count > HT_MAX_SIZE) {
+        zend_throw_exception(fu_ex_invalid_arg, "count is too large", 0);
+        return FAILURE;
+    }
+    *out = (uint32_t)count;
+    return SUCCESS;
+}
+
+static void fu_add_next_formatted(zval *array, const unsigned char b[16]) {
+    zend_string *s = zend_string_alloc(36, 0);
+    fu_format36(b, ZSTR_VAL(s));
+    ZSTR_VAL(s)[36] = '\0';
+    add_next_index_str(array, s);
+}
+
+static void fu_add_next_bytes(zval *array, const unsigned char b[16]) {
+    add_next_index_stringl(array, (const char *)b, 16);
+}
+
 PHP_FUNCTION(uuid_v1) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v1(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v1_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v1(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
 PHP_FUNCTION(uuid_v4) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v4_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
 PHP_FUNCTION(uuid_v4_fast) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4_fast(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v4_fast_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4_fast(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
 PHP_FUNCTION(uuid_v6) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v6(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v6_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v6(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
 PHP_FUNCTION(uuid_v7) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v7(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
+PHP_FUNCTION(uuid_v7_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v7(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
 PHP_FUNCTION(uuid_v7_at) {
     zend_long ms;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(ms) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16]; if (fu_v7_at_ms(b, ms) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b);
+}
+PHP_FUNCTION(uuid_v7_at_bin) {
+    zend_long ms;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(ms) ZEND_PARSE_PARAMETERS_END();
+    unsigned char b[16]; if (fu_v7_at_ms(b, ms) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b);
 }
 
 PHP_FUNCTION(uuid_v3) {
@@ -1230,12 +1284,28 @@ PHP_FUNCTION(uuid_v3) {
     fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_FORMATTED(b);
 }
 
+PHP_FUNCTION(uuid_v3_bin) {
+    zend_string *zns, *name;
+    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
+    unsigned char ns[16], b[16];
+    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_BYTES(b);
+}
+
 PHP_FUNCTION(uuid_v5) {
     zend_string *zns, *name;
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16], b[16];
     if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_FORMATTED(b);
+}
+
+PHP_FUNCTION(uuid_v5_bin) {
+    zend_string *zns, *name;
+    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
+    unsigned char ns[16], b[16];
+    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_BYTES(b);
 }
 
 PHP_FUNCTION(uuid_v8) {
@@ -1245,6 +1315,63 @@ PHP_FUNCTION(uuid_v8) {
     unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
     b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80;
     FU_RETURN_FORMATTED(b);
+}
+
+PHP_FUNCTION(uuid_v8_bin) {
+    zend_string *data;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
+    if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
+    unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
+    b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80;
+    FU_RETURN_BYTES(b);
+}
+
+PHP_FUNCTION(uuid_v4_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned char b[16];
+        if (fu_gen_v4(b) == FAILURE) RETURN_THROWS();
+        fu_add_next_formatted(return_value, b);
+    }
+}
+
+PHP_FUNCTION(uuid_v7_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned char b[16];
+        if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
+        fu_add_next_formatted(return_value, b);
+    }
+}
+
+PHP_FUNCTION(uuid_v4_bin_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned char b[16];
+        if (fu_gen_v4(b) == FAILURE) RETURN_THROWS();
+        fu_add_next_bytes(return_value, b);
+    }
+}
+
+PHP_FUNCTION(uuid_v7_bin_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned char b[16];
+        if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
+        fu_add_next_bytes(return_value, b);
+    }
 }
 
 PHP_FUNCTION(uuid_to_bin) {
@@ -1293,7 +1420,18 @@ static PHP_GINIT_FUNCTION(fast_uuid) {
 }
 
 PHP_MINIT_FUNCTION(fast_uuid) {
-    for (int i = 0; i < 256; i++) { fu_lut[i*2] = fu_hexd[i >> 4]; fu_lut[i*2+1] = fu_hexd[i & 0x0f]; }
+    for (int i = 0; i < 256; i++) {
+        fu_lut[i*2] = fu_hexd[i >> 4];
+        fu_lut[i*2+1] = fu_hexd[i & 0x0f];
+        fu_nib_lut[i] = -1;
+    }
+    for (int i = 0; i < 10; i++) {
+        fu_nib_lut[(unsigned char)('0' + i)] = i;
+    }
+    for (int i = 0; i < 6; i++) {
+        fu_nib_lut[(unsigned char)('a' + i)] = 10 + i;
+        fu_nib_lut[(unsigned char)('A' + i)] = 10 + i;
+    }
 
 #ifndef PHP_WIN32
     /* Fork-safety for the batched CSPRNG buffer. Registered once per process;

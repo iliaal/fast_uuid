@@ -23,6 +23,11 @@ final class GenericValidator implements ValidatorInterface
         $uuid = \str_replace(['urn:', 'uuid:', 'URN:', 'UUID:', '{', '}'], '', $uuid);
 
         return $uuid === '00000000-0000-0000-0000-000000000000'
-            || \preg_match('/' . self::PATTERN . '/Di', $uuid) === 1;
+            || (\strlen($uuid) === 36
+                && $uuid[8] === '-'
+                && $uuid[13] === '-'
+                && $uuid[18] === '-'
+                && $uuid[23] === '-'
+                && \FastUuid\Uuid::isValid($uuid));
     }
 }

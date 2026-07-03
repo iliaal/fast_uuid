@@ -73,14 +73,27 @@ namespace FastUuid\Exception {
 
 namespace {
     function uuid_v1(): string {}
+    function uuid_v1_bin(): string {}
     function uuid_v3(string $ns, string $name): string {}
+    function uuid_v3_bin(string $ns, string $name): string {}
     function uuid_v4(): string {}
+    function uuid_v4_bin(): string {}
     function uuid_v4_fast(): string {}
+    function uuid_v4_fast_bin(): string {}
     function uuid_v5(string $ns, string $name): string {}
+    function uuid_v5_bin(string $ns, string $name): string {}
     function uuid_v6(): string {}
+    function uuid_v6_bin(): string {}
     function uuid_v7(): string {}
+    function uuid_v7_bin(): string {}
     function uuid_v7_at(int $unixMillis): string {}
+    function uuid_v7_at_bin(int $unixMillis): string {}
     function uuid_v8(string $bytes): string {}
+    function uuid_v8_bin(string $bytes): string {}
+    function uuid_v4_batch(int $count): array {}
+    function uuid_v7_batch(int $count): array {}
+    function uuid_v4_bin_batch(int $count): array {}
+    function uuid_v7_bin_batch(int $count): array {}
     function uuid_to_bin(string $uuid): string {}
     function uuid_from_bin(string $bytes): string {}
     function uuid_is_valid(string $uuid): bool {}
