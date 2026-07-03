@@ -8,7 +8,7 @@
 
 ![fast_uuid: RFC 9562 UUIDs for PHP in pure C, 11x to 57x faster than ramsey/uuid](images/fast_uuid-hero.jpg)
 
-A high-performance PHP C extension for RFC 9562 / RFC 4122 UUID generation, **11x to 57x faster than `ramsey/uuid`** on v1/v4/v7 generation and 3x to 5x faster on parsing. It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace, and procedural functions give a zero-allocation fast path for the hottest call sites.
+A high-performance PHP C extension for RFC 9562 / RFC 4122 UUID generation, **11x to 57x faster than `ramsey/uuid`** on v1/v4/v7 generation and 7x to 11x faster on parsing. It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace, and procedural functions give a zero-allocation fast path for the hottest call sites.
 
 Full API reference with runnable examples: [docs/index.html](docs/index.html). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -121,6 +121,10 @@ Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp
 ```
 uuid_v1() uuid_v3($ns, $name) uuid_v4() uuid_v4_fast() uuid_v5($ns, $name) uuid_v6() uuid_v7() uuid_v8($bytes)
 uuid_v7_at($unixMillis)  // v7 from a unix-millisecond int (no DateTime)
+uuid_v1_bin() uuid_v4_bin() uuid_v6_bin() uuid_v7_bin() uuid_v4_fast_bin()  // raw 16 bytes, no string
+uuid_v3_bin($ns, $name) uuid_v5_bin($ns, $name) uuid_v8_bin($bytes) uuid_v7_at_bin($unixMillis)
+uuid_v4_batch($n) uuid_v7_batch($n)          // array of $n canonical strings
+uuid_v4_bin_batch($n) uuid_v7_bin_batch($n)  // array of $n raw 16-byte values
 uuid_to_bin($uuid)   // canonical/parsed string -> 16 raw bytes
 uuid_from_bin($bytes)// 16 raw bytes -> canonical string
 uuid_is_valid($uuid) // bool
