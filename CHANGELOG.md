@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Procedural binary generators that return the raw 16-byte value with no canonical formatting: `uuid_v1_bin()`, `uuid_v3_bin()`, `uuid_v4_bin()`, `uuid_v4_fast_bin()`, `uuid_v5_bin()`, `uuid_v6_bin()`, `uuid_v7_bin()`, `uuid_v7_at_bin()`, and `uuid_v8_bin()`. Store UUIDs in a `BINARY(16)` column or write them to a wire format without a string round-trip.
+- Bulk generators that build many UUIDs in one call: `uuid_v4_batch($n)` and `uuid_v7_batch($n)` return an array of canonical strings; `uuid_v4_bin_batch($n)` and `uuid_v7_bin_batch($n)` return an array of raw 16-byte strings. They amortize the per-call overhead across the batch (roughly +15% to +47% per UUID at a batch of 100), and v7 batches stay monotonic within the call.
+- `var_dump()` on a `FastUuid\Uuid` now shows the value as a virtual `uuid` property, and `var_export()` emits `FastUuid\Uuid::__set_state(['uuid' => ...])` that rebuilds the object (previously the export was empty and fatal to re-evaluate).
+- Test coverage for previously untested surfaces: the v8 success path (core, procedural, compat mapping), procedural `uuid_v3()`/`uuid_v5()`, `getVariant()` Microsoft/future branches, `fromInteger()` rejection (out-of-range and non-numeric), right-length/bad-content and embedded-NUL parser rejections, the default compat node/time providers, and ramsey-parity vectors for the compat codecs and `Fields`. The binary and batch generators and the compat validator fast paths add their own tests.
+
+### Changed
+- Canonical UUID parsing runs about twice as fast: a 256-entry nibble lookup table and an unrolled 16-byte decode replace the per-character branch. This speeds `uuid_to_bin()`, `Uuid::fromString()`, `Uuid::isValid()`, and the namespace argument of `uuid3()`/`uuid5()`.
+- The parser now requires hyphens at the four canonical separator positions and rejects inputs that use other separators, such as `a1b2c3d4_e5f6_4718_893a_4b5c6d7e8f90`. The old decoder skipped those positions without checking, so it accepted such strings; the stricter form matches RFC 9562 and ramsey/uuid.
+- The compat `GenericValidator` and `NonstandardValidator` validate through a length-and-position check plus the C `Uuid::isValid()` instead of a PCRE match, so `ramsey/uuid`-compatible validation is faster.
+
 ### Fixed
 - `ramsey/uuid` compat layer: `Fields::getTimestamp()` truncated v1/v6 timestamps on 32-bit PHP (a 48-bit `hexdec()` became a float, then the bit-shifts dropped precision). It now rebuilds the value as a hex string, exact on 32- and 64-bit.
 - Compat `TimestampFirstCombCodec` used a byte rotation instead of ramsey's first-6/last-6 swap, so COMBs written by ramsey/uuid decoded to a *different* UUID (and vice versa). The layout now matches ramsey; COMB columns interop correctly.
@@ -22,10 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compat `Type\Hexadecimal`/`Type\Integer` validation regexes no longer accept a trailing newline (`/D` modifier; hardening beyond ramsey, which shares the unanchored pattern).
 - `compat/composer.json` still required PHP >= 8.3; lowered to the project floor of 8.1.
 - The ZTS `pthread_atfork` child handler now no-ops for a `fork()` issued from a native thread that never entered PHP, instead of resolving module globals off a missing TSRM cache.
-
-### Added
-- `var_dump()` on a `FastUuid\Uuid` now shows the value as a virtual `uuid` property, and `var_export()` emits `FastUuid\Uuid::__set_state(['uuid' => ...])` that rebuilds the object (previously the export was empty and fatal to re-evaluate).
-- Test coverage for previously untested surfaces: the v8 success path (core, procedural, compat mapping), procedural `uuid_v3()`/`uuid_v5()`, `getVariant()` Microsoft/future branches, `fromInteger()` rejection (out-of-range and non-numeric), right-length/bad-content and embedded-NUL parser rejections, the default compat node/time providers, and ramsey-parity vectors for the compat codecs and `Fields`.
 
 ## [0.2.2] - 2026-06-11
 

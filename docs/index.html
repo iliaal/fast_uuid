@@ -204,12 +204,20 @@ compareTo   -1   (00..01 vs 00..02)</pre>
   </div>
 
   <h2 id="procedural">Procedural functions</h2>
-  <p>These return a string with no object allocation. Use them on the hot path: ORM inserts, cache keys, bulk generation.</p>
+  <p>These return a string with no object allocation. Use them on the hot path: ORM inserts, cache keys, bulk generation. The <code>_bin</code> forms return the raw 16-byte value with no canonical formatting, and the <code>_batch</code> forms build <code>$n</code> at once and return them as an array.</p>
   <div class="ex">
     <pre class="code">uuid_v1(); uuid_v3($ns, $name); uuid_v4(); uuid_v5($ns, $name);
 uuid_v6(); uuid_v7(); uuid_v8($bytes);
 uuid_v7_at($unixMillis);         <span class="cm">// v7 from a unix-ms int, no DateTime</span>
 uuid_v4_fast();                  <span class="cm">// non-crypto xoshiro256**, IDs only</span>
+
+uuid_v1_bin(); uuid_v4_bin(); uuid_v6_bin(); uuid_v7_bin();   <span class="cm">// raw 16 bytes, no string</span>
+uuid_v4_fast_bin(); uuid_v3_bin($ns, $name); uuid_v5_bin($ns, $name);
+uuid_v8_bin($bytes); uuid_v7_at_bin($unixMillis);
+
+uuid_v4_batch($n); uuid_v7_batch($n);            <span class="cm">// array of $n canonical strings</span>
+uuid_v4_bin_batch($n); uuid_v7_bin_batch($n);    <span class="cm">// array of $n raw 16-byte values</span>
+
 uuid_to_bin($s);                 <span class="cm">// canonical -&gt; 16 bytes</span>
 uuid_from_bin($bytes);           <span class="cm">// 16 bytes -&gt; canonical</span>
 uuid_is_valid($s);
