@@ -87,7 +87,7 @@ toBytes(): string         toHexadecimal(): string   toUrn(): string           to
 - `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
 - `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for the time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for v3/v4/v5/v8.
 - `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
-- UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order (the tie-breaking counter is per process — per thread under ZTS — so ~244 ns ties across threads or processes carry no order). `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
+- UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order (the tie-breaking counter is per process, or per thread under ZTS, so ~244 ns ties across threads or processes carry no order). `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max and non-RFC variants.
 - `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
@@ -148,10 +148,21 @@ better:
 | v4 gen→string    | 12.6            | **19.5**         | 1.10        | 0.47      |
 | v1 gen→string    | 12.3            | **16.5**         | 0.29        | 8.22      |
 | v7 gen→string    | 12.1            | **19.8**         | 0.66        | n/a       |
-| parse→16 bytes   | 10.4            | **16.2**         | 3.18        | 5.28      |
+| parse→16 bytes   | 23              | **36**           | 3.18        | 5.28      |
 
 Speedup over `ramsey/uuid`: v4 11.5x to 17.7x, v1 42x to 57x, v7 18.3x to 30x,
-parse 3.3x to 5.1x.
+parse 7.2x to 11.3x.
+
+Generating many at once amortizes the per-call overhead. The batch functions
+return an array of 100 per call; procedural binary forms (`uuid_v4_bin()` etc.)
+skip canonical formatting and return raw 16-byte strings. Million UUIDs/sec:
+
+| Batch operation          | fast_uuid (proc) |
+|--------------------------|-----------------:|
+| `uuid_v4_batch`          | 22.5             |
+| `uuid_v7_batch`          | 25               |
+| `uuid_v4_bin_batch`      | 25               |
+| `uuid_v7_bin_batch`      | **29**           |
 
 The `fast_uuid` operations are fast enough (~50 ns) that scheduler noise
 dominates a single run, so read the `fast_uuid` columns as order-of-magnitude,
