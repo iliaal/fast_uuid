@@ -112,9 +112,9 @@ final class UuidFactory
                 $node = \bin2hex($this->getNodeProvider()->getNode());
             }
             $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
-            return $this->wrap(\FastUuid\Uuid::fromBytes($b));
+            return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($b), 1);
         }
-        return $this->wrap(\FastUuid\Uuid::uuid1($node, $clockSeq));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid1($node, $clockSeq), 1);
     }
 
     public function uuid2(
@@ -123,12 +123,12 @@ final class UuidFactory
         int|string|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
-        return $this->wrap(\FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq), 2);
     }
 
     public function uuid3(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::uuid3($this->coreNamespace($ns), $name));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid3($this->coreNamespace($ns), $name), 3);
     }
 
     public function uuid4(): UuidInterface
@@ -142,14 +142,14 @@ final class UuidFactory
             }
             $b[6] = \chr((\ord($b[6]) & 0x0f) | 0x40);
             $b[8] = \chr((\ord($b[8]) & 0x3f) | 0x80);
-            return $this->wrap(\FastUuid\Uuid::fromBytes($b));
+            return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($b), 4);
         }
-        return $this->wrap(\FastUuid\Uuid::uuid4());
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid4(), 4);
     }
 
     public function uuid5(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::uuid5($this->coreNamespace($ns), $name));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid5($this->coreNamespace($ns), $name), 5);
     }
 
     public function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
@@ -165,19 +165,19 @@ final class UuidFactory
             // 60-bit timestamp from the v1 layout: timeHi . timeMid . timeLow
             $ts = \substr($hex, 13, 3) . \substr($hex, 8, 4) . \substr($hex, 0, 8);
             $head = \hex2bin(\substr($ts, 0, 12) . '6' . \substr($ts, 12, 3));
-            return $this->wrap(\FastUuid\Uuid::fromBytes($head . \substr($b, 8)));
+            return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($head . \substr($b, 8)), 6);
         }
-        return $this->wrap(\FastUuid\Uuid::uuid6($node, $clockSeq));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid6($node, $clockSeq), 6);
     }
 
     public function uuid7(?\DateTimeInterface $dateTime = null): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::uuid7($dateTime));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid7($dateTime), 7);
     }
 
     public function uuid8(string $bytes): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::uuid8($bytes));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid8($bytes), 8);
     }
 
     public function fromString(string $uuid): UuidInterface
@@ -205,7 +205,7 @@ final class UuidFactory
         int|string|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
-        return $this->wrap(\FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq));
+        return $this->wrapKnownVersion(\FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq), 1);
     }
 
     /**
@@ -244,6 +244,21 @@ final class UuidFactory
         }
 
         return new NonstandardUuid($core);
+    }
+
+    private function wrapKnownVersion(\FastUuid\Uuid $core, int $version): UuidInterface
+    {
+        return match ($version) {
+            1 => new UuidV1($core),
+            2 => new UuidV2($core),
+            3 => new UuidV3($core),
+            4 => new UuidV4($core),
+            5 => new UuidV5($core),
+            6 => new UuidV6($core),
+            7 => new UuidV7($core),
+            8 => new UuidV8($core),
+            default => throw new \FastUuid\Exception\InvalidArgumentException('Unknown UUID version'),
+        };
     }
 
     private function coreNamespace(UuidInterface|string $ns): \FastUuid\Uuid|string

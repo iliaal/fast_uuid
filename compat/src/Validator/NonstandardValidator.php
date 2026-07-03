@@ -22,6 +22,11 @@ final class NonstandardValidator implements ValidatorInterface
     {
         $uuid = \str_replace(['urn:', 'uuid:', 'URN:', 'UUID:', '{', '}'], '', $uuid);
 
-        return \preg_match('/' . self::PATTERN . '/Di', $uuid) === 1;
+        return \strlen($uuid) === 36
+            && $uuid[8] === '-'
+            && $uuid[13] === '-'
+            && $uuid[18] === '-'
+            && $uuid[23] === '-'
+            && \FastUuid\Uuid::isValid($uuid);
     }
 }

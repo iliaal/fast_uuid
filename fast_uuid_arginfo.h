@@ -1,31 +1,59 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: e18fac27001a01ed78721726a09c37f009ada864 */
+ * Stub hash: b73f3fb1cb4205cdbe00cd012c8aac3c9ece74bf */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
+
+#define arginfo_uuid_v1_bin arginfo_uuid_v1
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v3, 0, 2, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, ns, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, name, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
+#define arginfo_uuid_v3_bin arginfo_uuid_v3
+
 #define arginfo_uuid_v4 arginfo_uuid_v1
+
+#define arginfo_uuid_v4_bin arginfo_uuid_v1
 
 #define arginfo_uuid_v4_fast arginfo_uuid_v1
 
+#define arginfo_uuid_v4_fast_bin arginfo_uuid_v1
+
 #define arginfo_uuid_v5 arginfo_uuid_v3
+
+#define arginfo_uuid_v5_bin arginfo_uuid_v3
 
 #define arginfo_uuid_v6 arginfo_uuid_v1
 
+#define arginfo_uuid_v6_bin arginfo_uuid_v1
+
 #define arginfo_uuid_v7 arginfo_uuid_v1
+
+#define arginfo_uuid_v7_bin arginfo_uuid_v1
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v7_at, 0, 1, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, unixMillis, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 
+#define arginfo_uuid_v7_at_bin arginfo_uuid_v7_at
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v8, 0, 1, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, bytes, IS_STRING, 0)
 ZEND_END_ARG_INFO()
+
+#define arginfo_uuid_v8_bin arginfo_uuid_v8
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v4_batch, 0, 1, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, count, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
+#define arginfo_uuid_v7_batch arginfo_uuid_v4_batch
+
+#define arginfo_uuid_v4_bin_batch arginfo_uuid_v4_batch
+
+#define arginfo_uuid_v7_bin_batch arginfo_uuid_v4_batch
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_to_bin, 0, 1, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, uuid, IS_STRING, 0)
@@ -153,14 +181,27 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___set_state,
 ZEND_END_ARG_INFO()
 
 ZEND_FUNCTION(uuid_v1);
+ZEND_FUNCTION(uuid_v1_bin);
 ZEND_FUNCTION(uuid_v3);
+ZEND_FUNCTION(uuid_v3_bin);
 ZEND_FUNCTION(uuid_v4);
+ZEND_FUNCTION(uuid_v4_bin);
 ZEND_FUNCTION(uuid_v4_fast);
+ZEND_FUNCTION(uuid_v4_fast_bin);
 ZEND_FUNCTION(uuid_v5);
+ZEND_FUNCTION(uuid_v5_bin);
 ZEND_FUNCTION(uuid_v6);
+ZEND_FUNCTION(uuid_v6_bin);
 ZEND_FUNCTION(uuid_v7);
+ZEND_FUNCTION(uuid_v7_bin);
 ZEND_FUNCTION(uuid_v7_at);
+ZEND_FUNCTION(uuid_v7_at_bin);
 ZEND_FUNCTION(uuid_v8);
+ZEND_FUNCTION(uuid_v8_bin);
+ZEND_FUNCTION(uuid_v4_batch);
+ZEND_FUNCTION(uuid_v7_batch);
+ZEND_FUNCTION(uuid_v4_bin_batch);
+ZEND_FUNCTION(uuid_v7_bin_batch);
 ZEND_FUNCTION(uuid_to_bin);
 ZEND_FUNCTION(uuid_from_bin);
 ZEND_FUNCTION(uuid_is_valid);
@@ -199,14 +240,27 @@ ZEND_METHOD(FastUuid_Uuid, __set_state);
 
 static const zend_function_entry ext_functions[] = {
 	ZEND_FE(uuid_v1, arginfo_uuid_v1)
+	ZEND_FE(uuid_v1_bin, arginfo_uuid_v1_bin)
 	ZEND_FE(uuid_v3, arginfo_uuid_v3)
+	ZEND_FE(uuid_v3_bin, arginfo_uuid_v3_bin)
 	ZEND_FE(uuid_v4, arginfo_uuid_v4)
+	ZEND_FE(uuid_v4_bin, arginfo_uuid_v4_bin)
 	ZEND_FE(uuid_v4_fast, arginfo_uuid_v4_fast)
+	ZEND_FE(uuid_v4_fast_bin, arginfo_uuid_v4_fast_bin)
 	ZEND_FE(uuid_v5, arginfo_uuid_v5)
+	ZEND_FE(uuid_v5_bin, arginfo_uuid_v5_bin)
 	ZEND_FE(uuid_v6, arginfo_uuid_v6)
+	ZEND_FE(uuid_v6_bin, arginfo_uuid_v6_bin)
 	ZEND_FE(uuid_v7, arginfo_uuid_v7)
+	ZEND_FE(uuid_v7_bin, arginfo_uuid_v7_bin)
 	ZEND_FE(uuid_v7_at, arginfo_uuid_v7_at)
+	ZEND_FE(uuid_v7_at_bin, arginfo_uuid_v7_at_bin)
 	ZEND_FE(uuid_v8, arginfo_uuid_v8)
+	ZEND_FE(uuid_v8_bin, arginfo_uuid_v8_bin)
+	ZEND_FE(uuid_v4_batch, arginfo_uuid_v4_batch)
+	ZEND_FE(uuid_v7_batch, arginfo_uuid_v7_batch)
+	ZEND_FE(uuid_v4_bin_batch, arginfo_uuid_v4_bin_batch)
+	ZEND_FE(uuid_v7_bin_batch, arginfo_uuid_v7_bin_batch)
 	ZEND_FE(uuid_to_bin, arginfo_uuid_to_bin)
 	ZEND_FE(uuid_from_bin, arginfo_uuid_from_bin)
 	ZEND_FE(uuid_is_valid, arginfo_uuid_is_valid)
