@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: b73f3fb1cb4205cdbe00cd012c8aac3c9ece74bf */
+ * Stub hash: bb5a3d5ddcef2b89511b5d87bbf297ca095b7d2c */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -145,7 +145,8 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getVersion, 0, 0, IS_LONG, 1)
 ZEND_END_ARG_INFO()
 
-#define arginfo_class_FastUuid_Uuid_getVariant arginfo_class_FastUuid_Uuid_getVersion
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getVariant, 0, 0, IS_LONG, 0)
+ZEND_END_ARG_INFO()
 
 #define arginfo_class_FastUuid_Uuid_getInteger arginfo_uuid_v1
 
@@ -154,8 +155,7 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_getDateTime, 0, 0, DateTimeImmutable, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getTimestampMillis, 0, 0, IS_LONG, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_getTimestampMillis arginfo_class_FastUuid_Uuid_getVariant
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getFields, 0, 0, IS_ARRAY, 0)
 ZEND_END_ARG_INFO()

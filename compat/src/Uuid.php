@@ -70,7 +70,7 @@ final class Uuid
         return self::getFactory()->uuid6($node, $clockSeq);
     }
 
-    public static function uuid7(?\DateTimeInterface $dateTime = null): UuidInterface
+    public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
         return self::getFactory()->uuid7($dateTime);
     }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
-use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 use FastUuid\Exception\UnsupportedOperationException;
@@ -35,7 +34,7 @@ final class OrderedTimeCodec extends StringCodec
         $b = $bytes;
         $restored = $b[4] . $b[5] . $b[6] . $b[7] . $b[2] . $b[3] . $b[0] . $b[1] . \substr($b, 8);
 
-        $uuid = Uuid::fromBytes($restored);
+        $uuid = self::uuidFromBytes($restored);
         if ($uuid->getVersion() !== 1) {
             throw new UnsupportedOperationException(
                 'Attempting to decode a non-time-based UUID using OrderedTimeCodec'

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Validator;
 
 /**
- * Lax validator for nonstandard-variant UUIDs: accepts any 8-4-4-4-12 hex
- * shape without constraining the version or variant nibbles. Mirrors
- * Ramsey\Uuid\Nonstandard\Validator.
+ * Lax validator for nonstandard-variant UUIDs: accepts the same wrapper
+ * grammar as the core parser, without constraining the version or variant
+ * nibbles.
  */
 final class NonstandardValidator implements ValidatorInterface
 {
@@ -20,7 +20,12 @@ final class NonstandardValidator implements ValidatorInterface
 
     public function validate(string $uuid): bool
     {
-        $uuid = \str_replace(['urn:', 'uuid:', 'URN:', 'UUID:', '{', '}'], '', $uuid);
+        if (\strlen($uuid) >= 9 && \strncasecmp($uuid, 'urn:uuid:', 9) === 0) {
+            $uuid = \substr($uuid, 9);
+        }
+        if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[\strlen($uuid) - 1] === '}') {
+            $uuid = \substr($uuid, 1, -1);
+        }
 
         return \strlen($uuid) === 36
             && $uuid[8] === '-'

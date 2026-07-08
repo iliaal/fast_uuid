@@ -33,9 +33,8 @@ use FastUuid\Compat\Validator\ValidatorInterface;
  *
  * The fast path is pure C. Swapping in a RandomGeneratorInterface,
  * TimeGeneratorInterface or NodeProviderInterface intentionally routes off the
- * C fast path (ramsey-compat behaviour) so application-supplied generators win
- * for uuid1/uuid4/uuid6. uuid2 always uses the C core — ramsey's uuid2
- * likewise bypasses a later-set time generator via its fixed DCE generator.
+ * C fast path where needed (ramsey-compat behaviour) so application-supplied
+ * generators win for uuid1/uuid4/uuid6 and node providers also feed uuid2.
  */
 final class UuidFactory
 {
@@ -123,6 +122,9 @@ final class UuidFactory
         int|string|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
+        if ($node === null && $this->customNodeProvider) {
+            $node = \bin2hex($this->getNodeProvider()->getNode());
+        }
         return $this->wrapKnownVersion(\FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq), 2);
     }
 
@@ -170,7 +172,7 @@ final class UuidFactory
         return $this->wrapKnownVersion(\FastUuid\Uuid::uuid6($node, $clockSeq), 6);
     }
 
-    public function uuid7(?\DateTimeInterface $dateTime = null): UuidInterface
+    public function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
         return $this->wrapKnownVersion(\FastUuid\Uuid::uuid7($dateTime), 7);
     }
@@ -182,22 +184,22 @@ final class UuidFactory
 
     public function fromString(string $uuid): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::fromString($uuid));
+        return $this->getCodec()->decode($uuid);
     }
 
     public function fromBytes(string $bytes): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::fromBytes($bytes));
+        return $this->getCodec()->decodeBytes($bytes);
     }
 
     public function fromInteger(string $integer): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::fromInteger($integer));
+        return $this->fromHexadecimal(\FastUuid\Uuid::fromInteger($integer)->getHex());
     }
 
     public function fromHexadecimal(Hexadecimal|string $hex): UuidInterface
     {
-        return $this->wrap(\FastUuid\Uuid::fromHexadecimal((string) $hex));
+        return $this->getCodec()->decode((string) $hex);
     }
 
     public function fromDateTime(
@@ -205,6 +207,9 @@ final class UuidFactory
         int|string|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
+        if ($node === null && $this->customNodeProvider) {
+            $node = \bin2hex($this->getNodeProvider()->getNode());
+        }
         return $this->wrapKnownVersion(\FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq), 1);
     }
 

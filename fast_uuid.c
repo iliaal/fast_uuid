@@ -62,6 +62,12 @@ ZEND_DECLARE_MODULE_GLOBALS(fast_uuid)
 static zend_class_entry *fast_uuid_ce;
 static zend_class_entry *fast_uuid_iface_ce;
 static zend_object_handlers fu_handlers;
+static zend_class_entry *fu_ex_invalid_arg;
+static zend_class_entry *fu_ex_invalid_str;
+static zend_class_entry *fu_ex_unsupported;
+
+#define FU_MAX_BATCH_COUNT 100000U
+#define FU_MAX_RANDOM_BYTES (16U * 1024U * 1024U)
 
 /* byte->2hex lookup, built in MINIT */
 static char fu_lut[512];
@@ -417,7 +423,7 @@ static fu_precise_time_fn fu_precise_time = NULL;
    Windows has no clock_gettime, so it reads GetSystemTimePreciseAsFileTime
    (100ns FILETIME ticks since 1601-01-01), which keeps sub-microsecond
    resolution for the v7 sub-ms field. */
-static inline uint64_t fu_unix_nanos(void) {
+static inline zend_result fu_unix_nanos(uint64_t *out) {
 #ifdef PHP_WIN32
     FILETIME ft;
     if (fu_precise_time) {
@@ -426,22 +432,39 @@ static inline uint64_t fu_unix_nanos(void) {
         GetSystemTimeAsFileTime(&ft);
     }
     uint64_t t100 = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    if (t100 < 116444736000000000ULL) {
+        zend_throw_exception(fu_ex_unsupported, "System clock is before the Unix epoch", 0);
+        return FAILURE;
+    }
     t100 -= 116444736000000000ULL; /* 1601-01-01 .. 1970-01-01 in 100ns ticks */
-    return t100 * 100ULL;
+    *out = t100 * 100ULL;
+    return SUCCESS;
 #else
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+        zend_throw_exception_ex(fu_ex_unsupported, 0, "clock_gettime(CLOCK_REALTIME) failed: %s", strerror(errno));
+        return FAILURE;
+    }
+    if (ts.tv_sec < 0) {
+        zend_throw_exception(fu_ex_unsupported, "System clock is before the Unix epoch", 0);
+        return FAILURE;
+    }
+    *out = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    return SUCCESS;
 #endif
 }
 
-static inline uint64_t fu_greg_now(void) {
-    uint64_t unix100 = fu_unix_nanos() / 100ULL;
-    return unix100 + 0x01B21DD213814000ULL; /* 1582-10-15 .. 1970 in 100ns */
+static inline zend_result fu_greg_now(uint64_t *out) {
+    uint64_t ns;
+    if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
+    *out = (ns / 100ULL) + 0x01B21DD213814000ULL; /* 1582-10-15 .. 1970 in 100ns */
+    return SUCCESS;
 }
 
 static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
-    return fu_lay_v1(b, fu_greg_now(), node, clockseq);
+    uint64_t g;
+    if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    return fu_lay_v1(b, g, node, clockseq);
 }
 
 static zend_result fu_gen_v1(unsigned char *b) { return fu_gen_v1_ex(b, NULL, -1); }
@@ -458,7 +481,9 @@ static zend_result fu_lay_v6(unsigned char *b, uint64_t g, const unsigned char *
 }
 
 static zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
-    return fu_lay_v6(b, fu_greg_now(), node, clockseq);
+    uint64_t g;
+    if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    return fu_lay_v6(b, g, node, clockseq);
 }
 
 static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1); }
@@ -468,7 +493,9 @@ static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1
    are sacrificed for the local id, so v2 time resolution is coarse. */
 static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
                       const unsigned char *node, int clockseq) {
-    if (fu_lay_v1(b, fu_greg_now(), node, clockseq) == FAILURE) return FAILURE;
+    uint64_t g;
+    if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    if (fu_lay_v1(b, g, node, clockseq) == FAILURE) return FAILURE;
     b[0] = (local_id >> 24) & 0xff; b[1] = (local_id >> 16) & 0xff;
     b[2] = (local_id >> 8)  & 0xff; b[3] = local_id & 0xff;
     b[6] = (b[6] & 0x0f) | 0x20;    /* version 2 */
@@ -493,7 +520,8 @@ static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t sub, uint64
 /* monotonic v7 using module-global state. The 60-bit time key (ms<<12 | sub)
    gives ~244ns resolution; rand_b breaks ties within a single tick. */
 static zend_result fu_gen_v7(unsigned char *b) {
-    uint64_t ns  = fu_unix_nanos();
+    uint64_t ns;
+    if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
     uint64_t ms  = ns / 1000000ULL;
     uint64_t sub = ((ns % 1000000ULL) * 4096ULL) / 1000000ULL; /* 0..4095 */
     uint64_t key = (ms << 12) | sub;
@@ -563,6 +591,7 @@ static zend_string *fu_to_decimal(const unsigned char *b) {
 
 static int fu_from_decimal(const char *s, size_t len, unsigned char out[16]) {
     if (!len) return 0;
+    if ((len > 1 && s[0] == '0') || len > 39) return 0;
     memset(out, 0, 16);
     for (size_t i = 0; i < len; i++) {
         if (s[i] < '0' || s[i] > '9') return 0;
@@ -610,11 +639,6 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
     if (Z_TYPE_P(z) == IS_STRING) return fu_parse(Z_STRVAL_P(z), Z_STRLEN_P(z), ns);
     return 0;
 }
-
-/* ramsey-shaped exception hierarchy (parse failures throw the string variant) */
-static zend_class_entry *fu_ex_invalid_arg;
-static zend_class_entry *fu_ex_invalid_str;
-static zend_class_entry *fu_ex_unsupported;
 
 /* parse a node override: 12-hex string, or int in 0..0xffffffffffff. returns 1 on success */
 static int fu_parse_node(zval *z, unsigned char node[6]) {
@@ -787,6 +811,8 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
         } else if (Z_TYPE_P(zid) == IS_STRING) {
             const char *sv = Z_STRVAL_P(zid); size_t sl = Z_STRLEN_P(zid);
             if (sl == 0) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0); RETURN_THROWS(); }
+            if (sl > 1 && sv[0] == '0') { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a canonical decimal number", 0); RETURN_THROWS(); }
+            if (sl > 10) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
             for (size_t i = 0; i < sl; i++) {
                 if (sv[i] < '0' || sv[i] > '9') { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0); RETURN_THROWS(); }
             }
@@ -921,8 +947,7 @@ PHP_METHOD(FastUuid_Uuid, fromString) {
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
     if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) {
-        zend_throw_exception_ex(fu_ex_invalid_str, 0, "Invalid UUID string (len=%zu): %.32s%s",
-            ZSTR_LEN(s), ZSTR_VAL(s), ZSTR_LEN(s) > 32 ? "..." : "");
+        zend_throw_exception_ex(fu_ex_invalid_str, 0, "Invalid UUID string (len=%zu)", ZSTR_LEN(s));
         RETURN_THROWS();
     }
     fu_return_uuid(return_value, b);
@@ -1065,6 +1090,7 @@ PHP_METHOD(FastUuid_Uuid, getInteger) {
 /* Decode the embedded timestamp of a time-based UUID into unix seconds +
    microseconds. Returns 1 for v1/v2/v6/v7, 0 for versions with no timestamp. */
 static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micros) {
+    if ((b[8] & 0xC0) != 0x80) return 0;
     int ver = (b[6] >> 4) & 0x0f;
     if (ver == 1 || ver == 6) {
         uint64_t t60;
@@ -1236,8 +1262,8 @@ static zend_result fu_batch_count_arg(zend_long count, uint32_t *out) {
         zend_throw_exception(fu_ex_invalid_arg, "count must be > 0", 0);
         return FAILURE;
     }
-    if ((zend_ulong)count > HT_MAX_SIZE) {
-        zend_throw_exception(fu_ex_invalid_arg, "count is too large", 0);
+    if ((zend_ulong)count > HT_MAX_SIZE || (zend_ulong)count > FU_MAX_BATCH_COUNT) {
+        zend_throw_exception_ex(fu_ex_invalid_arg, 0, "count is too large (max %u)", FU_MAX_BATCH_COUNT);
         return FAILURE;
     }
     *out = (uint32_t)count;
@@ -1378,7 +1404,7 @@ PHP_FUNCTION(uuid_to_bin) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid UUID", 0); RETURN_THROWS(); }
+    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(fu_ex_invalid_str, "Invalid UUID", 0); RETURN_THROWS(); }
     RETURN_STRINGL((char *)b, 16);
 }
 
@@ -1401,6 +1427,7 @@ PHP_FUNCTION(fast_uuid_random_bytes) {
     zend_long n;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(n) ZEND_PARSE_PARAMETERS_END();
     if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); RETURN_THROWS(); }
+    if ((zend_ulong)n > FU_MAX_RANDOM_BYTES) { zend_throw_exception_ex(fu_ex_invalid_arg, 0, "length is too large (max %u)", FU_MAX_RANDOM_BYTES); RETURN_THROWS(); }
     zend_string *s = zend_string_alloc((size_t)n, 0);
     if (fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n) == FAILURE) { zend_string_release(s); RETURN_THROWS(); }
     ZSTR_VAL(s)[n] = '\0';
