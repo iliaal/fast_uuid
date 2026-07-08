@@ -20,7 +20,12 @@ final class GenericValidator implements ValidatorInterface
 
     public function validate(string $uuid): bool
     {
-        $uuid = \str_replace(['urn:', 'uuid:', 'URN:', 'UUID:', '{', '}'], '', $uuid);
+        if (\strlen($uuid) >= 9 && \strncasecmp($uuid, 'urn:uuid:', 9) === 0) {
+            $uuid = \substr($uuid, 9);
+        }
+        if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[\strlen($uuid) - 1] === '}') {
+            $uuid = \substr($uuid, 1, -1);
+        }
 
         return $uuid === '00000000-0000-0000-0000-000000000000'
             || (\strlen($uuid) === 36

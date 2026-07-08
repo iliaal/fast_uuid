@@ -26,12 +26,15 @@ abstract class AbstractUuid implements UuidInterface
     public function __toString(): string { return $this->core->toString(); }
     public function getUrn(): string { return $this->core->getUrn(); }
     public function getVersion(): ?int { return $this->core->getVersion(); }
-    public function getVariant(): ?int { return $this->core->getVariant(); }
+    public function getVariant(): int { return $this->core->getVariant(); }
     public function jsonSerialize(): string { return $this->core->jsonSerialize(); }
 
-    public function compareTo(UuidInterface $other): int
+    public function compareTo(mixed $other): int
     {
-        return $this->core->compareTo($other->getCore());
+        if ($other instanceof UuidInterface) {
+            return $this->core->compareTo($other->getCore());
+        }
+        return $this->core->compareTo($other);
     }
 
     public function equals(?object $other): bool

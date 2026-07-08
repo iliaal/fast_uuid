@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
-use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
@@ -34,7 +33,7 @@ final class GuidStringCodec extends StringCodec
             throw new InvalidArgumentException('Expected 16 bytes');
         }
 
-        return Uuid::fromBytes(self::swap($bytes));
+        return self::uuidFromBytes(self::swap($bytes));
     }
 
     public function encode(UuidInterface $uuid): string

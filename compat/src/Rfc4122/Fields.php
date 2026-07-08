@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\Type\Hexadecimal;
+use FastUuid\Exception\UnsupportedOperationException;
 
 final class Fields implements FieldsInterface
 {
@@ -96,11 +97,15 @@ final class Fields implements FieldsInterface
             $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
             return new Hexadecimal($timeHi . $timeMid . '00000000');
         }
-        // v1 (default): timeHi(12 bits) . timeMid(16) . timeLow(32) = 15 nibbles.
-        $timeLow = bin2hex(substr($b, 0, 4));            // 8 hex
-        $timeMid = bin2hex(substr($b, 4, 2));            // 4 hex
-        $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1); // drop version nibble -> 3 hex
-        return new Hexadecimal($timeHi . $timeMid . $timeLow);
+        if ($v === 1) {
+            // v1: timeHi(12 bits) . timeMid(16) . timeLow(32) = 15 nibbles.
+            $timeLow = bin2hex(substr($b, 0, 4));            // 8 hex
+            $timeMid = bin2hex(substr($b, 4, 2));            // 4 hex
+            $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1); // drop version nibble -> 3 hex
+            return new Hexadecimal($timeHi . $timeMid . $timeLow);
+        }
+
+        throw new UnsupportedOperationException('UUID has no embedded timestamp');
     }
 
     public function isNil(): bool { return $this->bytes === self::NIL_BYTES; }

@@ -49,7 +49,7 @@ namespace FastUuid {
         /** @alias FastUuid\Uuid::getUrn */
         public function toUrn(): string {}
         public function getVersion(): ?int {}
-        public function getVariant(): ?int {}
+        public function getVariant(): int {}
         public function getInteger(): string {}
         /** @alias FastUuid\Uuid::getInteger */
         public function toInteger(): string {}

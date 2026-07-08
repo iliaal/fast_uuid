@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
-use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
@@ -23,12 +22,22 @@ class StringCodec implements CodecInterface
 
     public function decode(string $encoded): UuidInterface
     {
-        return Uuid::fromString($encoded);
+        return self::uuidFromString($encoded);
     }
 
     public function decodeBytes(string $bytes): UuidInterface
     {
-        return Uuid::fromBytes($bytes);
+        return self::uuidFromBytes($bytes);
+    }
+
+    final protected static function uuidFromBytes(string $bytes): UuidInterface
+    {
+        return (new \FastUuid\Compat\UuidFactory())->wrap(\FastUuid\Uuid::fromBytes($bytes));
+    }
+
+    final protected static function uuidFromString(string $uuid): UuidInterface
+    {
+        return (new \FastUuid\Compat\UuidFactory())->wrap(\FastUuid\Uuid::fromString($uuid));
     }
 
     final protected static function bytesToString(string $b): string
@@ -43,10 +52,20 @@ class StringCodec implements CodecInterface
 
     final protected static function stringToBytes(string $s): string
     {
-        $hex = \str_replace('-', '', $s);
-        if (\strlen($hex) !== 32 || !\preg_match('/^[0-9a-fA-F]+$/', $hex)) {
+        if (\strlen($s) === 36) {
+            if (!\preg_match('/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/', $s)) {
+                throw new InvalidArgumentException('Invalid UUID string');
+            }
+            $hex = \str_replace('-', '', $s);
+        } elseif (\strlen($s) === 32) {
+            if (!\preg_match('/\A[0-9a-fA-F]{32}\z/', $s)) {
+                throw new InvalidArgumentException('Invalid UUID string');
+            }
+            $hex = $s;
+        } else {
             throw new InvalidArgumentException('Invalid UUID string');
         }
+
         return (string) \hex2bin($hex);
     }
 }

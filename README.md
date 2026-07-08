@@ -78,18 +78,18 @@ Instance methods:
 
 ```
 toString(): string        __toString(): string      getBytes(): string        getHex(): string
-getUrn(): string          getVersion(): ?int        getVariant(): ?int        getInteger(): string
+getUrn(): string          getVersion(): ?int        getVariant(): int         getInteger(): string
 getDateTime(): DateTimeImmutable                     getFields(): array        equals(mixed): bool
 compareTo(mixed): int     jsonSerialize(): string   getTimestampMillis(): int
 toBytes(): string         toHexadecimal(): string   toUrn(): string           toInteger(): string
 ```
 
 - `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
-- `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for the time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for v3/v4/v5/v8.
+- `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for RFC time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for non-time-based versions and non-RFC variants.
 - `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
 - UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order (the tie-breaking counter is per process, or per thread under ZTS, so ~244 ns ties across threads or processes carry no order). `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max and non-RFC variants.
-- `getDateTime()` works for the time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for v3/v4/v5/v8.
+- `getDateTime()` works for RFC time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for non-time-based versions and non-RFC variants.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
 - `equals()` and `compareTo()` accept another UUID object (native, a compat wrapper, or any `Stringable` whose string form parses as a UUID) or its canonical string.
 - `var_dump()` shows the value as a virtual `uuid` property, and `var_export()` output rebuilds through `Uuid::__set_state()`.
@@ -114,7 +114,7 @@ The local identifier occupies bytes 0 to 3 (big-endian); the local domain is sto
 - `FastUuid\Exception\InvalidUuidStringException` (extends the above): an unparseable UUID string.
 - `FastUuid\Exception\UnsupportedOperationException` (extends `\RuntimeException`): raised by `getDateTime()` on a non-time-based version.
 
-Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp past the 48-bit millisecond field, a `fromDateTime` instant outside the v1 Gregorian window, a node outside `0..2^48-1`, a clock sequence outside `0..0x3fff`, or `uuid2` without an explicit local identifier for a non-PERSON/GROUP domain all throw `InvalidArgumentException`.
+Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp past the 48-bit millisecond field, a `fromDateTime` instant outside the v1 Gregorian window, a non-canonical or >128-bit decimal string for `fromInteger`, a node outside `0..2^48-1`, a clock sequence outside `0..0x3fff`, or `uuid2` without an explicit local identifier for a non-PERSON/GROUP domain all throw `InvalidArgumentException`.
 
 ## Procedural API
 
@@ -132,12 +132,13 @@ fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 ```
 
 `uuid_v4_fast()` uses a non-cryptographic xoshiro256** PRNG. Use it only for non-security IDs.
+Batch count is capped at 100,000 UUIDs per call, and `fast_uuid_random_bytes()` is capped at 16 MiB per call.
 
 ## ramsey/uuid compatibility layer (`FastUuid\Compat`)
 
 `compat/` is a PSR-4 (`FastUuid\Compat\`) companion package (`iliaal/fast-uuid-compat`) that provides the cold-path ramsey ergonomics on top of the C engine. It ships in this repo's `compat/` directory and is not on Packagist yet; install it as a Composer [path repository](https://getcomposer.org/doc/05-repositories.md#path) (`composer config repositories.fast-uuid-compat path /path/to/fast_uuid/compat && composer require iliaal/fast-uuid-compat:@dev`) or autoload `FastUuid\Compat\` to `compat/src/`. It provides: `UuidFactory`, the per-version `Rfc4122\UuidV1`…`UuidV8` / `NilUuid` / `MaxUuid` / `Nonstandard\Uuid` classes, `Rfc4122\UuidV2` with `getLocalDomain()` / `getLocalIdentifier()`, `Rfc4122\Fields` (`FieldsInterface`), `Type\Hexadecimal`, `Type\Integer`, the codecs (`StringCodec`, `OrderedTimeCodec`, `TimestampFirstCombCodec`, `TimestampLastCombCodec`, `GuidStringCodec`), `Guid\Guid`, the providers (`RandomGeneratorInterface`, `NodeProviderInterface`, `TimeGeneratorInterface` + defaults), and the validators (`GenericValidator`, `NonstandardValidator`).
 
-Generation stays on the pure-C fast path; supplying a custom `RandomGeneratorInterface` / `TimeGeneratorInterface` / `NodeProviderInterface` intentionally routes off it (ramsey behaviour) so application-supplied generators win. Migration from `ramsey/uuid` is largely a `use` swap from `Ramsey\Uuid\Uuid` to `FastUuid\Compat\Uuid`. The compat package has no external dependencies beyond the extension itself.
+Generation stays on the pure-C fast path; supplying a custom `RandomGeneratorInterface` / `TimeGeneratorInterface` / `NodeProviderInterface` intentionally routes off it where needed (ramsey behaviour) so application-supplied generators win. Custom node providers feed `uuid1()`, `uuid2()`, `uuid6()`, and `fromDateTime()` when no explicit node is passed. The compat `Uuid::uuid7()` facade also accepts a unix-millisecond `int`, matching the core object API. Factory decode methods honor the active codec: with `GuidStringCodec`, `fromString()`, `fromBytes()`, `fromHexadecimal()`, and `fromInteger()` interpret input as GUID mixed-endian data; use the default `StringCodec` for network-order integer/hex identity. Migration from `ramsey/uuid` is largely a `use` swap from `Ramsey\Uuid\Uuid` to `FastUuid\Compat\Uuid`. The compat package has no external dependencies beyond the extension itself.
 
 ## 📊 Benchmarks
 

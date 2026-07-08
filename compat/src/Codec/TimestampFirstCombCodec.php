@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
-use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
@@ -30,7 +29,7 @@ final class TimestampFirstCombCodec extends StringCodec
             throw new InvalidArgumentException('Expected 16 bytes');
         }
 
-        return Uuid::fromBytes(\substr($bytes, 10, 6) . \substr($bytes, 6, 4) . \substr($bytes, 0, 6));
+        return self::uuidFromBytes(\substr($bytes, 10, 6) . \substr($bytes, 6, 4) . \substr($bytes, 0, 6));
     }
 
     public function encode(UuidInterface $uuid): string

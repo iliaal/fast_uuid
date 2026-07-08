@@ -110,7 +110,7 @@ $u = Uuid::<span class="fn">fromString</span>(<span class="str">'6ba7b810-9dad-1
 Uuid::<span class="fn">uuid1</span>();   <span class="cm">// node + clock, optional Uuid::uuid1($node, $clockSeq)</span>
 Uuid::<span class="fn">uuid6</span>();   <span class="cm">// reordered-time, sortable v1</span>
 Uuid::<span class="fn">uuid4</span>();   <span class="cm">// random</span>
-Uuid::<span class="fn">uuid7</span>();   <span class="cm">// unix-time-ordered, optional Uuid::uuid7($dateTime)</span></pre>
+Uuid::<span class="fn">uuid7</span>();   <span class="cm">// unix-time-ordered, optional DateTime or unix-ms int</span></pre>
     <pre class="out">uuid1  60e596ac-5db2-11f1-aea4-a92f0e25fb04   <span style="color:#9a9488">(sample)</span>
 uuid6  1f15db26-0e59-66ad-aea4-a92f0e25fb04   <span style="color:#9a9488">(sample)</span>
 uuid4  36fa4138-9c2e-4765-955e-161592900197   <span style="color:#9a9488">(sample)</span>
@@ -168,8 +168,8 @@ $b = Uuid::<span class="fn">uuid7</span>(<span class="kw">new</span> DateTimeImm
 <span class="kw">var_dump</span>($a-&gt;<span class="fn">compareTo</span>($b) &lt; 0);    <span class="cm">// ordered by the sub-ms fraction</span>
 
 <span class="cm">// integer-millisecond API: build and read v7 with no DateTime object</span>
-$u = <span class="fn">uuid_v7_at</span>(<span class="str">1704067200123</span>);
-<span class="kw">echo</span> Uuid::<span class="fn">fromString</span>($u)-&gt;<span class="fn">getTimestampMillis</span>();</pre>
+$u = Uuid::<span class="fn">uuid7</span>(<span class="str">1704067200123</span>);
+<span class="kw">echo</span> $u-&gt;<span class="fn">getTimestampMillis</span>();</pre>
     <pre class="out">018cc251-f400-7199-9088-32b2a89d9aaa   <span style="color:#9a9488">(sample; sub-ms 0x199 in the 3rd group)</span>
 018cc251-f400-7e66-8fc2-8b98b1b54214   <span style="color:#9a9488">(same ms 018cc251-f400, sub-ms 0xe66, so a &lt; b)</span>
 bool(true)
@@ -204,7 +204,7 @@ compareTo   -1   (00..01 vs 00..02)</pre>
   </div>
 
   <h2 id="procedural">Procedural functions</h2>
-  <p>These return a string with no object allocation. Use them on the hot path: ORM inserts, cache keys, bulk generation. The <code>_bin</code> forms return the raw 16-byte value with no canonical formatting, and the <code>_batch</code> forms build <code>$n</code> at once and return them as an array.</p>
+  <p>These return a string with no object allocation. Use them on the hot path: ORM inserts, cache keys, bulk generation. The <code>_bin</code> forms return the raw 16-byte value with no canonical formatting, and the <code>_batch</code> forms build <code>$n</code> at once and return them as an array. Batch calls are capped at 100,000 UUIDs, and <code>fast_uuid_random_bytes()</code> is capped at 16 MiB.</p>
   <div class="ex">
     <pre class="code">uuid_v1(); uuid_v3($ns, $name); uuid_v4(); uuid_v5($ns, $name);
 uuid_v6(); uuid_v7(); uuid_v8($bytes);
@@ -230,7 +230,7 @@ uuid_is_valid   true</pre>
   <div class="note"><code>uuid_v4_fast()</code> uses a non-cryptographic PRNG. Don't use it for session tokens, password-reset keys, or anything an attacker shouldn't predict. Use <code>uuid_v4()</code> for those.</div>
 
   <h2 id="compat">ramsey-compat layer</h2>
-  <p>The <code>FastUuid\Compat</code> package puts a <code>ramsey/uuid</code>-shaped API over the C core. Migration is largely a <code>use</code> swap from <code>Ramsey\Uuid\Uuid</code> to <code>FastUuid\Compat\Uuid</code>. Generation stays on the C fast path.</p>
+  <p>The <code>FastUuid\Compat</code> package puts a <code>ramsey/uuid</code>-shaped API over the C core. Migration is largely a <code>use</code> swap from <code>Ramsey\Uuid\Uuid</code> to <code>FastUuid\Compat\Uuid</code>. Generation stays on the C fast path unless a custom provider or generator is configured, and compat <code>Uuid::uuid7()</code> accepts the same unix-millisecond int path as the core API.</p>
   <div class="ex">
     <pre class="code"><span class="kw">use</span> FastUuid\Compat\Uuid;
 
@@ -267,6 +267,7 @@ $f-&gt;<span class="fn">uuid4</span>()-&gt;<span class="fn">getVersion</span>();
     <pre class="out">codec round-trip    true
 guid                10b8a76b-ad9d-d111-80b4-00c04fd430c8
 factory uuid4 ver   4</pre>
+    <p>Factory decode methods honor the active codec. With <code>GuidStringCodec</code>, <code>fromString()</code>, <code>fromBytes()</code>, <code>fromHexadecimal()</code>, and <code>fromInteger()</code> interpret input as GUID mixed-endian data; use the default <code>StringCodec</code> for network-order integer/hex identity.</p>
   </div>
 
   <h2 id="bench">Benchmarks</h2>
@@ -360,7 +361,7 @@ factory uuid4 ver   4</pre>
       <tr><td>getTimestampMillis (read)</td><td>n/a</td><td class="win">24.0M</td><td>n/a</td></tr>
     </tbody>
   </table>
-  <p><code>uuid7($dateTime)</code> runs ~17x faster than ramsey's and <code>getDateTime()</code> ~44x. <code>uuid_v7_at($unixMillis)</code> and <code>getTimestampMillis()</code> are integer-native with no DateTime object, and ramsey has no equivalent. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
+  <p><code>uuid7($dateTime)</code> runs ~17x faster than ramsey's and <code>getDateTime()</code> ~44x. <code>Uuid::uuid7($unixMillis)</code>, <code>uuid_v7_at($unixMillis)</code>, and <code>getTimestampMillis()</code> are integer-native with no DateTime object, and ramsey has no equivalent. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
 
   <footer>
     <a href="https://github.com/iliaal/fast_uuid">GitHub</a>
