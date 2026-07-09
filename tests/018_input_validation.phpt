@@ -14,7 +14,10 @@ function throws(callable $fn, string $class = IAE::class): bool {
 $utc = new DateTimeZone('UTC');
 
 // --- CR-002: v7 timestamp range -------------------------------------------
-$overV7 = new DateTimeImmutable('@' . (intdiv(1 << 48, 1000) + 1)); // just past the 48-bit ms ceiling
+// One second past the 48-bit ms ceiling (intdiv(2**48, 1000) + 1). A literal,
+// not 1 << 48, since that shift is 0 on 32-bit PHP; DateTime holds the large
+// instant via its 64-bit internal time.
+$overV7 = new DateTimeImmutable('@281474976711');
 var_dump(throws(fn() => Uuid::uuid7($overV7)));                     // over-range throws
 var_dump(throws(fn() => Uuid::uuid7(new DateTimeImmutable('@-1')))); // pre-1970 throws
 var_dump(Uuid::uuid7(new DateTimeImmutable('2023-01-01 00:00:00.5', $utc))->getVersion() === 7); // valid ok
