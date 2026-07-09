@@ -7,20 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-09
+
 ### Added
 - Compat `Rfc4122\UuidV6::fromUuidV1()` / `toUuidV1()` and `Rfc4122\UuidV2::getLocalDomainName()`, plus the ramsey variant/version constants (`RFC_4122`, `UUID_TYPE_*`, `DCE_DOMAIN_NAMES`) on the `FastUuid\Compat\Uuid` facade.
 - Windows release binaries now run the PHPT suite before upload (`release-windows.yml`), and CI tests PHP 8.6. An `nm` guard fails the Linux build if libgcc's `__cpu_model` symbol is linked in.
+- Compat `Uuid::uuid7()` accepts an `int` unix-millisecond timestamp as well as a `DateTimeInterface`, matching the core object API.
+- Custom node providers now feed the compat `uuid1()`, `uuid2()`, `uuid6()`, and `fromDateTime()` factories when no explicit node is passed.
 
 ### Changed
 - `FastUuid\Exception\UnsupportedOperationException` now extends `\LogicException` instead of `\RuntimeException`, matching `ramsey/uuid` 4.x. Code that catches `\RuntimeException` for this exception must catch `\LogicException` or the class itself instead.
 - SSSE3 detection uses a direct CPUID probe instead of `__builtin_cpu_supports()`, removing the libgcc `__cpu_model` dependency that broke `-shared` links under some toolchains (e.g. `zig cc`).
 - Compat `Type\Hexadecimal` accepts a case-insensitive `0x`/`0X` prefix and any `Stringable`; `Type\Integer` accepts a leading `+` and whole floats. Both gained `__serialize()`/`__unserialize()`.
+- `getVariant()` now returns `int` instead of `?int` on both the core `FastUuid\Uuid` and the compat `UuidInterface`; it never returned null.
+- `getDateTime()` and `getTimestampMillis()` now throw `UnsupportedOperationException` for non-time-based versions and non-RFC variants instead of decoding a meaningless timestamp; the compat `Fields::getTimestamp()` mirrors this.
+- Compat `UuidInterface::compareTo()` accepts `mixed` (a UUID object, canonical string, or `Stringable`), not only another `UuidInterface`.
+- Compat factory decode methods honor the active codec: `fromString()`, `fromBytes()`, `fromHexadecimal()`, and `fromInteger()` route through the configured codec, so `GuidStringCodec` reads mixed-endian input.
+- `uuid_to_bin()` throws `InvalidUuidStringException` instead of `InvalidArgumentException` on an unparseable UUID, matching `Uuid::fromString()`.
+- `Uuid::fromString()` no longer echoes the rejected input in its exception message.
 
 ### Fixed
 - Compat `UuidFactory::fromHexadecimal()` accepted hyphenated, URN, and braced strings (a regression from routing through the string codec). It now requires exactly 32 hex characters, matching the core `fromHexadecimal()` and ramsey.
 - `getDateTime()` / `uuid7(DateTimeInterface)` / `fromDateTime()` on a `DateTime` subclass that overrides `format('u')` no longer silently shift the encoded timestamp: the microsecond field must be exactly six digits, so out-of-range, negative, or non-numeric values are rejected instead of coerced.
 - The compat `GenericValidator` / `NonstandardValidator` reject over-long input before copying it, avoiding an out-of-memory fatal on a multi-megabyte `urn:uuid:` string.
-- `fu_unix_nanos()` throws instead of overflowing the unsigned-nanosecond representation for a system clock past ~year 2554, and `pthread_atfork()` registration failure no longer latches the "registered" flag (fork-safety can retry).
+- Live-clock generation (`uuid1`/`uuid6`/`uuid7` and `uuid2` with no explicit time) throws instead of emitting a wrapped timestamp when `clock_gettime()` fails, the system clock predates 1970, or the nanosecond counter would overflow (~year 2554).
+- `pthread_atfork()` registration failure no longer latches the "registered" flag, so a later module init can retry the fork-safety setup.
+- `Uuid::fromInteger()` rejects non-canonical (leading-zero) and out-of-range (>128-bit) decimal strings instead of silently wrapping.
+- `uuid2()` rejects a non-canonical or out-of-range string `localIdentifier` instead of truncating it.
+- Batch generators are capped at 100,000 UUIDs per call and `fast_uuid_random_bytes()` at 16 MiB, so an oversized request throws instead of exhausting memory.
+- Compat `StringCodec` rejects UUID strings with misplaced hyphens (e.g. `0011223344-5546778899-aabbccddeeff`) that the previous `str_replace`-based decoder accepted.
+- Compat `GenericValidator` and `NonstandardValidator` strip only a leading `urn:uuid:` prefix and matching braces, rejecting malformed wrappers like `urn:<uuid>` and `{urn:uuid:<uuid>}`.
 
 ## [0.3.0] - 2026-07-03
 
@@ -141,7 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/iliaal/fast_uuid/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/iliaal/fast_uuid/compare/0.2.2...0.3.0
 [0.2.2]: https://github.com/iliaal/fast_uuid/compare/0.2.1...0.2.2
 [0.2.1]: https://github.com/iliaal/fast_uuid/compare/0.2.0...0.2.1
