@@ -36,6 +36,15 @@ $neg = new class('@1700000000') extends DateTimeImmutable {
 };
 var_dump(throws(fn() => CoreUuid::uuid7($lie), InvalidArgumentException::class));
 var_dump(throws(fn() => CoreUuid::uuid7($neg), InvalidArgumentException::class));
+// Non-six-digit format("u") (coerces in-range under zval_get_long) is also rejected.
+foreach (['abc', '1', '1e2', '12345', '1234567'] as $bad) {
+    $sub = new class('@1700000000') extends DateTimeImmutable {
+        public string $u = '';
+        public function format(string $f): string { return $f === 'u' ? $this->u : parent::format($f); }
+    };
+    $sub->u = $bad;
+    var_dump(throws(fn() => CoreUuid::uuid7($sub), InvalidArgumentException::class));
+}
 // A well-behaved subclass still works.
 $ok = new class('@1700000000.123456') extends DateTimeImmutable {};
 var_dump(CoreUuid::uuid7($ok)->getVersion() === 7);
@@ -69,6 +78,12 @@ var_dump((new IntegerObject(42.0))->toString() === '42');
 var_dump((new IntegerObject(100.0))->toString() === '100');
 var_dump(throws(fn() => new IntegerObject(42.5), InvalidArgumentException::class));
 var_dump(unserialize(serialize(new IntegerObject('123')))->toString() === '123');
+var_dump(unserialize(serialize(new Hexadecimal('dead')))->toString() === 'dead');
+// Copy construction under strict_types (declare above) must not throw.
+var_dump((new IntegerObject(new IntegerObject('42')))->toString() === '42');
+// __unserialize revalidates: a tampered payload is rejected, not accepted as-is.
+var_dump(throws(fn() => (new Hexadecimal('a'))->__unserialize(['string' => 'zz']), InvalidArgumentException::class));
+var_dump(throws(fn() => (new IntegerObject('0'))->__unserialize(['string' => 'nope']), InvalidArgumentException::class));
 
 // CR-012: constants and v1<->v6 conversions.
 var_dump(CompatUuid::RFC_4122 === 2 && CompatUuid::UUID_TYPE_TIME === 1 && CompatUuid::UUID_TYPE_REORDERED_TIME === 6);
@@ -82,6 +97,15 @@ var_dump($v6->toUuidV1()->equals($v1)); // round-trips
 var_dump($v6->getCore()->getTimestampMillis() === $v1->getCore()->getTimestampMillis());
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

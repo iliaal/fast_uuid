@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Compat `UuidFactory::fromHexadecimal()` accepted hyphenated, URN, and braced strings (a regression from routing through the string codec). It now requires exactly 32 hex characters, matching the core `fromHexadecimal()` and ramsey.
-- `getDateTime()` / `uuid7(DateTimeInterface)` / `fromDateTime()` on a `DateTime` subclass that overrides `format('u')` to return a value outside `0..999999` no longer silently shift the encoded timestamp; the out-of-range microsecond is rejected.
+- `getDateTime()` / `uuid7(DateTimeInterface)` / `fromDateTime()` on a `DateTime` subclass that overrides `format('u')` no longer silently shift the encoded timestamp: the microsecond field must be exactly six digits, so out-of-range, negative, or non-numeric values are rejected instead of coerced.
 - The compat `GenericValidator` / `NonstandardValidator` reject over-long input before copying it, avoiding an out-of-memory fatal on a multi-megabyte `urn:uuid:` string.
 - `fu_unix_nanos()` throws instead of overflowing the unsigned-nanosecond representation for a system clock past ~year 2554, and `pthread_atfork()` registration failure no longer latches the "registered" flag (fork-safety can retry).
 

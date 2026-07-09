@@ -200,14 +200,14 @@ final class UuidFactory
     public function fromHexadecimal(Hexadecimal|string $hex): UuidInterface
     {
         // Strict 32-hex input only: unlike fromString(), a hexadecimal
-        // identifier is not a canonical/URN/braced UUID string. Convert to
-        // raw bytes and let the active codec interpret their order (network
-        // for StringCodec, mixed-endian for GuidStringCodec).
+        // identifier is not a canonical/URN/braced UUID string. Validate the
+        // shape here, then dispatch through the codec's string decode() (ramsey
+        // parity) so a custom codec sees the same entry point it does for hex.
         $h = (string) $hex;
         if (\strlen($h) !== 32 || !\preg_match('/\A[0-9a-fA-F]{32}\z/', $h)) {
             throw new \FastUuid\Exception\InvalidArgumentException('Invalid hexadecimal UUID (expect 32 hex chars)');
         }
-        return $this->getCodec()->decodeBytes((string) \hex2bin($h));
+        return $this->getCodec()->decode($h);
     }
 
     public function fromDateTime(

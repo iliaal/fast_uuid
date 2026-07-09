@@ -752,15 +752,26 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
     zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
     if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); return FAILURE; }
     /* A DateTime subclass may override format(): a non-canonical "u" (e.g.
-       "1000000" or "-1") would carry into the seconds or wrap the unsigned
-       microseconds, shifting the encoded timestamp. Reject out-of-range. */
-    zend_long m = zval_get_long(&ret);
-    zval_ptr_dtor(&ret);
-    if (m < 0 || m > 999999) {
-        zend_throw_exception(fu_ex_invalid_arg, "DateTime format(\"u\") returned a microsecond value outside 0..999999", 0);
+       "1000000" carries into the seconds, "-1"/"abc"/"1e2" coerce to a bogus
+       microsecond) would shift the encoded timestamp. The built-in format("u")
+       always yields exactly six digits, so require that shape. */
+    if (Z_TYPE(ret) != IS_STRING || Z_STRLEN(ret) != 6) {
+        zval_ptr_dtor(&ret);
+        zend_throw_exception(fu_ex_invalid_arg, "DateTime format(\"u\") must return six decimal digits", 0);
         return FAILURE;
     }
-    *micros = (uint32_t)m;
+    const char *mv = Z_STRVAL(ret);
+    uint32_t m = 0;
+    for (int i = 0; i < 6; i++) {
+        if (mv[i] < '0' || mv[i] > '9') {
+            zval_ptr_dtor(&ret);
+            zend_throw_exception(fu_ex_invalid_arg, "DateTime format(\"u\") must return six decimal digits", 0);
+            return FAILURE;
+        }
+        m = m * 10 + (uint32_t)(mv[i] - '0');
+    }
+    zval_ptr_dtor(&ret);
+    *micros = m; /* 0..999999 by construction */
     return SUCCESS;
 }
 
@@ -1509,9 +1520,10 @@ PHP_MINIT_FUNCTION(fast_uuid) {
        crashes. Load via extension=, not dl(), on musl/Alpine. */
     static int atfork_registered = 0;
     if (!atfork_registered) {
-        /* Only latch on success: if registration fails (ENOMEM), leave the
-           flag clear so a later MINIT can retry rather than silently losing
-           fork-safety for the CSPRNG buffer. */
+        /* Only latch on success so a subsequent MINIT can retry. Registration
+           failing (ENOMEM at startup) and the process then forking and
+           generating is an accepted, documented limitation, not guarded in the
+           hot path (see CLAUDE.md). */
         if (pthread_atfork(NULL, NULL, fu_atfork_child) == 0) {
             atfork_registered = 1;
         }
