@@ -112,7 +112,7 @@ The local identifier occupies bytes 0 to 3 (big-endian); the local domain is sto
 
 - `FastUuid\Exception\InvalidArgumentException` (extends `\InvalidArgumentException`): a bad length, node, or integer.
 - `FastUuid\Exception\InvalidUuidStringException` (extends the above): an unparseable UUID string.
-- `FastUuid\Exception\UnsupportedOperationException` (extends `\RuntimeException`): raised by `getDateTime()` on a non-time-based version.
+- `FastUuid\Exception\UnsupportedOperationException` (extends `\LogicException`, matching `ramsey/uuid` 4.x): raised by `getDateTime()` on a non-time-based version.
 
 Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp past the 48-bit millisecond field, a `fromDateTime` instant outside the v1 Gregorian window, a non-canonical or >128-bit decimal string for `fromInteger`, a node outside `0..2^48-1`, a clock sequence outside `0..0x3fff`, or `uuid2` without an explicit local identifier for a non-PERSON/GROUP domain all throw `InvalidArgumentException`.
 

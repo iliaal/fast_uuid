@@ -3,7 +3,7 @@
 ## Supported versions
 
 Security fixes target the latest released `0.x` / `1.x` tag. The extension is
-tested against PHP 8.3, 8.4, 8.5, and 8.6; report issues against any of these.
+tested against PHP 8.1, 8.2, 8.3, 8.4, 8.5, and 8.6; report issues against any of these.
 
 ## Reporting a vulnerability
 

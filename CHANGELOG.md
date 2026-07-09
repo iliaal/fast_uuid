@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Compat `Rfc4122\UuidV6::fromUuidV1()` / `toUuidV1()` and `Rfc4122\UuidV2::getLocalDomainName()`, plus the ramsey variant/version constants (`RFC_4122`, `UUID_TYPE_*`, `DCE_DOMAIN_NAMES`) on the `FastUuid\Compat\Uuid` facade.
+- Windows release binaries now run the PHPT suite before upload (`release-windows.yml`), and CI tests PHP 8.6. An `nm` guard fails the Linux build if libgcc's `__cpu_model` symbol is linked in.
+
+### Changed
+- `FastUuid\Exception\UnsupportedOperationException` now extends `\LogicException` instead of `\RuntimeException`, matching `ramsey/uuid` 4.x. Code that catches `\RuntimeException` for this exception must catch `\LogicException` or the class itself instead.
+- SSSE3 detection uses a direct CPUID probe instead of `__builtin_cpu_supports()`, removing the libgcc `__cpu_model` dependency that broke `-shared` links under some toolchains (e.g. `zig cc`).
+- Compat `Type\Hexadecimal` accepts a case-insensitive `0x`/`0X` prefix and any `Stringable`; `Type\Integer` accepts a leading `+` and whole floats. Both gained `__serialize()`/`__unserialize()`.
+
+### Fixed
+- Compat `UuidFactory::fromHexadecimal()` accepted hyphenated, URN, and braced strings (a regression from routing through the string codec). It now requires exactly 32 hex characters, matching the core `fromHexadecimal()` and ramsey.
+- `getDateTime()` / `uuid7(DateTimeInterface)` / `fromDateTime()` on a `DateTime` subclass that overrides `format('u')` to return a value outside `0..999999` no longer silently shift the encoded timestamp; the out-of-range microsecond is rejected.
+- The compat `GenericValidator` / `NonstandardValidator` reject over-long input before copying it, avoiding an out-of-memory fatal on a multi-megabyte `urn:uuid:` string.
+- `fu_unix_nanos()` throws instead of overflowing the unsigned-nanosecond representation for a system clock past ~year 2554, and `pthread_atfork()` registration failure no longer latches the "registered" flag (fork-safety can retry).
+
 ## [0.3.0] - 2026-07-03
 
 ### Added

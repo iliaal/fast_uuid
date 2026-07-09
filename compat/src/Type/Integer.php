@@ -11,15 +11,26 @@ final class Integer implements \JsonSerializable, \Stringable
 {
     private string $value;
 
-    public function __construct(string|int $value)
+    public function __construct(string|int|float $value)
     {
-        $v = (string) $value;
-        $neg = str_starts_with($v, '-');
-        $digits = $neg ? substr($v, 1) : $v;
-        if (!\preg_match('/^[0-9]+$/D', $digits)) {
+        if (\is_float($value)) {
+            // Only whole, finite floats map to an integer (42.0 -> "42").
+            if (!\is_finite($value) || \floor($value) !== $value) {
+                throw new InvalidArgumentException('Value must be a signed integer or a string containing only digits');
+            }
+            $v = \sprintf('%.0f', $value);
+        } else {
+            $v = (string) $value;
+        }
+        $neg = false;
+        if ($v !== '' && ($v[0] === '+' || $v[0] === '-')) {
+            $neg = $v[0] === '-';
+            $v = \substr($v, 1);
+        }
+        if (!\preg_match('/^[0-9]+$/D', $v)) {
             throw new InvalidArgumentException('Value must be a signed integer or a string containing only digits');
         }
-        $digits = ltrim($digits, '0');
+        $digits = ltrim($v, '0');
         $this->value = $digits === '' ? '0' : ($neg ? '-' : '') . $digits;
     }
 
@@ -27,4 +38,6 @@ final class Integer implements \JsonSerializable, \Stringable
     public function toString(): string { return $this->value; }
     public function __toString(): string { return $this->value; }
     public function jsonSerialize(): string { return $this->value; }
+    public function __serialize(): array { return ['value' => $this->value]; }
+    public function __unserialize(array $data): void { $this->value = $data['value']; }
 }

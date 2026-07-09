@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: bb5a3d5ddcef2b89511b5d87bbf297ca095b7d2c */
+ * Stub hash: 48fc3227a12c69a771da8ea56710f2a28d3cd26a */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -410,12 +410,12 @@ static zend_class_entry *register_class_FastUuid_Exception_InvalidUuidStringExce
 	return class_entry;
 }
 
-static zend_class_entry *register_class_FastUuid_Exception_UnsupportedOperationException(zend_class_entry *class_entry_RuntimeException)
+static zend_class_entry *register_class_FastUuid_Exception_UnsupportedOperationException(zend_class_entry *class_entry_LogicException)
 {
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "FastUuid\\Exception", "UnsupportedOperationException", NULL);
-	class_entry = zend_register_internal_class_with_flags(&ce, class_entry_RuntimeException, 0);
+	class_entry = zend_register_internal_class_with_flags(&ce, class_entry_LogicException, 0);
 
 	return class_entry;
 }

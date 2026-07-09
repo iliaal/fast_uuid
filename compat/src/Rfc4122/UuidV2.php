@@ -18,6 +18,19 @@ final class UuidV2 extends AbstractUuid
         return \ord($this->core->getBytes()[9]);
     }
 
+    /** ramsey parity: the human-readable DCE domain name (person/group/org). */
+    public function getLocalDomainName(): string
+    {
+        return match ($this->getLocalDomain()) {
+            0 => 'person',
+            1 => 'group',
+            2 => 'org',
+            default => throw new \FastUuid\Exception\UnsupportedOperationException(
+                'Unknown DCE local domain ' . $this->getLocalDomain()
+            ),
+        };
+    }
+
     public function getLocalIdentifier(): IntegerObject
     {
         // %u keeps identifiers >= 2^31 positive on 32-bit PHP, where

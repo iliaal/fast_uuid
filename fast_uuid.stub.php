@@ -68,7 +68,7 @@ namespace FastUuid {
 namespace FastUuid\Exception {
     class InvalidArgumentException extends \InvalidArgumentException {}
     class InvalidUuidStringException extends InvalidArgumentException {}
-    class UnsupportedOperationException extends \RuntimeException {}
+    class UnsupportedOperationException extends \LogicException {}
 }
 
 namespace {

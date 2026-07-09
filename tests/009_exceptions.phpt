@@ -15,9 +15,9 @@ var_dump($e instanceof FuInvalidArgument);
 var_dump($e instanceof \InvalidArgumentException);
 var_dump($e instanceof \Throwable);
 
-// UnsupportedOperationException is a RuntimeException.
+// UnsupportedOperationException is a LogicException (ramsey/uuid 4.x parity).
 $u = new UnsupportedOperationException();
-var_dump($u instanceof \RuntimeException);
+var_dump($u instanceof \LogicException);
 var_dump($u instanceof \Throwable);
 
 // uuid8 requires exactly 16 bytes; the extension throws plain \InvalidArgumentException.

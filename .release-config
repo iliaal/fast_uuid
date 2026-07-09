@@ -6,6 +6,9 @@ extension: fast_uuid                  # from composer.json name
 version_macro: PHP_FAST_UUID_VERSION  # from php_fast_uuid.h
 version_file: php_fast_uuid.h
 repo: iliaal/fast_uuid                # composer.json name; no git remote configured yet
+# Release binaries are built per GA PHP version. 8.6 is supported and tested
+# (see tests.yml) but not listed here until its GA, since pre-release Windows/
+# release builds aren't published yet -- add PHP-8.6 when 8.6.0 ships.
 build_matrix:
   - PHP-8.1
   - PHP-8.2

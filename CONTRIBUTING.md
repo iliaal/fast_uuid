@@ -41,7 +41,7 @@ or other extensions.
 
 - Build with zero compiler warnings.
 - Run the suite against more than one PHP version when touching C. The intended
-  support range is 8.3 through 8.6, NTS and ZTS.
+  support range is 8.1 through 8.6, NTS and ZTS.
 - For any change to a parse, format, or generation path, run the suite once more
   against an ASan/UBSan-instrumented build (a `.so` built `-fsanitize=address,undefined`
   loaded by an ASan-instrumented PHP, with `USE_ZEND_ALLOC=0`). A stack overflow
