@@ -62,10 +62,18 @@ var_dump($validator->validate('urn:uuid:{' . $canonical . '}'));
 var_dump($validator->validate('urn:' . $canonical) === false);
 var_dump($validator->validate('{urn:uuid:' . $canonical . '}') === false);
 
-$ms = 1700000000000;
-$v7 = CompatUuid::uuid7($ms);
-var_dump($v7->getVersion() === 7);
-var_dump($v7->getCore()->getTimestampMillis() === $ms);
+// The integer-millisecond uuid7 facade is 64-bit only (ms > PHP_INT_MAX on
+// 32-bit PHP); fall back to the DateTime path there.
+if (PHP_INT_SIZE >= 8) {
+    $ms = 1700000000000;
+    $v7 = CompatUuid::uuid7($ms);
+    var_dump($v7->getVersion() === 7);
+    var_dump($v7->getCore()->getTimestampMillis() === $ms);
+} else {
+    $v7 = CompatUuid::uuid7(new DateTimeImmutable('@1700000000'));
+    var_dump($v7->getVersion() === 7);
+    var_dump($v7->getCore()->getDateTime()->getTimestamp() === 1700000000);
+}
 
 $node = "\x01\x02\x03\x04\x05\x06";
 $providerFactory = new UuidFactory();

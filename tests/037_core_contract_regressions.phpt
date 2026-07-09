@@ -26,7 +26,8 @@ var_dump(throws(fn() => Uuid::fromInteger('00'), InvalidArgumentException::class
 var_dump(throws(fn() => Uuid::fromInteger(str_repeat('0', 50)), InvalidArgumentException::class));
 var_dump(throws(fn() => Uuid::fromInteger('340282366920938463463374607431768211456'), InvalidArgumentException::class));
 
-var_dump(unpack('N', substr(Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, '4294967295')->getBytes(), 0, 4))[1] === 4294967295);
+// Raw big-endian bytes rather than unpack('N') (4294967295 exceeds 32-bit PHP_INT_MAX).
+var_dump(substr(Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, '4294967295')->getBytes(), 0, 4) === "\xff\xff\xff\xff");
 var_dump(throws(fn() => Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, '042'), InvalidArgumentException::class));
 var_dump(throws(fn() => Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, str_repeat('0', 20)), InvalidArgumentException::class));
 var_dump(throws(fn() => Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, '99999999999'), InvalidArgumentException::class));

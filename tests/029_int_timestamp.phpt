@@ -2,6 +2,8 @@
 Integer timestamp API: uuid_v7_at(), Uuid::uuid7(int), getTimestampMillis()
 --EXTENSIONS--
 fast_uuid
+--SKIPIF--
+<?php if (PHP_INT_SIZE < 8) die('skip 64-bit only: millisecond timestamps exceed 32-bit PHP_INT_MAX'); ?>
 --FILE--
 <?php
 declare(strict_types=1);
