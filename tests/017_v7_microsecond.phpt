@@ -2,6 +2,8 @@
 uuid7 embeds sub-ms precision in rand_a (RFC 9562 Method 3), stays monotonic; to* aliases
 --EXTENSIONS--
 fast_uuid
+--SKIPIF--
+<?php if (PHP_INT_SIZE < 8) die('skip 64-bit only: 48-bit millisecond field exceeds 32-bit PHP_INT_MAX'); ?>
 --FILE--
 <?php
 declare(strict_types=1);

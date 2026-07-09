@@ -27,8 +27,16 @@ var_dump(Uuid::fromDateTime(new DateTimeImmutable('2020-06-15 12:00:00.5', $utc)
 
 // --- CR-003: node / clockSeq bounds ---------------------------------------
 var_dump(throws(fn() => Uuid::uuid1(-1)));               // negative node rejected
-var_dump(throws(fn() => Uuid::uuid1(2 ** 48)));          // > 48-bit node rejected
-var_dump(substr(Uuid::uuid1(0xffffffffffff)->getHex(), 20) === 'ffffffffffff'); // max node ok, not truncated
+// 48-bit node literals exceed PHP_INT_MAX on 32-bit PHP (they parse as float),
+// so test the numeric-overflow rejection and max node via int on 64-bit and
+// via string on 32-bit.
+if (PHP_INT_SIZE >= 8) {
+    var_dump(throws(fn() => Uuid::uuid1(2 ** 48)));          // > 48-bit node rejected
+    var_dump(substr(Uuid::uuid1(0xffffffffffff)->getHex(), 20) === 'ffffffffffff'); // max node ok, not truncated
+} else {
+    var_dump(throws(fn() => Uuid::uuid1('zzzzzzzzzzzz')));   // non-hex node rejected
+    var_dump(substr(Uuid::uuid1('ffffffffffff')->getHex(), 20) === 'ffffffffffff'); // max node via string, not truncated
+}
 var_dump(throws(fn() => Uuid::uuid1('0123456789ab', 0x4000))); // clockSeq > 14 bits rejected
 var_dump(Uuid::uuid1('0123456789ab', 0x3fff)->getVersion() === 1); // max clockSeq ok
 

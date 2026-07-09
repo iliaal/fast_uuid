@@ -19,9 +19,14 @@ var_dump(is_rfc_bytes(uuid_v4_fast_bin(), 4));
 var_dump(is_rfc_bytes(uuid_v6_bin(), 6));
 var_dump(is_rfc_bytes(uuid_v7_bin(), 7));
 
-// Explicit v7 timestamp survives the binary fast path.
-$ms = 1700000000123;
-var_dump(Uuid::fromBytes(uuid_v7_at_bin($ms))->getTimestampMillis() === $ms);
+// Explicit v7 timestamp survives the binary fast path. The integer-millisecond
+// form is 64-bit only (a ms timestamp exceeds PHP_INT_MAX on 32-bit PHP).
+if (PHP_INT_SIZE >= 8) {
+    $ms = 1700000000123;
+    var_dump(Uuid::fromBytes(uuid_v7_at_bin($ms))->getTimestampMillis() === $ms);
+} else {
+    var_dump(strlen(uuid_v7_bin()) === 16); // binary fast path still works on 32-bit
+}
 
 // Name-based binary forms match the canonical RFC vectors.
 var_dump(bin2hex(uuid_v3_bin(Uuid::NAMESPACE_DNS, 'www.example.com')) === '5df418813aed351588a72f4a814cf09e');

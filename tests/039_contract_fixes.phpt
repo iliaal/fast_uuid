@@ -94,7 +94,12 @@ var_dump($v1 instanceof UuidV1);
 $v6 = UuidV6::fromUuidV1($v1);
 var_dump($v6->getVersion() === 6);
 var_dump($v6->toUuidV1()->equals($v1)); // round-trips
-var_dump($v6->getCore()->getTimestampMillis() === $v1->getCore()->getTimestampMillis());
+if (PHP_INT_SIZE >= 8) {
+    var_dump($v6->getCore()->getTimestampMillis() === $v1->getCore()->getTimestampMillis());
+} else {
+    // 32-bit: a current-era ms timestamp exceeds PHP_INT_MAX, so getTimestampMillis throws.
+    var_dump(throws(fn() => $v1->getCore()->getTimestampMillis(), UnsupportedOperationException::class));
+}
 ?>
 --EXPECT--
 bool(true)

@@ -13,9 +13,15 @@ $u1 = Uuid::uuid1('010203040506');
 var_dump($u1->getVersion() === 1);
 var_dump(substr($u1->getBytes(), 10, 6) === $node);
 
-// An integer node is accepted and lands in the same place.
-$u1i = Uuid::uuid1(0x010203040506);
-var_dump(substr($u1i->getBytes(), 10, 6) === $node);
+// An integer node is accepted and lands in the same place. A 48-bit node
+// exceeds PHP_INT_MAX on 32-bit PHP, so exercise the int form on 64-bit only;
+// the string-node path above already covers 32-bit.
+if (PHP_INT_SIZE >= 8) {
+    $u1i = Uuid::uuid1(0x010203040506);
+    var_dump(substr($u1i->getBytes(), 10, 6) === $node);
+} else {
+    var_dump(substr(Uuid::uuid1('010203040506')->getBytes(), 10, 6) === $node);
+}
 
 // v6 also places the explicit node in the last 6 bytes.
 $u6 = Uuid::uuid6('010203040506');
