@@ -33,6 +33,7 @@ final class Uuid
     // Variant constants (ramsey parity; values match getVariant()).
     public const RESERVED_NCS       = 0;
     public const RFC_4122           = 2;
+    public const RFC_9562           = 2; // RFC 9562 obsoletes 4122; same variant value
     public const RESERVED_MICROSOFT = 6;
     public const RESERVED_FUTURE    = 7;
 
@@ -45,6 +46,11 @@ final class Uuid
     public const UUID_TYPE_REORDERED_TIME = 6;
     public const UUID_TYPE_UNIX_TIME      = 7;
     public const UUID_TYPE_CUSTOM         = 8;
+    // Deprecated ramsey aliases, kept for drop-in source compatibility.
+    public const UUID_TYPE_IDENTIFIER = 2; // @deprecated alias of UUID_TYPE_DCE_SECURITY
+    public const UUID_TYPE_PEABODY    = 6; // @deprecated alias of UUID_TYPE_REORDERED_TIME
+
+    public const VALID_PATTERN = '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$';
 
     private static ?UuidFactory $factory = null;
 

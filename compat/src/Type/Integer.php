@@ -11,7 +11,7 @@ final class Integer implements \JsonSerializable, \Stringable
 {
     private string $value;
 
-    public function __construct(string|int|float $value)
+    public function __construct(string|int|float|\Stringable $value)
     {
         if (\is_float($value)) {
             // Only whole, finite floats map to an integer (42.0 -> "42").
@@ -38,6 +38,10 @@ final class Integer implements \JsonSerializable, \Stringable
     public function toString(): string { return $this->value; }
     public function __toString(): string { return $this->value; }
     public function jsonSerialize(): string { return $this->value; }
-    public function __serialize(): array { return ['value' => $this->value]; }
-    public function __unserialize(array $data): void { $this->value = $data['value']; }
+    public function __serialize(): array { return ['string' => $this->value]; }
+    public function __unserialize(array $data): void
+    {
+        // Revalidate through the constructor (ramsey parity).
+        $this->value = (new self((string) ($data['string'] ?? '')))->value;
+    }
 }
