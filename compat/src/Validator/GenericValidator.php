@@ -20,6 +20,11 @@ final class GenericValidator implements ValidatorInterface
 
     public function validate(string $uuid): bool
     {
+        // Reject implausibly long input before any substr() copy: the longest
+        // valid wrapped form is "urn:uuid:{...}" = 9 + 1 + 36 + 1 = 47 bytes.
+        if (\strlen($uuid) > 47) {
+            return false;
+        }
         if (\strlen($uuid) >= 9 && \strncasecmp($uuid, 'urn:uuid:', 9) === 0) {
             $uuid = \substr($uuid, 9);
         }

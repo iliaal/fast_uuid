@@ -24,6 +24,28 @@ final class Uuid
     public const DCE_DOMAIN_GROUP  = 1;
     public const DCE_DOMAIN_ORG    = 2;
 
+    public const DCE_DOMAIN_NAMES = [
+        self::DCE_DOMAIN_PERSON => 'person',
+        self::DCE_DOMAIN_GROUP  => 'group',
+        self::DCE_DOMAIN_ORG    => 'org',
+    ];
+
+    // Variant constants (ramsey parity; values match getVariant()).
+    public const RESERVED_NCS       = 0;
+    public const RFC_4122           = 2;
+    public const RESERVED_MICROSOFT = 6;
+    public const RESERVED_FUTURE    = 7;
+
+    // Version/type constants (ramsey parity; values match getVersion()).
+    public const UUID_TYPE_TIME           = 1;
+    public const UUID_TYPE_DCE_SECURITY   = 2;
+    public const UUID_TYPE_HASH_MD5       = 3;
+    public const UUID_TYPE_RANDOM         = 4;
+    public const UUID_TYPE_HASH_SHA1      = 5;
+    public const UUID_TYPE_REORDERED_TIME = 6;
+    public const UUID_TYPE_UNIX_TIME      = 7;
+    public const UUID_TYPE_CUSTOM         = 8;
+
     private static ?UuidFactory $factory = null;
 
     public static function getFactory(): UuidFactory

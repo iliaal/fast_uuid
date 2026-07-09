@@ -48,8 +48,30 @@
 
 #if defined(__x86_64__) || defined(__i386__)
 # include <immintrin.h>
+# if defined(_MSC_VER)
+#  include <intrin.h>
+# else
+#  include <cpuid.h>
+# endif
 # define FU_X86 1
-static int fu_has_ssse3 = 0;   /* set in MINIT via __builtin_cpu_supports */
+static int fu_has_ssse3 = 0;   /* set in MINIT via an explicit CPUID probe */
+
+/* Detect SSSE3 with a direct CPUID leaf-1 probe (ECX bit 9) rather than
+   __builtin_cpu_supports(), which pulls in libgcc's __cpu_model global and
+   trips an R_X86_64_PC32 relocation in -shared under some toolchains
+   (e.g. zig cc / compiler-rt). The CI nm guard fails the build if
+   __cpu_model reappears. */
+static int fu_detect_ssse3(void) {
+# if defined(_MSC_VER)
+    int regs[4];
+    __cpuid(regs, 1);
+    return (regs[2] >> 9) & 1;
+# else
+    unsigned int eax, ebx, ecx, edx;
+    if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return 0;
+    return (ecx >> 9) & 1;
+# endif
+}
 #endif
 
 #if defined(__aarch64__) && !defined(FU_DISABLE_NEON)
@@ -437,6 +459,10 @@ static inline zend_result fu_unix_nanos(uint64_t *out) {
         return FAILURE;
     }
     t100 -= 116444736000000000ULL; /* 1601-01-01 .. 1970-01-01 in 100ns ticks */
+    if (t100 > UINT64_MAX / 100ULL) { /* nanosecond product would wrap (~year 2554) */
+        zend_throw_exception(fu_ex_unsupported, "System clock too far in the future for nanosecond representation", 0);
+        return FAILURE;
+    }
     *out = t100 * 100ULL;
     return SUCCESS;
 #else
@@ -447,6 +473,10 @@ static inline zend_result fu_unix_nanos(uint64_t *out) {
     }
     if (ts.tv_sec < 0) {
         zend_throw_exception(fu_ex_unsupported, "System clock is before the Unix epoch", 0);
+        return FAILURE;
+    }
+    if ((uint64_t)ts.tv_sec > (UINT64_MAX - (uint64_t)ts.tv_nsec) / 1000000000ULL) { /* wraps ~year 2554 */
+        zend_throw_exception(fu_ex_unsupported, "System clock too far in the future for nanosecond representation", 0);
         return FAILURE;
     }
     *out = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
@@ -721,8 +751,16 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
     cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
     zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
     if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); return FAILURE; }
-    *micros = (uint32_t)zval_get_long(&ret); /* 0..999999 within the second */
+    /* A DateTime subclass may override format(): a non-canonical "u" (e.g.
+       "1000000" or "-1") would carry into the seconds or wrap the unsigned
+       microseconds, shifting the encoded timestamp. Reject out-of-range. */
+    zend_long m = zval_get_long(&ret);
     zval_ptr_dtor(&ret);
+    if (m < 0 || m > 999999) {
+        zend_throw_exception(fu_ex_invalid_arg, "DateTime format(\"u\") returned a microsecond value outside 0..999999", 0);
+        return FAILURE;
+    }
+    *micros = (uint32_t)m;
     return SUCCESS;
 }
 
@@ -1471,8 +1509,12 @@ PHP_MINIT_FUNCTION(fast_uuid) {
        crashes. Load via extension=, not dl(), on musl/Alpine. */
     static int atfork_registered = 0;
     if (!atfork_registered) {
-        pthread_atfork(NULL, NULL, fu_atfork_child);
-        atfork_registered = 1;
+        /* Only latch on success: if registration fails (ENOMEM), leave the
+           flag clear so a later MINIT can retry rather than silently losing
+           fork-safety for the CSPRNG buffer. */
+        if (pthread_atfork(NULL, NULL, fu_atfork_child) == 0) {
+            atfork_registered = 1;
+        }
     }
 #else
     {
@@ -1484,8 +1526,7 @@ PHP_MINIT_FUNCTION(fast_uuid) {
 #endif
 
 #ifdef FU_X86
-    __builtin_cpu_init();
-    fu_has_ssse3 = __builtin_cpu_supports("ssse3");
+    fu_has_ssse3 = fu_detect_ssse3();
 #endif
 
     fast_uuid_iface_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
@@ -1501,10 +1542,12 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     fu_handlers.get_debug_info     = fu_get_debug_info;
     fu_handlers.get_properties_for = fu_get_properties_for;
 
-    /* exception hierarchy (ramsey-shaped): InvalidUuidString <- InvalidArgument <- \InvalidArgumentException */
+    /* exception hierarchy (ramsey/uuid 4.x-shaped): InvalidUuidString <-
+       InvalidArgument <- \InvalidArgumentException; UnsupportedOperation <-
+       \LogicException (ramsey uses LogicException, not RuntimeException). */
     fu_ex_invalid_arg = register_class_FastUuid_Exception_InvalidArgumentException(spl_ce_InvalidArgumentException);
     fu_ex_invalid_str = register_class_FastUuid_Exception_InvalidUuidStringException(fu_ex_invalid_arg);
-    fu_ex_unsupported = register_class_FastUuid_Exception_UnsupportedOperationException(spl_ce_RuntimeException);
+    fu_ex_unsupported = register_class_FastUuid_Exception_UnsupportedOperationException(spl_ce_LogicException);
 
     return SUCCESS;
 }

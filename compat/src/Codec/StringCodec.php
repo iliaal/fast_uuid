@@ -30,14 +30,22 @@ class StringCodec implements CodecInterface
         return self::uuidFromBytes($bytes);
     }
 
+    private static ?\FastUuid\Compat\UuidFactory $wrapFactory = null;
+
+    /** Shared default factory used only for version-class wrapping (no decode). */
+    private static function wrapFactory(): \FastUuid\Compat\UuidFactory
+    {
+        return self::$wrapFactory ??= new \FastUuid\Compat\UuidFactory();
+    }
+
     final protected static function uuidFromBytes(string $bytes): UuidInterface
     {
-        return (new \FastUuid\Compat\UuidFactory())->wrap(\FastUuid\Uuid::fromBytes($bytes));
+        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromBytes($bytes));
     }
 
     final protected static function uuidFromString(string $uuid): UuidInterface
     {
-        return (new \FastUuid\Compat\UuidFactory())->wrap(\FastUuid\Uuid::fromString($uuid));
+        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromString($uuid));
     }
 
     final protected static function bytesToString(string $b): string
