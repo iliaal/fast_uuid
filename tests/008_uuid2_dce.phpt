@@ -7,7 +7,10 @@ fast_uuid
 use FastUuid\Uuid;
 
 // Auto-filled identifier (PERSON domain) is still version 2, variant 2.
-$p = Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON);
+// Windows has no POSIX uid to auto-fill from, so pass an explicit id there.
+$p = PHP_OS_FAMILY === 'Windows'
+    ? Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, 1000)
+    : Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON);
 var_dump($p->getVersion() === 2);
 var_dump($p->getVariant() === 2);
 

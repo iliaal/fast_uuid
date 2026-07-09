@@ -35,8 +35,14 @@ var_dump(Uuid::uuid1('0123456789ab', 0x3fff)->getVersion() === 1); // max clockS
 // --- CR-004: uuid2 domain handling ----------------------------------------
 var_dump(throws(fn() => Uuid::uuid2(2)));                 // ORG without localIdentifier rejected
 var_dump(Uuid::uuid2(2, 100)->getVersion() === 2);       // ORG with explicit id ok
-var_dump(Uuid::uuid2(0)->getVersion() === 2);            // PERSON auto-fills
-var_dump(Uuid::uuid2(1)->getVersion() === 2);            // GROUP auto-fills
+if (PHP_OS_FAMILY === 'Windows') {
+    // No POSIX uid/gid to auto-fill from: PERSON/GROUP without an id throw.
+    var_dump(throws(fn() => Uuid::uuid2(0)));             // PERSON: no auto-fill on Windows
+    var_dump(throws(fn() => Uuid::uuid2(1)));             // GROUP: no auto-fill on Windows
+} else {
+    var_dump(Uuid::uuid2(0)->getVersion() === 2);        // PERSON auto-fills
+    var_dump(Uuid::uuid2(1)->getVersion() === 2);        // GROUP auto-fills
+}
 
 // --- CR-005: fromHexadecimal Stringable contract --------------------------
 $thrower = new class { public function __toString(): string { throw new \RuntimeException('boom'); } };
