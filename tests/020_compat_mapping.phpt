@@ -19,7 +19,7 @@ use FastUuid\Compat\Rfc4122\MaxUuid;
 use FastUuid\Compat\Nonstandard\Uuid as NonstandardUuid;
 
 var_dump(Uuid::uuid1() instanceof UuidV1);
-var_dump(Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON) instanceof UuidV2);
+var_dump(Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON, 1000) instanceof UuidV2);
 var_dump(Uuid::uuid3(Uuid::NAMESPACE_DNS, 'a') instanceof UuidV3);
 var_dump(Uuid::uuid4() instanceof UuidV4);
 var_dump(Uuid::uuid5(Uuid::NAMESPACE_DNS, 'a') instanceof UuidV5);
