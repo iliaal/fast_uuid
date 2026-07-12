@@ -24,6 +24,7 @@ use FastUuid\Compat\Rfc4122\UuidV6;
 use FastUuid\Compat\Rfc4122\UuidV7;
 use FastUuid\Compat\Rfc4122\UuidV8;
 use FastUuid\Compat\Type\Hexadecimal;
+use FastUuid\Compat\Type\Integer as IntegerObject;
 use FastUuid\Compat\Validator\GenericValidator;
 use FastUuid\Compat\Validator\ValidatorInterface;
 
@@ -36,7 +37,7 @@ use FastUuid\Compat\Validator\ValidatorInterface;
  * C fast path where needed (ramsey-compat behaviour) so application-supplied
  * generators win for uuid1/uuid4/uuid6 and node providers also feed uuid2.
  */
-final class UuidFactory
+class UuidFactory implements UuidFactoryInterface
 {
     private ?RandomGeneratorInterface $randomGenerator = null;
     private ?TimeGeneratorInterface $timeGenerator = null;
@@ -104,12 +105,14 @@ final class UuidFactory
         $this->codec = $codec;
     }
 
-    public function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
+    public function uuid1(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        if ($this->customTimeGenerator || $this->customNodeProvider) {
-            if ($node === null && $this->customNodeProvider) {
-                $node = \bin2hex($this->getNodeProvider()->getNode());
-            }
+        if ($node === null && $this->customNodeProvider) {
+            $node = \bin2hex($this->getNodeProvider()->getNode());
+        } else {
+            $node = self::normalizeNode($node);
+        }
+        if ($this->customTimeGenerator) {
             $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
             return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($b), 1);
         }
@@ -118,12 +121,17 @@ final class UuidFactory
 
     public function uuid2(
         int $localDomain,
-        int|string|null $localIdentifier = null,
-        int|string|null $node = null,
+        int|string|IntegerObject|null $localIdentifier = null,
+        int|string|Hexadecimal|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
+        if ($localIdentifier instanceof IntegerObject) {
+            $localIdentifier = $localIdentifier->toString();
+        }
         if ($node === null && $this->customNodeProvider) {
             $node = \bin2hex($this->getNodeProvider()->getNode());
+        } else {
+            $node = self::normalizeNode($node);
         }
         return $this->wrapKnownVersion(\FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq), 2);
     }
@@ -154,10 +162,12 @@ final class UuidFactory
         return $this->wrapKnownVersion(\FastUuid\Uuid::uuid5($this->coreNamespace($ns), $name), 5);
     }
 
-    public function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
+    public function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
         if ($node === null && $this->customNodeProvider) {
             $node = \bin2hex($this->getNodeProvider()->getNode());
+        } else {
+            $node = self::normalizeNode($node);
         }
         if ($this->customTimeGenerator) {
             // ramsey parity: v6 is built from the time generator's v1 bytes
@@ -194,7 +204,11 @@ final class UuidFactory
 
     public function fromInteger(string $integer): UuidInterface
     {
-        return $this->fromHexadecimal(\FastUuid\Uuid::fromInteger($integer)->getHex());
+        $core = \FastUuid\Uuid::fromInteger($integer);
+        if ($this->codec === null || \get_class($this->codec) === StringCodec::class) {
+            return $this->wrap($core);
+        }
+        return $this->fromHexadecimal($core->getHex());
     }
 
     public function fromHexadecimal(Hexadecimal|string $hex): UuidInterface
@@ -212,11 +226,13 @@ final class UuidFactory
 
     public function fromDateTime(
         \DateTimeInterface $dateTime,
-        int|string|null $node = null,
+        int|string|Hexadecimal|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
         if ($node === null && $this->customNodeProvider) {
             $node = \bin2hex($this->getNodeProvider()->getNode());
+        } else {
+            $node = self::normalizeNode($node);
         }
         return $this->wrapKnownVersion(\FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq), 1);
     }
@@ -274,9 +290,14 @@ final class UuidFactory
         };
     }
 
-    private function coreNamespace(UuidInterface|string $ns): \FastUuid\Uuid|string
+    private function coreNamespace(UuidInterface|string $ns): \FastUuid\Uuid
     {
-        return $ns instanceof UuidInterface ? $ns->getCore() : $ns;
+        return $ns instanceof UuidInterface ? $ns->getCore() : $this->fromString($ns)->getCore();
+    }
+
+    private static function normalizeNode(int|string|Hexadecimal|null $node): int|string|null
+    {
+        return $node instanceof Hexadecimal ? $node->toString() : $node;
     }
 
     /**

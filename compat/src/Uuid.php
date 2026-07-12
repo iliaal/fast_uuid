@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FastUuid\Compat;
 
 use FastUuid\Compat\Type\Hexadecimal;
+use FastUuid\Compat\Type\Integer as IntegerObject;
 
 /**
  * Static facade mirroring Ramsey\Uuid\Uuid. Delegates to a swappable
@@ -52,27 +53,27 @@ final class Uuid
 
     public const VALID_PATTERN = '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$';
 
-    private static ?UuidFactory $factory = null;
+    private static ?UuidFactoryInterface $factory = null;
 
-    public static function getFactory(): UuidFactory
+    public static function getFactory(): UuidFactoryInterface
     {
         return self::$factory ??= new UuidFactory();
     }
 
-    public static function setFactory(UuidFactory $factory): void
+    public static function setFactory(UuidFactoryInterface $factory): void
     {
         self::$factory = $factory;
     }
 
-    public static function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
+    public static function uuid1(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
         return self::getFactory()->uuid1($node, $clockSeq);
     }
 
     public static function uuid2(
         int $localDomain,
-        int|string|null $localIdentifier = null,
-        int|string|null $node = null,
+        int|string|IntegerObject|null $localIdentifier = null,
+        int|string|Hexadecimal|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
         return self::getFactory()->uuid2($localDomain, $localIdentifier, $node, $clockSeq);
@@ -93,7 +94,7 @@ final class Uuid
         return self::getFactory()->uuid5($ns, $name);
     }
 
-    public static function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidInterface
+    public static function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
         return self::getFactory()->uuid6($node, $clockSeq);
     }
@@ -130,7 +131,7 @@ final class Uuid
 
     public static function fromDateTime(
         \DateTimeInterface $dateTime,
-        int|string|null $node = null,
+        int|string|Hexadecimal|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
         return self::getFactory()->fromDateTime($dateTime, $node, $clockSeq);

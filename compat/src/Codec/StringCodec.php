@@ -6,6 +6,7 @@ namespace FastUuid\Compat\Codec;
 
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
+use FastUuid\Exception\InvalidUuidStringException;
 
 /** Canonical 8-4-4-4-12 string / raw-bytes codec. */
 class StringCodec implements CodecInterface
@@ -62,16 +63,16 @@ class StringCodec implements CodecInterface
     {
         if (\strlen($s) === 36) {
             if (!\preg_match('/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/', $s)) {
-                throw new InvalidArgumentException('Invalid UUID string');
+                throw new InvalidUuidStringException('Invalid UUID string');
             }
             $hex = \str_replace('-', '', $s);
         } elseif (\strlen($s) === 32) {
             if (!\preg_match('/\A[0-9a-fA-F]{32}\z/', $s)) {
-                throw new InvalidArgumentException('Invalid UUID string');
+                throw new InvalidUuidStringException('Invalid UUID string');
             }
             $hex = $s;
         } else {
-            throw new InvalidArgumentException('Invalid UUID string');
+            throw new InvalidUuidStringException('Invalid UUID string');
         }
 
         return (string) \hex2bin($hex);

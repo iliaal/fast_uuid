@@ -9,7 +9,7 @@ namespace FastUuid\Compat\Validator;
  * Ramsey\Uuid\Validator\GenericValidator: accepts the canonical 8-4-4-4-12
  * form (case-insensitive) plus the nil UUID, after stripping urn:/{} wrappers.
  */
-final class GenericValidator implements ValidatorInterface
+class GenericValidator implements ValidatorInterface
 {
     private const PATTERN = '\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z';
 

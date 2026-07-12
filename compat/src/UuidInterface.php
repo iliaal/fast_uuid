@@ -9,7 +9,7 @@ use FastUuid\Compat\Type\Hexadecimal;
 use FastUuid\Compat\Type\Integer as IntegerObject;
 
 /** Mirrors the modern surface of Ramsey\Uuid\UuidInterface. */
-interface UuidInterface extends \JsonSerializable, \Stringable
+interface UuidInterface extends \JsonSerializable, \Serializable, \Stringable
 {
     public function compareTo(mixed $other): int;
     public function equals(?object $other): bool;
@@ -22,6 +22,8 @@ interface UuidInterface extends \JsonSerializable, \Stringable
     public function getVersion(): ?int;
     public function getDateTime(): \DateTimeInterface;
     public function toString(): string;
+    public function serialize(): string;
+    public function unserialize(string $data): void;
 
     /** Access to the underlying extension handle for hot paths. */
     public function getCore(): \FastUuid\Uuid;

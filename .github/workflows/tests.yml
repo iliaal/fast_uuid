@@ -9,6 +9,24 @@ permissions:
   contents: read
 
 jobs:
+  arginfo-sync:
+    name: Generated arginfo matches stub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          tools: none
+          extensions: none
+      - name: Regenerate arginfo
+        run: |
+          curl -fsSLo /tmp/gen_stub.php \
+            https://raw.githubusercontent.com/php/php-src/26fb2a8a117dee1011b7ea075f3fd269871372c8/build/gen_stub.php
+          php /tmp/gen_stub.php fast_uuid.stub.php
+          git diff --exit-code -- fast_uuid_arginfo.h
+
   build-test:
     name: "PHP ${{ matrix.php }} (NTS)"
     runs-on: ubuntu-latest
@@ -71,6 +89,74 @@ jobs:
           ./configure --enable-fast-uuid
           make -j"$(nproc)"
           make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+
+  scalar-canary:
+    name: "PHP 8.4 (forced scalar formatter)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: none
+          extensions: none
+        env:
+          phpts: nts
+      - name: Build and test
+        env:
+          CFLAGS: -DFU_DISABLE_SSSE3
+        run: |
+          phpize
+          ./configure --enable-fast-uuid
+          make -j"$(nproc)"
+          php -d extension="$PWD/modules/fast_uuid.so" --ri fast_uuid \
+            | grep -F 'scalar'
+          make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+
+  arm64-canary:
+    name: "PHP 8.4 (ARM64 NEON canary)"
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: none
+          extensions: none
+        env:
+          phpts: nts
+      - name: Build and test
+        run: |
+          phpize
+          ./configure --enable-fast-uuid
+          make -j"$(nproc)"
+          php -d extension="$PWD/modules/fast_uuid.so" --ri fast_uuid \
+            | grep -F 'AArch64 NEON'
+          make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+
+  windows-canary:
+    name: "PHP ${{ matrix.php }} ${{ matrix.ts }} ${{ matrix.arch }} (Windows canary)"
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.1'
+            arch: x86
+            ts: nts
+          - php: '8.4'
+            arch: x64
+            ts: ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: php/php-windows-builder/extension@v1
+        with:
+          php-version: ${{ matrix.php }}
+          arch: ${{ matrix.arch }}
+          ts: ${{ matrix.ts }}
+          run-tests: 'true'
 
   composer-validate:
     name: "composer validate --strict"

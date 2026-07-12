@@ -6,8 +6,32 @@ namespace FastUuid {
 
     interface UuidInterface extends \JsonSerializable, \Stringable {}
 
+    interface UuidValueInterface extends UuidInterface
+    {
+        public function toString(): string;
+        public function __toString(): string;
+        public function getBytes(): string;
+        public function toBytes(): string;
+        public function getHex(): string;
+        public function toHexadecimal(): string;
+        public function getUrn(): string;
+        public function toUrn(): string;
+        public function getVersion(): ?int;
+        public function getVariant(): int;
+        public function getInteger(): string;
+        public function toInteger(): string;
+        public function getDateTime(): \DateTimeImmutable;
+        public function getTimestampMillis(): int;
+        public function getFields(): array;
+        public function equals(mixed $other): bool;
+        public function compareTo(mixed $other): int;
+        public function jsonSerialize(): string;
+        public function __serialize(): array;
+        public function __unserialize(array $data): void;
+    }
+
     /** @strict-properties */
-    final class Uuid implements UuidInterface
+    final class Uuid implements UuidValueInterface
     {
         public const NIL = "00000000-0000-0000-0000-000000000000";
         public const MAX = "ffffffff-ffff-ffff-ffff-ffffffffffff";
@@ -20,19 +44,19 @@ namespace FastUuid {
         public const DCE_DOMAIN_GROUP  = 1;
         public const DCE_DOMAIN_ORG    = 2;
 
-        public static function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
-        public static function uuid2(int $localDomain, int|string|null $localIdentifier = null, int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
-        public static function uuid3(UuidInterface|string $ns, string $name): UuidInterface {}
-        public static function uuid4(): UuidInterface {}
-        public static function uuid5(UuidInterface|string $ns, string $name): UuidInterface {}
-        public static function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
-        public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface {}
-        public static function uuid8(string $bytes): UuidInterface {}
-        public static function fromString(string $uuid): UuidInterface {}
-        public static function fromBytes(string $bytes): UuidInterface {}
-        public static function fromInteger(string $integer): UuidInterface {}
-        public static function fromHexadecimal(\Stringable|string $hex): UuidInterface {}
-        public static function fromDateTime(\DateTimeInterface $dateTime, int|string|null $node = null, ?int $clockSeq = null): UuidInterface {}
+        public static function uuid1(int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
+        public static function uuid2(int $localDomain, int|string|null $localIdentifier = null, int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
+        public static function uuid3(UuidInterface|string $ns, string $name): UuidValueInterface {}
+        public static function uuid4(): UuidValueInterface {}
+        public static function uuid5(UuidInterface|string $ns, string $name): UuidValueInterface {}
+        public static function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
+        public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidValueInterface {}
+        public static function uuid8(string $bytes): UuidValueInterface {}
+        public static function fromString(string $uuid): UuidValueInterface {}
+        public static function fromBytes(string $bytes): UuidValueInterface {}
+        public static function fromInteger(string $integer): UuidValueInterface {}
+        public static function fromHexadecimal(\Stringable|string $hex): UuidValueInterface {}
+        public static function fromDateTime(\DateTimeInterface $dateTime, int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
         public static function isValid(string $uuid): bool {}
 
         private function __construct() {}

@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 48fc3227a12c69a771da8ea56710f2a28d3cd26a */
+ * Stub hash: 0a2a2eefd04da4a49e8684b3be4e1a4d8b22d896 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -69,53 +69,103 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_fast_uuid_random_bytes, 0, 1, IS
 	ZEND_ARG_TYPE_INFO(0, length, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid1, 0, 0, FastUuid\\\125uidInterface, 0)
+#define arginfo_class_FastUuid_UuidValueInterface_toString arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface___toString arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_getBytes arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_toBytes arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_getHex arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_toHexadecimal arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_getUrn arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_toUrn arginfo_uuid_v1
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_UuidValueInterface_getVersion, 0, 0, IS_LONG, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_UuidValueInterface_getVariant, 0, 0, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
+#define arginfo_class_FastUuid_UuidValueInterface_getInteger arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface_toInteger arginfo_uuid_v1
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_UuidValueInterface_getDateTime, 0, 0, DateTimeImmutable, 0)
+ZEND_END_ARG_INFO()
+
+#define arginfo_class_FastUuid_UuidValueInterface_getTimestampMillis arginfo_class_FastUuid_UuidValueInterface_getVariant
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_UuidValueInterface_getFields, 0, 0, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_UuidValueInterface_equals, 0, 1, _IS_BOOL, 0)
+	ZEND_ARG_TYPE_INFO(0, other, IS_MIXED, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_UuidValueInterface_compareTo, 0, 1, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO(0, other, IS_MIXED, 0)
+ZEND_END_ARG_INFO()
+
+#define arginfo_class_FastUuid_UuidValueInterface_jsonSerialize arginfo_uuid_v1
+
+#define arginfo_class_FastUuid_UuidValueInterface___serialize arginfo_class_FastUuid_UuidValueInterface_getFields
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_UuidValueInterface___unserialize, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, data, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid1, 0, 0, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_TYPE_MASK(0, node, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, clockSeq, IS_LONG, 1, "null")
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid2, 0, 1, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid2, 0, 1, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_TYPE_INFO(0, localDomain, IS_LONG, 0)
 	ZEND_ARG_TYPE_MASK(0, localIdentifier, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
 	ZEND_ARG_TYPE_MASK(0, node, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, clockSeq, IS_LONG, 1, "null")
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid3, 0, 2, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid3, 0, 2, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_OBJ_TYPE_MASK(0, ns, FastUuid\\\125uidInterface, MAY_BE_STRING, NULL)
 	ZEND_ARG_TYPE_INFO(0, name, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid4, 0, 0, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid4, 0, 0, FastUuid\\\125uidValueInterface, 0)
 ZEND_END_ARG_INFO()
 
 #define arginfo_class_FastUuid_Uuid_uuid5 arginfo_class_FastUuid_Uuid_uuid3
 
 #define arginfo_class_FastUuid_Uuid_uuid6 arginfo_class_FastUuid_Uuid_uuid1
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid7, 0, 0, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid7, 0, 0, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_OBJ_TYPE_MASK(0, dateTime, DateTimeInterface, MAY_BE_LONG|MAY_BE_NULL, "null")
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid8, 0, 1, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid8, 0, 1, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_TYPE_INFO(0, bytes, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromString, 0, 1, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromString, 0, 1, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_TYPE_INFO(0, uuid, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
 #define arginfo_class_FastUuid_Uuid_fromBytes arginfo_class_FastUuid_Uuid_uuid8
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromInteger, 0, 1, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromInteger, 0, 1, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_TYPE_INFO(0, integer, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromHexadecimal, 0, 1, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromHexadecimal, 0, 1, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_OBJ_TYPE_MASK(0, hex, Stringable, MAY_BE_STRING, NULL)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromDateTime, 0, 1, FastUuid\\\125uidInterface, 0)
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_fromDateTime, 0, 1, FastUuid\\\125uidValueInterface, 0)
 	ZEND_ARG_OBJ_INFO(0, dateTime, DateTimeInterface, 0)
 	ZEND_ARG_TYPE_MASK(0, node, MAY_BE_LONG|MAY_BE_STRING|MAY_BE_NULL, "null")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, clockSeq, IS_LONG, 1, "null")
@@ -142,39 +192,29 @@ ZEND_END_ARG_INFO()
 
 #define arginfo_class_FastUuid_Uuid_toUrn arginfo_uuid_v1
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getVersion, 0, 0, IS_LONG, 1)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_getVersion arginfo_class_FastUuid_UuidValueInterface_getVersion
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getVariant, 0, 0, IS_LONG, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_getVariant arginfo_class_FastUuid_UuidValueInterface_getVariant
 
 #define arginfo_class_FastUuid_Uuid_getInteger arginfo_uuid_v1
 
 #define arginfo_class_FastUuid_Uuid_toInteger arginfo_uuid_v1
 
-ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_getDateTime, 0, 0, DateTimeImmutable, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_getDateTime arginfo_class_FastUuid_UuidValueInterface_getDateTime
 
-#define arginfo_class_FastUuid_Uuid_getTimestampMillis arginfo_class_FastUuid_Uuid_getVariant
+#define arginfo_class_FastUuid_Uuid_getTimestampMillis arginfo_class_FastUuid_UuidValueInterface_getVariant
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_getFields, 0, 0, IS_ARRAY, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_getFields arginfo_class_FastUuid_UuidValueInterface_getFields
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_equals, 0, 1, _IS_BOOL, 0)
-	ZEND_ARG_TYPE_INFO(0, other, IS_MIXED, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_equals arginfo_class_FastUuid_UuidValueInterface_equals
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid_compareTo, 0, 1, IS_LONG, 0)
-	ZEND_ARG_TYPE_INFO(0, other, IS_MIXED, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid_compareTo arginfo_class_FastUuid_UuidValueInterface_compareTo
 
 #define arginfo_class_FastUuid_Uuid_jsonSerialize arginfo_uuid_v1
 
-#define arginfo_class_FastUuid_Uuid___serialize arginfo_class_FastUuid_Uuid_getFields
+#define arginfo_class_FastUuid_Uuid___serialize arginfo_class_FastUuid_UuidValueInterface_getFields
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___unserialize, 0, 1, IS_VOID, 0)
-	ZEND_ARG_TYPE_INFO(0, data, IS_ARRAY, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_FastUuid_Uuid___unserialize arginfo_class_FastUuid_UuidValueInterface___unserialize
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___set_state, 0, 1, IS_STATIC, 0)
 	ZEND_ARG_TYPE_INFO(0, an_array, IS_ARRAY, 0)
@@ -268,6 +308,30 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE_END
 };
 
+static const zend_function_entry class_FastUuid_UuidValueInterface_methods[] = {
+	ZEND_RAW_FENTRY("toString", NULL, arginfo_class_FastUuid_UuidValueInterface_toString, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("__toString", NULL, arginfo_class_FastUuid_UuidValueInterface___toString, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getBytes", NULL, arginfo_class_FastUuid_UuidValueInterface_getBytes, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("toBytes", NULL, arginfo_class_FastUuid_UuidValueInterface_toBytes, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getHex", NULL, arginfo_class_FastUuid_UuidValueInterface_getHex, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("toHexadecimal", NULL, arginfo_class_FastUuid_UuidValueInterface_toHexadecimal, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getUrn", NULL, arginfo_class_FastUuid_UuidValueInterface_getUrn, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("toUrn", NULL, arginfo_class_FastUuid_UuidValueInterface_toUrn, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getVersion", NULL, arginfo_class_FastUuid_UuidValueInterface_getVersion, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getVariant", NULL, arginfo_class_FastUuid_UuidValueInterface_getVariant, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getInteger", NULL, arginfo_class_FastUuid_UuidValueInterface_getInteger, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("toInteger", NULL, arginfo_class_FastUuid_UuidValueInterface_toInteger, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getDateTime", NULL, arginfo_class_FastUuid_UuidValueInterface_getDateTime, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getTimestampMillis", NULL, arginfo_class_FastUuid_UuidValueInterface_getTimestampMillis, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("getFields", NULL, arginfo_class_FastUuid_UuidValueInterface_getFields, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("equals", NULL, arginfo_class_FastUuid_UuidValueInterface_equals, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("compareTo", NULL, arginfo_class_FastUuid_UuidValueInterface_compareTo, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("jsonSerialize", NULL, arginfo_class_FastUuid_UuidValueInterface_jsonSerialize, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("__serialize", NULL, arginfo_class_FastUuid_UuidValueInterface___serialize, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_RAW_FENTRY("__unserialize", NULL, arginfo_class_FastUuid_UuidValueInterface___unserialize, ZEND_ACC_PUBLIC|ZEND_ACC_ABSTRACT, NULL, NULL)
+	ZEND_FE_END
+};
+
 static const zend_function_entry class_FastUuid_Uuid_methods[] = {
 	ZEND_ME(FastUuid_Uuid, uuid1, arginfo_class_FastUuid_Uuid_uuid1, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(FastUuid_Uuid, uuid2, arginfo_class_FastUuid_Uuid_uuid2, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
@@ -319,13 +383,24 @@ static zend_class_entry *register_class_FastUuid_UuidInterface(zend_class_entry 
 	return class_entry;
 }
 
-static zend_class_entry *register_class_FastUuid_Uuid(zend_class_entry *class_entry_FastUuid_UuidInterface)
+static zend_class_entry *register_class_FastUuid_UuidValueInterface(zend_class_entry *class_entry_FastUuid_UuidInterface)
+{
+	zend_class_entry ce, *class_entry;
+
+	INIT_NS_CLASS_ENTRY(ce, "FastUuid", "UuidValueInterface", class_FastUuid_UuidValueInterface_methods);
+	class_entry = zend_register_internal_interface(&ce);
+	zend_class_implements(class_entry, 1, class_entry_FastUuid_UuidInterface);
+
+	return class_entry;
+}
+
+static zend_class_entry *register_class_FastUuid_Uuid(zend_class_entry *class_entry_FastUuid_UuidValueInterface)
 {
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "FastUuid", "Uuid", class_FastUuid_Uuid_methods);
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL|ZEND_ACC_NO_DYNAMIC_PROPERTIES);
-	zend_class_implements(class_entry, 1, class_entry_FastUuid_UuidInterface);
+	zend_class_implements(class_entry, 1, class_entry_FastUuid_UuidValueInterface);
 
 	zval const_NIL_value;
 	zend_string *const_NIL_value_str = zend_string_init("00000000-0000-0000-0000-000000000000", strlen("00000000-0000-0000-0000-000000000000"), 1);

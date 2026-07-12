@@ -16,7 +16,7 @@ use FastUuid\Compat\Type\Integer as IntegerObject;
  */
 abstract class AbstractUuid implements UuidInterface
 {
-    public function __construct(protected readonly \FastUuid\Uuid $core) {}
+    public function __construct(protected \FastUuid\Uuid $core) {}
 
     public function getCore(): \FastUuid\Uuid { return $this->core; }
 
@@ -55,13 +55,27 @@ abstract class AbstractUuid implements UuidInterface
     public function getDateTime(): \DateTimeInterface { return $this->core->getDateTime(); }
 
     // --- serialization parity ------------------------------------------
+    public function serialize(): string { return $this->core->toString(); }
+
+    public function unserialize(string $data): void
+    {
+        $core = \strlen($data) === 16
+            ? \FastUuid\Uuid::fromBytes($data)
+            : \FastUuid\Uuid::fromString($data);
+        $this->restoreCore($core);
+    }
+
     public function __serialize(): array { return ['bytes' => $this->core->getBytes()]; }
     public function __unserialize(array $data): void
     {
         if (!isset($data['bytes']) || !\is_string($data['bytes'])) {
             throw new \FastUuid\Exception\InvalidArgumentException('Malformed serialized UUID payload');
         }
-        $core = \FastUuid\Uuid::fromBytes($data['bytes']); // throws on wrong length
+        $this->restoreCore(\FastUuid\Uuid::fromBytes($data['bytes']));
+    }
+
+    private function restoreCore(\FastUuid\Uuid $core): void
+    {
         // Reject a payload whose bytes don't match the concrete wrapper class
         // (e.g. a serialized UuidV4 tampered to carry v1 bytes).
         $expected = (new UuidFactory())->wrap($core);
@@ -72,7 +86,6 @@ abstract class AbstractUuid implements UuidInterface
                 \get_class($expected),
             ));
         }
-        // @phpstan-ignore-next-line readonly assigned in unserialize is allowed
         $this->core = $core;
     }
 }

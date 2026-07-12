@@ -46,7 +46,7 @@
 # include <windows.h>  /* GetSystemTimePreciseAsFileTime: wall clock, no POSIX clock_gettime */
 #endif
 
-#if defined(__x86_64__) || defined(__i386__)
+#if (defined(__x86_64__) || defined(__i386__)) && !defined(FU_DISABLE_SSSE3)
 # include <immintrin.h>
 # if defined(_MSC_VER)
 #  include <intrin.h>
@@ -1541,7 +1541,8 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     fu_has_ssse3 = fu_detect_ssse3();
 #endif
 
-    fast_uuid_iface_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
+    zend_class_entry *marker_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
+    fast_uuid_iface_ce = register_class_FastUuid_UuidValueInterface(marker_ce);
     fast_uuid_ce = register_class_FastUuid_Uuid(fast_uuid_iface_ce);
     fast_uuid_ce->create_object = fu_create;
 
