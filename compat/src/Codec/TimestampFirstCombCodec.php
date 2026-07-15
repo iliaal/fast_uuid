@@ -18,7 +18,7 @@ final class TimestampFirstCombCodec extends StringCodec
     {
         // ramsey's swapBytes(): exchange the first 6 and last 6 bytes,
         // bytes 6-9 stay in place. The swap is its own inverse.
-        $b = $uuid->getBytes();
+        $b = $uuid->getCore()->getBytes();
 
         return \substr($b, 10, 6) . \substr($b, 6, 4) . \substr($b, 0, 6);
     }
@@ -29,7 +29,7 @@ final class TimestampFirstCombCodec extends StringCodec
             throw new InvalidArgumentException('Expected 16 bytes');
         }
 
-        return self::uuidFromBytes(\substr($bytes, 10, 6) . \substr($bytes, 6, 4) . \substr($bytes, 0, 6));
+        return $this->uuidFromBytes(\substr($bytes, 10, 6) . \substr($bytes, 6, 4) . \substr($bytes, 0, 6));
     }
 
     public function encode(UuidInterface $uuid): string

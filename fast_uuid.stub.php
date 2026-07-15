@@ -90,9 +90,10 @@ namespace FastUuid {
 }
 
 namespace FastUuid\Exception {
-    class InvalidArgumentException extends \InvalidArgumentException {}
-    class InvalidUuidStringException extends InvalidArgumentException {}
-    class UnsupportedOperationException extends \LogicException {}
+    interface UuidExceptionInterface extends \Throwable {}
+    class InvalidArgumentException extends \InvalidArgumentException implements UuidExceptionInterface {}
+    class InvalidUuidStringException extends InvalidArgumentException implements UuidExceptionInterface {}
+    class UnsupportedOperationException extends \LogicException implements UuidExceptionInterface {}
 }
 
 namespace {

@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 0a2a2eefd04da4a49e8684b3be4e1a4d8b22d896 */
+ * Stub hash: 6f763bc09812453c531309b5ac7ece907231e2b1 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -465,32 +465,46 @@ static zend_class_entry *register_class_FastUuid_Uuid(zend_class_entry *class_en
 	return class_entry;
 }
 
-static zend_class_entry *register_class_FastUuid_Exception_InvalidArgumentException(zend_class_entry *class_entry_InvalidArgumentException)
+static zend_class_entry *register_class_FastUuid_Exception_UuidExceptionInterface(zend_class_entry *class_entry_Throwable)
+{
+	zend_class_entry ce, *class_entry;
+
+	INIT_NS_CLASS_ENTRY(ce, "FastUuid\\Exception", "UuidExceptionInterface", NULL);
+	class_entry = zend_register_internal_interface(&ce);
+	zend_class_implements(class_entry, 1, class_entry_Throwable);
+
+	return class_entry;
+}
+
+static zend_class_entry *register_class_FastUuid_Exception_InvalidArgumentException(zend_class_entry *class_entry_InvalidArgumentException, zend_class_entry *class_entry_FastUuid_Exception_UuidExceptionInterface)
 {
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "FastUuid\\Exception", "InvalidArgumentException", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, class_entry_InvalidArgumentException, 0);
+	zend_class_implements(class_entry, 1, class_entry_FastUuid_Exception_UuidExceptionInterface);
 
 	return class_entry;
 }
 
-static zend_class_entry *register_class_FastUuid_Exception_InvalidUuidStringException(zend_class_entry *class_entry_FastUuid_Exception_InvalidArgumentException)
+static zend_class_entry *register_class_FastUuid_Exception_InvalidUuidStringException(zend_class_entry *class_entry_FastUuid_Exception_InvalidArgumentException, zend_class_entry *class_entry_FastUuid_Exception_UuidExceptionInterface)
 {
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "FastUuid\\Exception", "InvalidUuidStringException", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, class_entry_FastUuid_Exception_InvalidArgumentException, 0);
+	zend_class_implements(class_entry, 1, class_entry_FastUuid_Exception_UuidExceptionInterface);
 
 	return class_entry;
 }
 
-static zend_class_entry *register_class_FastUuid_Exception_UnsupportedOperationException(zend_class_entry *class_entry_LogicException)
+static zend_class_entry *register_class_FastUuid_Exception_UnsupportedOperationException(zend_class_entry *class_entry_LogicException, zend_class_entry *class_entry_FastUuid_Exception_UuidExceptionInterface)
 {
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "FastUuid\\Exception", "UnsupportedOperationException", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, class_entry_LogicException, 0);
+	zend_class_implements(class_entry, 1, class_entry_FastUuid_Exception_UuidExceptionInterface);
 
 	return class_entry;
 }

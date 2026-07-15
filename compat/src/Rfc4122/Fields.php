@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\Type\Hexadecimal;
-use FastUuid\Exception\UnsupportedOperationException;
 
 final class Fields implements FieldsInterface
 {
@@ -18,6 +17,17 @@ final class Fields implements FieldsInterface
         if (\strlen($bytes) !== 16) {
             throw new \FastUuid\Exception\InvalidArgumentException(
                 'Fields expects exactly 16 bytes, got ' . \strlen($bytes),
+            );
+        }
+        if (!$this->isNil() && !$this->isMax() && $this->getVariant() !== 2) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'The byte string does not conform to the RFC 9562 variant',
+            );
+        }
+        $version = $this->getVersion();
+        if (!$this->isNil() && !$this->isMax() && ($version === null || $version < 1 || $version > 8)) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'The byte string does not contain a valid RFC 9562 version',
             );
         }
     }
@@ -97,17 +107,25 @@ final class Fields implements FieldsInterface
             $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
             return new Hexadecimal($timeHi . $timeMid . '00000000');
         }
-        if ($v === 1) {
-            // v1: timeHi(12 bits) . timeMid(16) . timeLow(32) = 15 nibbles.
-            $timeLow = bin2hex(substr($b, 0, 4));            // 8 hex
-            $timeMid = bin2hex(substr($b, 4, 2));            // 4 hex
-            $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1); // drop version nibble -> 3 hex
-            return new Hexadecimal($timeHi . $timeMid . $timeLow);
-        }
-
-        throw new UnsupportedOperationException('UUID has no embedded timestamp');
+        $timeLow = bin2hex(substr($b, 0, 4));
+        $timeMid = bin2hex(substr($b, 4, 2));
+        $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
+        return new Hexadecimal($timeHi . $timeMid . $timeLow);
     }
 
     public function isNil(): bool { return $this->bytes === self::NIL_BYTES; }
     public function isMax(): bool { return $this->bytes === self::MAX_BYTES; }
+    public function serialize(): string { return $this->bytes; }
+    public function __serialize(): array { return ['bytes' => $this->bytes]; }
+    public function unserialize(string $data): void
+    {
+        $this->__construct(\strlen($data) === 16 ? $data : \base64_decode($data));
+    }
+    public function __unserialize(array $data): void
+    {
+        if (!isset($data['bytes'])) {
+            throw new \ValueError(\sprintf('%s(): Argument #1 ($data) is invalid', __METHOD__));
+        }
+        $this->unserialize($data['bytes']);
+    }
 }

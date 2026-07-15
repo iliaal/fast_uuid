@@ -1,8 +1,7 @@
 // Windows build configuration for fast_uuid.
 // Mirrors config.m4: single .c source, no vendored dependencies. The SSSE3
-// hex formatter is gated on __x86_64__/__i386__, which only GCC and Clang
-// define, so MSVC builds take the scalar path automatically and need no SIMD
-// flags here.
+// formatter is compiled on MSVC x86/x64 and selected by the runtime CPUID
+// probe, so no global SIMD compiler flag is required.
 
 ARG_ENABLE("fast-uuid", "Enable fast_uuid support", "no");
 

@@ -58,7 +58,7 @@ if (PHP_OS_FAMILY === 'Windows') {
 // --- CR-005: fromHexadecimal Stringable contract --------------------------
 $thrower = new class { public function __toString(): string { throw new \RuntimeException('boom'); } };
 var_dump(throws(fn() => Uuid::fromHexadecimal($thrower), \RuntimeException::class)); // original error propagates
-var_dump(throws(fn() => Uuid::fromHexadecimal(new stdClass())));                     // non-Stringable rejected
+var_dump(throws(fn() => Uuid::fromHexadecimal(new stdClass()), \TypeError::class));  // non-Stringable rejected by union
 $hexObj = new class implements \Stringable { public function __toString(): string { return '0a1b2c3d4e5f60718293a4b5c6d7e8f9'; } };
 var_dump(Uuid::fromHexadecimal($hexObj)->getHex() === '0a1b2c3d4e5f60718293a4b5c6d7e8f9');
 

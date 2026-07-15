@@ -41,7 +41,7 @@ $factory = new UuidFactory();
 $v4 = $factory->uuid4();
 $ser = serialize($v4);
 var_dump(get_class(unserialize($ser)) === \FastUuid\Compat\Rfc4122\UuidV4::class); // clean round-trip
-$tampered = str_replace($v4->getBytes(), Uuid::uuid1()->getBytes(), $ser);         // v4 wrapper, v1 bytes
+$tampered = str_replace($v4->toString(), Uuid::uuid1()->toString(), $ser);         // v4 wrapper, v1 bytes
 var_dump(throws(fn() => unserialize($tampered)));
 // nil/max round-trip cleanly under the same check
 var_dump(get_class(unserialize(serialize($factory->fromString(Uuid::NIL)))) === \FastUuid\Compat\Rfc4122\NilUuid::class);

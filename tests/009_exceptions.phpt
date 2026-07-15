@@ -20,14 +20,14 @@ $u = new UnsupportedOperationException();
 var_dump($u instanceof \LogicException);
 var_dump($u instanceof \Throwable);
 
-// uuid8 requires exactly 16 bytes; the extension throws plain \InvalidArgumentException.
+// uuid8 requires exactly 16 bytes and throws the namespaced exception.
 $threw = false;
-try { Uuid::uuid8('too short'); } catch (\InvalidArgumentException $x) { $threw = true; }
+try { Uuid::uuid8('too short'); } catch (\Throwable $x) { $threw = $x::class === FuInvalidArgument::class; }
 var_dump($threw);
 
-// fromBytes requires exactly 16 bytes.
+// fromBytes requires exactly 16 bytes and throws the namespaced exception.
 $threw = false;
-try { Uuid::fromBytes('short'); } catch (\InvalidArgumentException $x) { $threw = true; }
+try { Uuid::fromBytes('short'); } catch (\Throwable $x) { $threw = $x::class === FuInvalidArgument::class; }
 var_dump($threw);
 
 // The constructor is disabled: instantiation raises an Error.

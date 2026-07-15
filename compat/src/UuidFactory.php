@@ -6,15 +6,14 @@ namespace FastUuid\Compat;
 
 use FastUuid\Compat\Codec\CodecInterface;
 use FastUuid\Compat\Codec\StringCodec;
-use FastUuid\Compat\Nonstandard\Uuid as NonstandardUuid;
+use FastUuid\Compat\Internal\ConstructionToken;
+use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\Provider\DefaultRandomGenerator;
 use FastUuid\Compat\Provider\DefaultTimeGenerator;
 use FastUuid\Compat\Provider\NodeProviderInterface;
 use FastUuid\Compat\Provider\RandomGeneratorInterface;
 use FastUuid\Compat\Provider\RandomNodeProvider;
 use FastUuid\Compat\Provider\TimeGeneratorInterface;
-use FastUuid\Compat\Rfc4122\MaxUuid;
-use FastUuid\Compat\Rfc4122\NilUuid;
 use FastUuid\Compat\Rfc4122\UuidV1;
 use FastUuid\Compat\Rfc4122\UuidV2;
 use FastUuid\Compat\Rfc4122\UuidV3;
@@ -114,9 +113,17 @@ class UuidFactory implements UuidFactoryInterface
         }
         if ($this->customTimeGenerator) {
             $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
-            return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($b), 1);
+            return new UuidV1(
+                \FastUuid\Uuid::fromBytes($b),
+                $this->codec,
+                ConstructionToken::Trusted,
+            );
         }
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid1($node, $clockSeq), 1);
+        return new UuidV1(
+            \FastUuid\Uuid::uuid1($node, $clockSeq),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     public function uuid2(
@@ -133,12 +140,20 @@ class UuidFactory implements UuidFactoryInterface
         } else {
             $node = self::normalizeNode($node);
         }
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq), 2);
+        return new UuidV2(
+            \FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     public function uuid3(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid3($this->coreNamespace($ns), $name), 3);
+        return new UuidV3(
+            \FastUuid\Uuid::uuid3($this->coreNamespace($ns), $name),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     public function uuid4(): UuidInterface
@@ -152,14 +167,22 @@ class UuidFactory implements UuidFactoryInterface
             }
             $b[6] = \chr((\ord($b[6]) & 0x0f) | 0x40);
             $b[8] = \chr((\ord($b[8]) & 0x3f) | 0x80);
-            return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($b), 4);
+            return new UuidV4(
+                \FastUuid\Uuid::fromBytes($b),
+                $this->codec,
+                ConstructionToken::Trusted,
+            );
         }
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid4(), 4);
+        return new UuidV4(\FastUuid\Uuid::uuid4(), $this->codec, ConstructionToken::Trusted);
     }
 
     public function uuid5(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid5($this->coreNamespace($ns), $name), 5);
+        return new UuidV5(
+            \FastUuid\Uuid::uuid5($this->coreNamespace($ns), $name),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     public function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
@@ -177,19 +200,31 @@ class UuidFactory implements UuidFactoryInterface
             // 60-bit timestamp from the v1 layout: timeHi . timeMid . timeLow
             $ts = \substr($hex, 13, 3) . \substr($hex, 8, 4) . \substr($hex, 0, 8);
             $head = \hex2bin(\substr($ts, 0, 12) . '6' . \substr($ts, 12, 3));
-            return $this->wrapKnownVersion(\FastUuid\Uuid::fromBytes($head . \substr($b, 8)), 6);
+            return new UuidV6(
+                \FastUuid\Uuid::fromBytes($head . \substr($b, 8)),
+                $this->codec,
+                ConstructionToken::Trusted,
+            );
         }
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid6($node, $clockSeq), 6);
+        return new UuidV6(
+            \FastUuid\Uuid::uuid6($node, $clockSeq),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     public function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid7($dateTime), 7);
+        return new UuidV7(
+            \FastUuid\Uuid::uuid7($dateTime),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     public function uuid8(string $bytes): UuidInterface
     {
-        return $this->wrapKnownVersion(\FastUuid\Uuid::uuid8($bytes), 8);
+        return new UuidV8(\FastUuid\Uuid::uuid8($bytes), $this->codec, ConstructionToken::Trusted);
     }
 
     public function fromString(string $uuid): UuidInterface
@@ -234,7 +269,11 @@ class UuidFactory implements UuidFactoryInterface
         } else {
             $node = self::normalizeNode($node);
         }
-        return $this->wrapKnownVersion(\FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq), 1);
+        return new UuidV1(
+            \FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq),
+            $this->codec,
+            ConstructionToken::Trusted,
+        );
     }
 
     /**
@@ -242,52 +281,9 @@ class UuidFactory implements UuidFactoryInterface
      * first, then the RFC 4122 per-version classes, falling back to the
      * nonstandard wrapper for non-RFC variants and unassigned versions.
      */
-    private const NIL_BYTES = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-    private const MAX_BYTES = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
-
-    public function wrap(\FastUuid\Uuid $core): UuidInterface
+    public function wrap(\FastUuid\Uuid $core, ?CodecInterface $codec = null): UuidInterface
     {
-        $bytes = $core->getBytes();
-        if ($bytes === self::NIL_BYTES) {
-            return new NilUuid($core);
-        }
-        if ($bytes === self::MAX_BYTES) {
-            return new MaxUuid($core);
-        }
-
-        if ($core->getVariant() === 2) {
-            $class = match ($core->getVersion()) {
-                1 => UuidV1::class,
-                2 => UuidV2::class,
-                3 => UuidV3::class,
-                4 => UuidV4::class,
-                5 => UuidV5::class,
-                6 => UuidV6::class,
-                7 => UuidV7::class,
-                8 => UuidV8::class,
-                default => null,
-            };
-            if ($class !== null) {
-                return new $class($core);
-            }
-        }
-
-        return new NonstandardUuid($core);
-    }
-
-    private function wrapKnownVersion(\FastUuid\Uuid $core, int $version): UuidInterface
-    {
-        return match ($version) {
-            1 => new UuidV1($core),
-            2 => new UuidV2($core),
-            3 => new UuidV3($core),
-            4 => new UuidV4($core),
-            5 => new UuidV5($core),
-            6 => new UuidV6($core),
-            7 => new UuidV7($core),
-            8 => new UuidV8($core),
-            default => throw new \FastUuid\Exception\InvalidArgumentException('Unknown UUID version'),
-        };
+        return WrapperClass::instantiateMapped($core, $codec ?? $this->codec);
     }
 
     private function coreNamespace(UuidInterface|string $ns): \FastUuid\Uuid

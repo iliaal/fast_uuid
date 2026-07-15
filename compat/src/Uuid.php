@@ -6,6 +6,7 @@ namespace FastUuid\Compat;
 
 use FastUuid\Compat\Type\Hexadecimal;
 use FastUuid\Compat\Type\Integer as IntegerObject;
+use FastUuid\Exception\UnsupportedOperationException;
 
 /**
  * Static facade mirroring Ramsey\Uuid\Uuid. Delegates to a swappable
@@ -101,12 +102,20 @@ final class Uuid
 
     public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
-        return self::getFactory()->uuid7($dateTime);
+        $factory = self::getFactory();
+        if (\method_exists($factory, 'uuid7')) {
+            return $factory->uuid7($dateTime);
+        }
+        throw new UnsupportedOperationException('The provided factory does not support the uuid7() method');
     }
 
     public static function uuid8(string $bytes): UuidInterface
     {
-        return self::getFactory()->uuid8($bytes);
+        $factory = self::getFactory();
+        if (\method_exists($factory, 'uuid8')) {
+            return $factory->uuid8($bytes);
+        }
+        throw new UnsupportedOperationException('The provided factory does not support the uuid8() method');
     }
 
     public static function fromString(string $uuid): UuidInterface
@@ -126,7 +135,11 @@ final class Uuid
 
     public static function fromHexadecimal(Hexadecimal|string $hex): UuidInterface
     {
-        return self::getFactory()->fromHexadecimal($hex);
+        $factory = self::getFactory();
+        if (\method_exists($factory, 'fromHexadecimal')) {
+            return $factory->fromHexadecimal($hex);
+        }
+        throw new \BadMethodCallException('The method fromHexadecimal() does not exist on the provided factory');
     }
 
     public static function fromDateTime(

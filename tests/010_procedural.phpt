@@ -38,6 +38,12 @@ var_dump(uuid_is_valid('garbage') === false);
 
 // Batched CSPRNG: exact lengths, including a large batch crossing buffer refills.
 var_dump(strlen(fast_uuid_random_bytes(16)) === 16);
+var_dump(
+    strlen(fast_uuid_random_bytes(4096)) === 4096
+    && strlen(fast_uuid_random_bytes(4097)) === 4097
+    && strlen(fast_uuid_random_bytes(8191)) === 8191
+    && strlen(fast_uuid_random_bytes(8192)) === 8192
+);
 var_dump(strlen(fast_uuid_random_bytes(100000)) === 100000);
 
 // Non-positive lengths are rejected.
@@ -46,6 +52,7 @@ try { fast_uuid_random_bytes(0); } catch (\InvalidArgumentException $x) { $threw
 var_dump($threw);
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
 bool(true)

@@ -31,6 +31,7 @@ ZEND_BEGIN_MODULE_GLOBALS(fast_uuid)
     /* v7 monotonic state (per-process scope, per-thread under ZTS) */
     uint64_t      v7_key;       /* last (unix_ms << 12 | sub_ms), 60-bit time key */
     uint64_t      v7_randb;     /* 62-bit rand_b counter */
+    zend_bool     v7_initialized;
     /* non-crypto fast PRNG (xoshiro256**) for uuid_v4_fast() */
     uint64_t      prng_s[4];
     zend_bool     prng_seeded;

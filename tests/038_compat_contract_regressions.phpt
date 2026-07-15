@@ -13,10 +13,10 @@ use FastUuid\Compat\Codec\GuidStringCodec;
 use FastUuid\Compat\Codec\StringCodec;
 use FastUuid\Compat\Codec\TimestampFirstCombCodec;
 use FastUuid\Compat\Provider\NodeProviderInterface;
+use FastUuid\Compat\Nonstandard\Fields as NonstandardFields;
 use FastUuid\Compat\Rfc4122\Fields;
 use FastUuid\Compat\Validator\GenericValidator;
 use FastUuid\Exception\InvalidArgumentException;
-use FastUuid\Exception\UnsupportedOperationException;
 
 function throws(callable $fn, string $class): bool {
     try { $fn(); return false; } catch (Throwable $e) { return $e instanceof $class; }
@@ -92,9 +92,9 @@ var_dump($compat->compareTo($canonical) === 0);
 var_dump(throws(fn() => $compat->compareTo(new stdClass()), InvalidArgumentException::class));
 
 $nonRfc = CoreUuid::fromString('00000000-0000-1000-0000-000000000000');
-$fields = new Fields($nonRfc->getBytes());
-var_dump($fields->getVersion() === null);
-var_dump(throws(fn() => $fields->getTimestamp(), UnsupportedOperationException::class));
+var_dump(throws(fn() => new Fields($nonRfc->getBytes()), InvalidArgumentException::class));
+$fields = new NonstandardFields($nonRfc->getBytes());
+var_dump($fields->getVersion() === null && $fields->getTimestamp()->toString() === '000000000000000');
 
 $badHyphen = '0011223344-5546778899-aabbccddeeff';
 var_dump(CoreUuid::isValid($badHyphen) === false);

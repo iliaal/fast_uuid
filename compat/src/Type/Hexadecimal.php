@@ -7,7 +7,7 @@ namespace FastUuid\Compat\Type;
 use FastUuid\Exception\InvalidArgumentException;
 
 /** Mirrors Ramsey\Uuid\Type\Hexadecimal. */
-final class Hexadecimal implements \JsonSerializable, \Stringable
+final class Hexadecimal implements TypeInterface
 {
     private string $hex;
 
@@ -27,11 +27,14 @@ final class Hexadecimal implements \JsonSerializable, \Stringable
     public function toString(): string { return $this->hex; }
     public function __toString(): string { return $this->hex; }
     public function jsonSerialize(): string { return $this->hex; }
+    public function serialize(): string { return $this->hex; }
+    public function unserialize(string $data): void { $this->__construct($data); }
     public function __serialize(): array { return ['string' => $this->hex]; }
     public function __unserialize(array $data): void
     {
-        // Revalidate through the constructor (ramsey parity): a tampered
-        // payload must not produce an invalid value object.
-        $this->hex = (new self((string) ($data['string'] ?? '')))->hex;
+        if (!isset($data['string'])) {
+            throw new \ValueError(\sprintf('%s(): Argument #1 ($data) is invalid', __METHOD__));
+        }
+        $this->unserialize($data['string']);
     }
 }

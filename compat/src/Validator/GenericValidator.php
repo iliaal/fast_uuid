@@ -11,7 +11,7 @@ namespace FastUuid\Compat\Validator;
  */
 class GenericValidator implements ValidatorInterface
 {
-    private const PATTERN = '\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z';
+    private const PATTERN = '\A[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\z';
 
     public function getPattern(): string
     {

@@ -29,7 +29,7 @@ final class Guid implements \Stringable, \JsonSerializable
     /** Mixed-endian (GUID-ordered) raw bytes. */
     public function getBytes(): string
     {
-        return $this->codec->encodeBinary($this->uuid);
+        return \hex2bin(\str_replace('-', '', $this->codec->encode($this->uuid)));
     }
 
     public function toString(): string

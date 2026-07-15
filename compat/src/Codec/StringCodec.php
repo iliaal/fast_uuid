@@ -13,22 +13,22 @@ class StringCodec implements CodecInterface
 {
     public function encode(UuidInterface $uuid): string
     {
-        return $uuid->toString();
+        return $uuid->getCore()->toString();
     }
 
     public function encodeBinary(UuidInterface $uuid): string
     {
-        return $uuid->getBytes();
+        return $uuid->getCore()->getBytes();
     }
 
     public function decode(string $encoded): UuidInterface
     {
-        return self::uuidFromString($encoded);
+        return $this->uuidFromString($encoded);
     }
 
     public function decodeBytes(string $bytes): UuidInterface
     {
-        return self::uuidFromBytes($bytes);
+        return $this->uuidFromBytes($bytes);
     }
 
     private static ?\FastUuid\Compat\UuidFactory $wrapFactory = null;
@@ -39,14 +39,14 @@ class StringCodec implements CodecInterface
         return self::$wrapFactory ??= new \FastUuid\Compat\UuidFactory();
     }
 
-    final protected static function uuidFromBytes(string $bytes): UuidInterface
+    final protected function uuidFromBytes(string $bytes): UuidInterface
     {
-        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromBytes($bytes));
+        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromBytes($bytes), $this);
     }
 
-    final protected static function uuidFromString(string $uuid): UuidInterface
+    final protected function uuidFromString(string $uuid): UuidInterface
     {
-        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromString($uuid));
+        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromString($uuid), $this);
     }
 
     final protected static function bytesToString(string $b): string

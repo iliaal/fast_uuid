@@ -7,7 +7,7 @@ namespace FastUuid\Compat\Rfc4122;
 use FastUuid\Compat\Type\Hexadecimal;
 
 /** Subset-compatible with Ramsey\Uuid\Rfc4122\FieldsInterface. */
-interface FieldsInterface
+interface FieldsInterface extends \Serializable
 {
     public function getBytes(): string;
     public function getClockSeq(): Hexadecimal;

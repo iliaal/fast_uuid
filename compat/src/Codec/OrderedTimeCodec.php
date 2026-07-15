@@ -21,7 +21,7 @@ final class OrderedTimeCodec extends StringCodec
         if ($uuid->getVersion() !== 1) {
             throw new InvalidArgumentException('Expected a version 1 (time-based) UUID');
         }
-        $b = $uuid->getBytes();
+        $b = $uuid->getCore()->getBytes();
 
         return $b[6] . $b[7] . $b[4] . $b[5] . $b[0] . $b[1] . $b[2] . $b[3] . \substr($b, 8);
     }
@@ -34,7 +34,7 @@ final class OrderedTimeCodec extends StringCodec
         $b = $bytes;
         $restored = $b[4] . $b[5] . $b[6] . $b[7] . $b[2] . $b[3] . $b[0] . $b[1] . \substr($b, 8);
 
-        $uuid = self::uuidFromBytes($restored);
+        $uuid = $this->uuidFromBytes($restored);
         if ($uuid->getVersion() !== 1) {
             throw new UnsupportedOperationException(
                 'Attempting to decode a non-time-based UUID using OrderedTimeCodec'

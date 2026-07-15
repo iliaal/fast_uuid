@@ -23,7 +23,7 @@ final class UuidV6 extends AbstractUuid
         $timeMid = \substr($ts, 3, 4);
         $timeLow = \substr($ts, 7, 8);
         $v1hex = $timeLow . $timeMid . '1' . $timeHi . \substr($hex, 16);
-        return new UuidV1(\FastUuid\Uuid::fromHexadecimal($v1hex));
+        return new UuidV1(\FastUuid\Uuid::fromHexadecimal($v1hex), $this->codec);
     }
 
     /**
@@ -32,10 +32,10 @@ final class UuidV6 extends AbstractUuid
      */
     public static function fromUuidV1(UuidV1 $uuid): self
     {
-        $hex = \bin2hex($uuid->getBytes());
+        $hex = \bin2hex($uuid->getCore()->getBytes());
         // v1: time_low[0:8], time_mid[8:12], time_hi_and_version[12:16].
         $ts = \substr($hex, 13, 3) . \substr($hex, 8, 4) . \substr($hex, 0, 8); // 15 hex, msb-first
         $v6hex = \substr($ts, 0, 12) . '6' . \substr($ts, 12, 3) . \substr($hex, 16);
-        return new self(\FastUuid\Uuid::fromHexadecimal($v6hex));
+        return new self(\FastUuid\Uuid::fromHexadecimal($v6hex), $uuid->codec);
     }
 }

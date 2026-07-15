@@ -59,9 +59,8 @@ var_dump(throws(fn() => $f->fromHexadecimal('{00112233-4455-4677-8899-aabbccddee
 // GuidStringCodec byte-order semantics preserved through the strict path.
 $gf = new UuidFactory();
 $gf->setCodec(new GuidStringCodec());
-$swapped = '33221100-5544-7746-8899-aabbccddeeff';
-var_dump($gf->fromHexadecimal($fixed->getHex())->toString() === $swapped);
-var_dump($gf->fromInteger((string) $fixed->getInteger())->toString() === $swapped);
+var_dump($gf->fromHexadecimal($fixed->getHex())->toString() === $fixed->toString());
+var_dump($gf->fromInteger((string) $fixed->getInteger())->toString() === $fixed->toString());
 
 // CR-006: over-long validator input is rejected without a fatal, valid input still passes.
 $canonical = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';

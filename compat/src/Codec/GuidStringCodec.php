@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Codec;
 
 use FastUuid\Compat\UuidInterface;
-use FastUuid\Exception\InvalidArgumentException;
 
 /**
  * Mixed-endian (Microsoft GUID) codec: byte-reverses time_low, time_mid and
@@ -22,27 +21,18 @@ final class GuidStringCodec extends StringCodec
             . \substr($b, 8);
     }
 
-    public function encodeBinary(UuidInterface $uuid): string
-    {
-        return self::swap($uuid->getBytes());
-    }
-
     public function decodeBytes(string $bytes): UuidInterface
     {
-        if (\strlen($bytes) !== 16) {
-            throw new InvalidArgumentException('Expected 16 bytes');
-        }
-
-        return self::uuidFromBytes(self::swap($bytes));
+        return parent::decodeBytes($bytes);
     }
 
     public function encode(UuidInterface $uuid): string
     {
-        return self::bytesToString($this->encodeBinary($uuid));
+        return self::bytesToString(self::swap($uuid->getCore()->getBytes()));
     }
 
     public function decode(string $encoded): UuidInterface
     {
-        return $this->decodeBytes(self::stringToBytes($encoded));
+        return $this->uuidFromBytes(self::swap(self::stringToBytes($encoded)));
     }
 }

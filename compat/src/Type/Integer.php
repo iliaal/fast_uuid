@@ -7,7 +7,7 @@ namespace FastUuid\Compat\Type;
 use FastUuid\Exception\InvalidArgumentException;
 
 /** Mirrors Ramsey\Uuid\Type\Integer (arbitrary-precision decimal string). */
-final class Integer implements \JsonSerializable, \Stringable
+final class Integer implements NumberInterface
 {
     private string $value;
 
@@ -38,10 +38,14 @@ final class Integer implements \JsonSerializable, \Stringable
     public function toString(): string { return $this->value; }
     public function __toString(): string { return $this->value; }
     public function jsonSerialize(): string { return $this->value; }
+    public function serialize(): string { return $this->value; }
+    public function unserialize(string $data): void { $this->__construct($data); }
     public function __serialize(): array { return ['string' => $this->value]; }
     public function __unserialize(array $data): void
     {
-        // Revalidate through the constructor (ramsey parity).
-        $this->value = (new self((string) ($data['string'] ?? '')))->value;
+        if (!isset($data['string'])) {
+            throw new \ValueError(\sprintf('%s(): Argument #1 ($data) is invalid', __METHOD__));
+        }
+        $this->unserialize($data['string']);
     }
 }
