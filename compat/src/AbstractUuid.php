@@ -9,6 +9,7 @@ use FastUuid\Compat\Codec\StringCodec;
 use FastUuid\Compat\Internal\ConstructionToken;
 use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\Nonstandard\Fields as NonstandardFields;
+use FastUuid\Compat\Nonstandard\Uuid as NonstandardUuid;
 use FastUuid\Compat\Rfc4122\Fields;
 use FastUuid\Compat\Rfc4122\FieldsInterface;
 use FastUuid\Compat\Type\Hexadecimal;
@@ -88,7 +89,7 @@ abstract class AbstractUuid implements UuidInterface
     }
     public function getFields(): FieldsInterface
     {
-        return static::class === 'FastUuid\Compat\Nonstandard\Uuid'
+        return static::class === NonstandardUuid::class
             ? new NonstandardFields($this->core->getBytes())
             : new Fields($this->core->getBytes());
     }

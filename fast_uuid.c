@@ -87,7 +87,6 @@ static int fu_detect_ssse3(void) {
 ZEND_DECLARE_MODULE_GLOBALS(fast_uuid)
 
 static zend_class_entry *fast_uuid_ce;
-static zend_class_entry *fast_uuid_iface_ce;
 static zend_object_handlers fu_handlers;
 static zend_class_entry *fu_ex_invalid_arg;
 static zend_class_entry *fu_ex_invalid_str;
@@ -95,6 +94,9 @@ static zend_class_entry *fu_ex_unsupported;
 
 #define FU_MAX_BATCH_COUNT 100000U
 #define FU_MAX_RANDOM_BYTES (16U * 1024U * 1024U)
+#define FU_GREG_UNIX_EPOCH 0x01B21DD213814000ULL /* 1582-10-15 → 1970 in 100ns ticks */
+#define FU_MS48_MAX 0xffffffffffffULL            /* 48-bit unix-ms field max */
+#define FU_RANDB_MASK ((1ULL << 62) - 1)         /* v7 rand_b width */
 
 /* byte->2hex lookup, built in MINIT */
 static char fu_lut[512];
@@ -215,14 +217,6 @@ static inline void fu_format36(const unsigned char *b, char *o) {
     memcpy(o + 24, h + 20, 12);
 }
 
-static inline void fu_format32(const unsigned char *b, char *o) {
-    fu_hex32(b, o);
-}
-
-static inline int fu_nib(unsigned char c) {
-    return fu_nib_lut[c];
-}
-
 #define FU_PARSE_HEX_BYTE_AT(pos, outidx) do { \
     int hi = fu_nib_lut[(unsigned char)s[(pos)]]; \
     int lo = fu_nib_lut[(unsigned char)s[(pos) + 1]]; \
@@ -259,10 +253,7 @@ static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
     }
     if (len == 32) {
         for (int i = 0; i < 16; i++) {
-            int hi = fu_nib((unsigned char)s[i*2]);
-            int lo = fu_nib((unsigned char)s[i*2+1]);
-            if (hi < 0 || lo < 0) return 0;
-            out[i] = (unsigned char)((hi << 4) | lo);
+            FU_PARSE_HEX_BYTE_AT(i * 2, i);
         }
         return 1;
     }
@@ -387,10 +378,15 @@ static void fu_atfork_child(void) {
 
 /* Generators return zend_result: a CSPRNG failure (FAILURE, exception pending)
    short-circuits the layout immediately rather than running on zeroed bytes. */
+/* RFC 9562 version nibble (high of b[6]) + RFC variant bits on b[8]. */
+static inline void fu_set_ver_var(unsigned char *b, unsigned char ver_hi) {
+    b[6] = (b[6] & 0x0f) | ver_hi;
+    b[8] = (b[8] & 0x3f) | 0x80;
+}
+
 static zend_result fu_gen_v4(unsigned char *b) {
     if (fu_rand(b, 16) == FAILURE) return FAILURE;
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
+    fu_set_ver_var(b, 0x40);
     return SUCCESS;
 }
 
@@ -399,8 +395,7 @@ static zend_result fu_gen_v4_fast(unsigned char *b) {
     if (UNEXPECTED(EG(exception))) return FAILURE; /* first call seeds from the CSPRNG */
     uint64_t c = fu_xs_next();
     memcpy(b, &a, 8); memcpy(b + 8, &c, 8);
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
+    fu_set_ver_var(b, 0x40);
     return SUCCESS;
 }
 
@@ -492,7 +487,7 @@ static inline zend_result fu_unix_nanos(uint64_t *out) {
 static inline zend_result fu_greg_now(uint64_t *out) {
     uint64_t ns;
     if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
-    *out = (ns / 100ULL) + 0x01B21DD213814000ULL; /* 1582-10-15 .. 1970 in 100ns */
+    *out = (ns / 100ULL) + FU_GREG_UNIX_EPOCH;
     return SUCCESS;
 }
 
@@ -563,14 +558,14 @@ static zend_result fu_gen_v7(unsigned char *b) {
     uint64_t randb;
     if (!FAST_UUID_G(v7_initialized) || key > FAST_UUID_G(v7_key)) {
         if (fu_rand_u64(&randb) == FAILURE) return FAILURE; /* draw before mutating state */
-        randb &= (1ULL<<62) - 1; /* full 62-bit rand_b; the overflow check below carries into the key */
+        randb &= FU_RANDB_MASK; /* full 62-bit rand_b; the overflow check below carries into the key */
         FAST_UUID_G(v7_key) = key;
         FAST_UUID_G(v7_randb) = randb;
         FAST_UUID_G(v7_initialized) = 1;
     } else {
         key = FAST_UUID_G(v7_key);
         randb = FAST_UUID_G(v7_randb) + 1;
-        if (randb > ((1ULL<<62)-1)) { key++; randb = 0; } /* carry into sub, then ms */
+        if (randb > FU_RANDB_MASK) { key++; randb = 0; } /* carry into sub, then ms */
         FAST_UUID_G(v7_key) = key;
         FAST_UUID_G(v7_randb) = randb;
     }
@@ -580,7 +575,7 @@ static zend_result fu_gen_v7(unsigned char *b) {
 /* non-monotonic v7 at an explicit timestamp (ms + 12-bit sub-ms fraction) */
 static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
     uint64_t randb; if (fu_rand_u64(&randb) == FAILURE) return FAILURE;
-    randb &= (1ULL<<62) - 1;
+    randb &= FU_RANDB_MASK;
     return fu_lay_v7(b, ms, sub, randb);
 }
 
@@ -591,8 +586,7 @@ static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *
     PHP_MD5Update(&c, (const unsigned char *)name, nl);
     PHP_MD5Final(d, &c);
     memcpy(b, d, 16);
-    b[6] = (b[6] & 0x0f) | 0x30;
-    b[8] = (b[8] & 0x3f) | 0x80;
+    fu_set_ver_var(b, 0x30);
 }
 
 static void fu_gen_v5(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
@@ -602,8 +596,12 @@ static void fu_gen_v5(unsigned char *b, const unsigned char ns[16], const char *
     PHP_SHA1Update(&c, (const unsigned char *)name, nl);
     PHP_SHA1Final(d, &c);
     memcpy(b, d, 16);
-    b[6] = (b[6] & 0x0f) | 0x50;
-    b[8] = (b[8] & 0x3f) | 0x80;
+    fu_set_ver_var(b, 0x50);
+}
+
+static void fu_gen_v8(unsigned char *b, const unsigned char *data) {
+    memcpy(b, data, 16);
+    fu_set_ver_var(b, 0x80);
 }
 
 /* ------------------------------------------------------------------ */
@@ -679,7 +677,7 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
 /* parse a node override: 12-hex string, or int in 0..0xffffffffffff. returns 1 on success */
 static int fu_parse_node(zend_string *str, zend_long lv, unsigned char node[6]) {
     if (!str) {
-        if (lv < 0 || (uint64_t)lv > 0xffffffffffffULL) return 0; /* reject, don't truncate */
+        if (lv < 0 || (uint64_t)lv > FU_MS48_MAX) return 0; /* reject, don't truncate */
         uint64_t n = (uint64_t)lv;
         for (int i = 0; i < 6; i++) node[i] = (n >> (8 * (5 - i))) & 0xff;
         return 1;
@@ -687,8 +685,9 @@ static int fu_parse_node(zend_string *str, zend_long lv, unsigned char node[6]) 
     const char *s = ZSTR_VAL(str);
     if (ZSTR_LEN(str) != 12) return 0;
     for (int i = 0; i < 6; i++) {
-        int hi = fu_nib(s[i*2]), lo = fu_nib(s[i*2+1]);
-        if (hi < 0 || lo < 0) return 0;
+        int hi = fu_nib_lut[(unsigned char)s[i*2]];
+        int lo = fu_nib_lut[(unsigned char)s[i*2+1]];
+        if ((hi | lo) < 0) return 0;
         node[i] = (hi << 4) | lo;
     }
     return 1;
@@ -699,15 +698,15 @@ static int fu_parse_node(zend_string *str, zend_long lv, unsigned char node[6]) 
    returns FAILURE on a present-but-invalid node. */
 static zend_result fu_node_arg(zend_string *node_str, zend_long node_long, zend_bool node_null,
                                unsigned char node[6], const unsigned char **out) {
-    if (!node_null) {
-        if (!fu_parse_node(node_str, node_long, node)) {
-            zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0);
-            return FAILURE;
-        }
-        *out = node;
-    } else {
+    if (node_null) {
         *out = NULL;
+        return SUCCESS;
     }
+    if (!fu_parse_node(node_str, node_long, node)) {
+        zend_throw_exception(fu_ex_invalid_arg, "Invalid node (expect 12-hex string or int)", 0);
+        return FAILURE;
+    }
+    *out = node;
     return SUCCESS;
 }
 
@@ -935,7 +934,7 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
 
 /* non-monotonic v7 from a unix-millisecond integer (sub-ms fraction = 0) */
 static zend_result fu_v7_at_ms(unsigned char *b, zend_long ms) {
-    if (ms < 0 || (uint64_t)ms > 0xffffffffffffULL) {
+    if (ms < 0 || (uint64_t)ms > FU_MS48_MAX) {
         zend_throw_exception(fu_ex_invalid_arg, "v7 millisecond timestamp out of range (0 .. 281474976710655)", 0);
         return FAILURE;
     }
@@ -950,7 +949,6 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
     ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
     if (when && Z_TYPE_P(when) == IS_LONG) {
-        /* explicit unix-millisecond timestamp, no DateTime object */
         if (fu_v7_at_ms(b, Z_LVAL_P(when)) == FAILURE) RETURN_THROWS();
     } else if (when && Z_TYPE_P(when) == IS_OBJECT &&
                instanceof_function(Z_OBJ_P(when)->ce, php_date_get_interface_ce())) {
@@ -966,7 +964,7 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
             RETURN_THROWS();
         }
         uint64_t ms  = (uint64_t)sec * 1000ULL + micros / 1000ULL;
-        if (ms > 0xffffffffffffULL) { /* precise 48-bit ceiling (boundary second + sub-ms) */
+        if (ms > FU_MS48_MAX) { /* precise 48-bit ceiling (boundary second + sub-ms) */
             zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
             RETURN_THROWS();
         }
@@ -991,9 +989,8 @@ PHP_METHOD(FastUuid_Uuid, uuid8) {
     zend_string *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
     if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
-    unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
-    b[6] = (b[6] & 0x0f) | 0x80;
-    b[8] = (b[8] & 0x3f) | 0x80;
+    unsigned char b[16];
+    fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
     fu_return_uuid(return_value, b);
 }
 
@@ -1072,7 +1069,7 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
         zend_throw_exception(fu_ex_invalid_arg, "DateTime out of range for a v1 UUID timestamp", 0);
         RETURN_THROWS();
     }
-    int64_t g = secs * 10000000LL + (int64_t)micros * 10LL + (int64_t)0x01B21DD213814000ULL;
+    int64_t g = secs * 10000000LL + (int64_t)micros * 10LL + (int64_t)FU_GREG_UNIX_EPOCH;
     if (g < 0 || (uint64_t)g > ((1ULL << 60) - 1)) {
         zend_throw_exception(fu_ex_invalid_arg, "DateTime out of range for a v1 UUID timestamp (1582-10-15 .. ~5236)", 0);
         RETURN_THROWS();
@@ -1106,7 +1103,7 @@ PHP_METHOD(FastUuid_Uuid, getHex) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     zend_string *s = zend_string_alloc(32, 0);
-    fu_format32(u->b, ZSTR_VAL(s)); ZSTR_VAL(s)[32] = '\0';
+    fu_hex32(u->b, ZSTR_VAL(s)); ZSTR_VAL(s)[32] = '\0';
     RETURN_STR(s);
 }
 
@@ -1133,10 +1130,10 @@ PHP_METHOD(FastUuid_Uuid, getVariant) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     unsigned char o = u->b[8];
-    if ((o & 0x80) == 0x00)      RETURN_LONG(0); /* NCS */
-    else if ((o & 0xC0) == 0x80) RETURN_LONG(2); /* RFC 4122 */
-    else if ((o & 0xE0) == 0xC0) RETURN_LONG(6); /* Microsoft */
-    else                         RETURN_LONG(7); /* future */
+    if ((o & 0x80) == 0x00) RETURN_LONG(0); /* NCS */
+    if ((o & 0xC0) == 0x80) RETURN_LONG(2); /* RFC 4122 */
+    if ((o & 0xE0) == 0xC0) RETURN_LONG(6); /* Microsoft */
+    RETURN_LONG(7); /* future */
 }
 
 PHP_METHOD(FastUuid_Uuid, getInteger) {
@@ -1150,33 +1147,24 @@ PHP_METHOD(FastUuid_Uuid, getInteger) {
 static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micros) {
     if ((b[8] & 0xC0) != 0x80) return 0;
     int ver = (b[6] >> 4) & 0x0f;
-    if (ver == 1 || ver == 6) {
+    if (ver == 1 || ver == 2 || ver == 6) {
         uint64_t t60;
-        if (ver == 1) {
-            uint64_t th = ((uint64_t)(b[6]&0x0f)<<8)|b[7];
-            uint64_t tm = ((uint64_t)b[4]<<8)|b[5];
-            uint64_t tl = ((uint64_t)b[0]<<24)|((uint64_t)b[1]<<16)|((uint64_t)b[2]<<8)|b[3];
-            t60 = (th<<48)|(tm<<32)|tl;
-        } else {
+        if (ver == 6) {
             t60 = ((uint64_t)b[0]<<52)|((uint64_t)b[1]<<44)|((uint64_t)b[2]<<36)
                  |((uint64_t)b[3]<<28)|((uint64_t)b[4]<<20)|((uint64_t)b[5]<<12)
                  |((uint64_t)(b[6]&0x0f)<<8)|b[7];
+        } else {
+            /* v1 full 60-bit; v2 zeros time_low (holds local id, coarse ~429s resolution). */
+            uint64_t th = ((uint64_t)(b[6]&0x0f)<<8)|b[7];
+            uint64_t tm = ((uint64_t)b[4]<<8)|b[5];
+            uint64_t tl = (ver == 2) ? 0
+                : ((uint64_t)b[0]<<24)|((uint64_t)b[1]<<16)|((uint64_t)b[2]<<8)|b[3];
+            t60 = (th<<48)|(tm<<32)|tl;
         }
-        int64_t unix100 = (int64_t)(t60 - 0x01B21DD213814000ULL); /* signed: pre-1970 is negative */
+        int64_t unix100 = (int64_t)(t60 - FU_GREG_UNIX_EPOCH); /* signed: pre-1970 is negative */
         int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
         if (frac < 0) { s -= 1; frac += 10000000LL; } /* floor toward -inf, keep frac >= 0 */
         *secs = s; *micros = (uint32_t)(frac / 10LL); /* 100ns -> us */
-        return 1;
-    }
-    if (ver == 2) {
-        /* DCE v2: time_low holds the local identifier, so only the upper bits
-           of the 60-bit timestamp survive (coarse, ~429s resolution). */
-        uint64_t th = ((uint64_t)(b[6]&0x0f)<<8)|b[7];
-        uint64_t tm = ((uint64_t)b[4]<<8)|b[5];
-        int64_t unix100 = (int64_t)(((th<<48)|(tm<<32)) - 0x01B21DD213814000ULL);
-        int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
-        if (frac < 0) { s -= 1; frac += 10000000LL; }
-        *secs = s; *micros = (uint32_t)(frac / 10LL);
         return 1;
     }
     if (ver == 7) {
@@ -1360,44 +1348,28 @@ PHP_FUNCTION(uuid_v7_at_bin) {
     unsigned char b[16]; if (fu_v7_at_ms(b, ms) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b);
 }
 
-PHP_FUNCTION(uuid_v3) {
-    zend_string *zns, *name;
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
-    unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
-    fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_FORMATTED(b);
+#define FU_NAME_BASED_FN(fname, gen, ret) \
+PHP_FUNCTION(fname) { \
+    zend_string *zns, *nm; \
+    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(nm) ZEND_PARSE_PARAMETERS_END(); \
+    unsigned char ns[16], b[16]; \
+    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { \
+        zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); \
+    } \
+    gen(b, ns, ZSTR_VAL(nm), ZSTR_LEN(nm)); ret(b); \
 }
-
-PHP_FUNCTION(uuid_v3_bin) {
-    zend_string *zns, *name;
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
-    unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
-    fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_BYTES(b);
-}
-
-PHP_FUNCTION(uuid_v5) {
-    zend_string *zns, *name;
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
-    unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
-    fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_FORMATTED(b);
-}
-
-PHP_FUNCTION(uuid_v5_bin) {
-    zend_string *zns, *name;
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
-    unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
-    fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); FU_RETURN_BYTES(b);
-}
+FU_NAME_BASED_FN(uuid_v3, fu_gen_v3, FU_RETURN_FORMATTED)
+FU_NAME_BASED_FN(uuid_v3_bin, fu_gen_v3, FU_RETURN_BYTES)
+FU_NAME_BASED_FN(uuid_v5, fu_gen_v5, FU_RETURN_FORMATTED)
+FU_NAME_BASED_FN(uuid_v5_bin, fu_gen_v5, FU_RETURN_BYTES)
+#undef FU_NAME_BASED_FN
 
 PHP_FUNCTION(uuid_v8) {
     zend_string *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
     if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
-    unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
-    b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80;
+    unsigned char b[16];
+    fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
     FU_RETURN_FORMATTED(b);
 }
 
@@ -1405,58 +1377,28 @@ PHP_FUNCTION(uuid_v8_bin) {
     zend_string *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
     if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
-    unsigned char b[16]; memcpy(b, ZSTR_VAL(data), 16);
-    b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80;
+    unsigned char b[16];
+    fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
     FU_RETURN_BYTES(b);
 }
 
-PHP_FUNCTION(uuid_v4_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    for (uint32_t i = 0; i < n; i++) {
-        unsigned char b[16];
-        if (fu_gen_v4(b) == FAILURE) RETURN_THROWS();
-        fu_add_next_formatted(return_value, b);
-    }
+#define FU_BATCH_FN(fname, gen, add) \
+PHP_FUNCTION(fname) { \
+    zend_long count; \
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END(); \
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS(); \
+    array_init_size(return_value, n); \
+    for (uint32_t i = 0; i < n; i++) { \
+        unsigned char b[16]; \
+        if (gen(b) == FAILURE) RETURN_THROWS(); \
+        add(return_value, b); \
+    } \
 }
-
-PHP_FUNCTION(uuid_v7_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    for (uint32_t i = 0; i < n; i++) {
-        unsigned char b[16];
-        if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
-        fu_add_next_formatted(return_value, b);
-    }
-}
-
-PHP_FUNCTION(uuid_v4_bin_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    for (uint32_t i = 0; i < n; i++) {
-        unsigned char b[16];
-        if (fu_gen_v4(b) == FAILURE) RETURN_THROWS();
-        fu_add_next_bytes(return_value, b);
-    }
-}
-
-PHP_FUNCTION(uuid_v7_bin_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    for (uint32_t i = 0; i < n; i++) {
-        unsigned char b[16];
-        if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
-        fu_add_next_bytes(return_value, b);
-    }
-}
+FU_BATCH_FN(uuid_v4_batch, fu_gen_v4, fu_add_next_formatted)
+FU_BATCH_FN(uuid_v7_batch, fu_gen_v7, fu_add_next_formatted)
+FU_BATCH_FN(uuid_v4_bin_batch, fu_gen_v4, fu_add_next_bytes)
+FU_BATCH_FN(uuid_v7_bin_batch, fu_gen_v7, fu_add_next_bytes)
+#undef FU_BATCH_FN
 
 PHP_FUNCTION(uuid_to_bin) {
     zend_string *s;
@@ -1558,8 +1500,8 @@ PHP_MINIT_FUNCTION(fast_uuid) {
 #endif
 
     zend_class_entry *marker_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
-    fast_uuid_iface_ce = register_class_FastUuid_UuidValueInterface(marker_ce);
-    fast_uuid_ce = register_class_FastUuid_Uuid(fast_uuid_iface_ce);
+    zend_class_entry *iface_ce = register_class_FastUuid_UuidValueInterface(marker_ce);
+    fast_uuid_ce = register_class_FastUuid_Uuid(iface_ce);
     fast_uuid_ce->create_object = fu_create;
 
     memcpy(&fu_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));

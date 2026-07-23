@@ -21,17 +21,6 @@ final class WrapperClass
         8 => 'FastUuid\Compat\Rfc4122\UuidV8',
     ];
 
-    private const CLASS_VERSIONS = [
-        'FastUuid\Compat\Rfc4122\UuidV1' => 1,
-        'FastUuid\Compat\Rfc4122\UuidV2' => 2,
-        'FastUuid\Compat\Rfc4122\UuidV3' => 3,
-        'FastUuid\Compat\Rfc4122\UuidV4' => 4,
-        'FastUuid\Compat\Rfc4122\UuidV5' => 5,
-        'FastUuid\Compat\Rfc4122\UuidV6' => 6,
-        'FastUuid\Compat\Rfc4122\UuidV7' => 7,
-        'FastUuid\Compat\Rfc4122\UuidV8' => 8,
-    ];
-
     public static function instantiateMapped(
         \FastUuid\Uuid $core,
         ?\FastUuid\Compat\Codec\CodecInterface $codec = null,
@@ -41,9 +30,10 @@ final class WrapperClass
 
     public static function matches(\FastUuid\Uuid $core, string $class): bool
     {
-        if (isset(self::CLASS_VERSIONS[$class])) {
+        $version = \array_search($class, self::VERSION_CLASSES, true);
+        if ($version !== false) {
             return $core->getVariant() === 2
-                && $core->getVersion() === self::CLASS_VERSIONS[$class];
+                && $core->getVersion() === $version;
         }
 
         return self::for($core) === $class;

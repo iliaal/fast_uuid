@@ -13,17 +13,13 @@ use FastUuid\Compat\UuidInterface;
  */
 final class GuidStringCodec extends StringCodec
 {
-    private static function swap(string $b): string
+    /** Mixed-endian field reorder; its own inverse. Shared with Guid::getBytes. */
+    public static function swap(string $b): string
     {
         return $b[3] . $b[2] . $b[1] . $b[0]
             . $b[5] . $b[4]
             . $b[7] . $b[6]
             . \substr($b, 8);
-    }
-
-    public function decodeBytes(string $bytes): UuidInterface
-    {
-        return parent::decodeBytes($bytes);
     }
 
     public function encode(UuidInterface $uuid): string

@@ -6,6 +6,7 @@ namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\AbstractUuid;
 use FastUuid\Compat\Type\Integer as IntegerObject;
+use FastUuid\Compat\Uuid;
 
 /**
  * RFC 4122 DCE Security (version 2). The local identifier occupies time_low
@@ -21,14 +22,11 @@ final class UuidV2 extends AbstractUuid
     /** ramsey parity: the human-readable DCE domain name (person/group/org). */
     public function getLocalDomainName(): string
     {
-        return match ($this->getLocalDomain()) {
-            0 => 'person',
-            1 => 'group',
-            2 => 'org',
-            default => throw new \FastUuid\Exception\UnsupportedOperationException(
-                'Unknown DCE local domain ' . $this->getLocalDomain()
-            ),
-        };
+        $domain = $this->getLocalDomain();
+        return Uuid::DCE_DOMAIN_NAMES[$domain]
+            ?? throw new \FastUuid\Exception\UnsupportedOperationException(
+                'Unknown DCE local domain ' . $domain
+            );
     }
 
     public function getLocalIdentifier(): IntegerObject

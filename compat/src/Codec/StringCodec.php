@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
+use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 use FastUuid\Exception\InvalidUuidStringException;
@@ -31,22 +32,14 @@ class StringCodec implements CodecInterface
         return $this->uuidFromBytes($bytes);
     }
 
-    private static ?\FastUuid\Compat\UuidFactory $wrapFactory = null;
-
-    /** Shared default factory used only for version-class wrapping (no decode). */
-    private static function wrapFactory(): \FastUuid\Compat\UuidFactory
-    {
-        return self::$wrapFactory ??= new \FastUuid\Compat\UuidFactory();
-    }
-
     final protected function uuidFromBytes(string $bytes): UuidInterface
     {
-        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromBytes($bytes), $this);
+        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromBytes($bytes), $this);
     }
 
     final protected function uuidFromString(string $uuid): UuidInterface
     {
-        return self::wrapFactory()->wrap(\FastUuid\Uuid::fromString($uuid), $this);
+        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromString($uuid), $this);
     }
 
     final protected static function bytesToString(string $b): string
