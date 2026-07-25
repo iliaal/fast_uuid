@@ -52,7 +52,7 @@ if ($stableFactory) {
     var_dump(Uuid::uuid4()->getVersion() === 4);
     try { Uuid::uuid7(); var_dump(false); } catch (Throwable $e) { var_dump($e::class === UnsupportedOperationException::class); }
     try { Uuid::uuid8(str_repeat("\0", 16)); var_dump(false); } catch (Throwable $e) { var_dump($e::class === UnsupportedOperationException::class); }
-    try { Uuid::fromHexadecimal(new Hexadecimal(str_repeat('0', 32))); var_dump(false); } catch (Throwable $e) { var_dump($e::class === BadMethodCallException::class); }
+    try { Uuid::fromHexadecimal(new Hexadecimal(str_repeat('0', 32))); var_dump(false); } catch (Throwable $e) { var_dump($e::class === UnsupportedOperationException::class); }
 } else {
     var_dump(false, false, false, false);
 }

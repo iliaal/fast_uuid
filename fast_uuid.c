@@ -94,6 +94,7 @@ static zend_class_entry *fu_ex_unsupported;
 
 #define FU_MAX_BATCH_COUNT 100000U
 #define FU_MAX_RANDOM_BYTES (16U * 1024U * 1024U)
+#define FU_MAX_NAME_BYTES (16U * 1024U * 1024U)  /* v3/v5 name length cap (DoS bound) */
 #define FU_GREG_UNIX_EPOCH 0x01B21DD213814000ULL /* 1582-10-15 → 1970 in 100ns ticks */
 #define FU_MS48_MAX 0xffffffffffffULL            /* 48-bit unix-ms field max */
 #define FU_RANDB_MASK ((1ULL << 62) - 1)         /* v7 rand_b width */
@@ -364,6 +365,10 @@ static void fu_atfork_child(void) {
        offset off a NULL base. That thread has no PHP globals to reset. */
     if (!tsrm_get_ls_cache()) return;
 #endif
+    /* Wipe residual entropy so a memory disclosure in the child cannot
+       recover the parent's remaining CSPRNG buffer or xoshiro seed. */
+    memset(FAST_UUID_G(rbuf), 0, sizeof(FAST_UUID_G(rbuf)));
+    memset(FAST_UUID_G(prng_s), 0, sizeof(FAST_UUID_G(prng_s)));
     FAST_UUID_G(rpos) = sizeof(FAST_UUID_G(rbuf)); /* force refill on next fu_rand */
     FAST_UUID_G(prng_seeded) = 0;                  /* force xoshiro reseed */
     FAST_UUID_G(v7_key) = 0;                        /* force v7 reseed (new key > 0) */
@@ -579,7 +584,18 @@ static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
     return fu_lay_v7(b, ms, sub, randb);
 }
 
+/* Returns 0 and throws if name is longer than FU_MAX_NAME_BYTES. */
+static int fu_name_len_ok(size_t nl) {
+    if (UNEXPECTED(nl > FU_MAX_NAME_BYTES)) {
+        zend_throw_exception_ex(fu_ex_invalid_arg, 0,
+            "name is too large (max %u bytes)", FU_MAX_NAME_BYTES);
+        return 0;
+    }
+    return 1;
+}
+
 static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
+    if (!fu_name_len_ok(nl)) return;
     PHP_MD5_CTX c; unsigned char d[16];
     PHP_MD5Init(&c);
     PHP_MD5Update(&c, ns, 16);
@@ -590,6 +606,7 @@ static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *
 }
 
 static void fu_gen_v5(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
+    if (!fu_name_len_ok(nl)) return;
     PHP_SHA1_CTX c; unsigned char d[20];
     PHP_SHA1Init(&c);
     PHP_SHA1Update(&c, ns, 16);
@@ -746,8 +763,19 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
     ZVAL_STRING(&fn, "getTimestamp");
     zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
     zval_ptr_dtor(&fn);
-    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); return FAILURE; }
-    *secs = (int64_t)zval_get_long(&ret);
+    if (cr != SUCCESS || EG(exception)) {
+        zval_ptr_dtor(&ret);
+        if (!EG(exception)) {
+            zend_throw_exception(fu_ex_unsupported, "DateTime getTimestamp() failed", 0);
+        }
+        return FAILURE;
+    }
+    if (Z_TYPE(ret) != IS_LONG) {
+        zval_ptr_dtor(&ret);
+        zend_throw_exception(fu_ex_invalid_arg, "DateTime getTimestamp() must return an int", 0);
+        return FAILURE;
+    }
+    *secs = (int64_t)Z_LVAL(ret);
     zval_ptr_dtor(&ret);
     zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
     cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
@@ -902,7 +930,10 @@ PHP_METHOD(FastUuid_Uuid, uuid3) {
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
     if (!fu_resolve_uuid(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
-    unsigned char b[16]; fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
+    unsigned char b[16];
+    fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name));
+    if (UNEXPECTED(EG(exception))) RETURN_THROWS();
+    fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid4) {
@@ -915,7 +946,10 @@ PHP_METHOD(FastUuid_Uuid, uuid5) {
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
     unsigned char ns[16];
     if (!fu_resolve_uuid(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
-    unsigned char b[16]; fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name)); fu_return_uuid(return_value, b);
+    unsigned char b[16];
+    fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name));
+    if (UNEXPECTED(EG(exception))) RETURN_THROWS();
+    fu_return_uuid(return_value, b);
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid6) {
@@ -1395,10 +1429,63 @@ PHP_FUNCTION(fname) { \
     } \
 }
 FU_BATCH_FN(uuid_v4_batch, fu_gen_v4, fu_add_next_formatted)
-FU_BATCH_FN(uuid_v7_batch, fu_gen_v7, fu_add_next_formatted)
 FU_BATCH_FN(uuid_v4_bin_batch, fu_gen_v4, fu_add_next_bytes)
-FU_BATCH_FN(uuid_v7_bin_batch, fu_gen_v7, fu_add_next_bytes)
 #undef FU_BATCH_FN
+
+/* v7 batch: one clock_gettime for the whole batch, then advance the
+   monotonic (key, rand_b) counter in pure C — same semantics as n×fu_gen_v7
+   within a single tick, without n syscalls. */
+static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
+    uint64_t ns;
+    if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
+    uint64_t ms  = ns / 1000000ULL;
+    uint64_t sub = ((ns % 1000000ULL) * 4096ULL) / 1000000ULL;
+    uint64_t key = (ms << 12) | sub;
+    uint64_t randb;
+
+    if (!FAST_UUID_G(v7_initialized) || key > FAST_UUID_G(v7_key)) {
+        if (fu_rand_u64(&randb) == FAILURE) return FAILURE;
+        randb &= FU_RANDB_MASK;
+    } else {
+        key = FAST_UUID_G(v7_key);
+        randb = FAST_UUID_G(v7_randb) + 1;
+        if (randb > FU_RANDB_MASK) { key++; randb = 0; }
+    }
+
+    for (uint32_t i = 0; i < n; i++) {
+        unsigned char b[16];
+        if (i > 0) {
+            randb++;
+            if (randb > FU_RANDB_MASK) { key++; randb = 0; }
+        }
+        fu_lay_v7(b, key >> 12, key & 0xfff, randb);
+        if (as_bytes) {
+            fu_add_next_bytes(arr, b);
+        } else {
+            fu_add_next_formatted(arr, b);
+        }
+    }
+    FAST_UUID_G(v7_key) = key;
+    FAST_UUID_G(v7_randb) = randb;
+    FAST_UUID_G(v7_initialized) = 1;
+    return SUCCESS;
+}
+
+PHP_FUNCTION(uuid_v7_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    if (fu_gen_v7_batch_n(return_value, n, 0) == FAILURE) RETURN_THROWS();
+}
+
+PHP_FUNCTION(uuid_v7_bin_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    if (fu_gen_v7_batch_n(return_value, n, 1) == FAILURE) RETURN_THROWS();
+}
 
 PHP_FUNCTION(uuid_to_bin) {
     zend_string *s;

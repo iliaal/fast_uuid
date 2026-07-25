@@ -139,7 +139,7 @@ final class Uuid
         if (\method_exists($factory, 'fromHexadecimal')) {
             return $factory->fromHexadecimal($hex);
         }
-        throw new \BadMethodCallException('The method fromHexadecimal() does not exist on the provided factory');
+        throw new UnsupportedOperationException('The provided factory does not support the fromHexadecimal() method');
     }
 
     public static function fromDateTime(

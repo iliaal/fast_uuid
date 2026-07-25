@@ -83,6 +83,7 @@ $providerFactory->setNodeProvider(new class($node) implements NodeProviderInterf
 });
 var_dump(substr($providerFactory->uuid1()->getBytes(), 10, 6) === $node);
 var_dump(substr($providerFactory->uuid2(CompatUuid::DCE_DOMAIN_PERSON, 123)->getBytes(), 10, 6) === $node);
+var_dump(substr($providerFactory->uuid6()->getBytes(), 10, 6) === $node);
 var_dump(substr($providerFactory->fromDateTime(new DateTimeImmutable('@0'))->getBytes(), 10, 6) === $node);
 
 $compat = CompatUuid::fromString($canonical);
@@ -103,6 +104,7 @@ var_dump(throws(fn() => (new GuidStringCodec())->decode($badHyphen), InvalidArgu
 var_dump(throws(fn() => (new TimestampFirstCombCodec())->decode($badHyphen), InvalidArgumentException::class));
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
 bool(true)

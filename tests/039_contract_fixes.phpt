@@ -56,11 +56,11 @@ var_dump($f->fromHexadecimal($fixed->getHex())->equals($fixed));
 var_dump(throws(fn() => $f->fromHexadecimal('00112233-4455-4677-8899-aabbccddeeff'), InvalidArgumentException::class));
 var_dump(throws(fn() => $f->fromHexadecimal('urn:uuid:00112233-4455-4677-8899-aabbccddeeff'), InvalidArgumentException::class));
 var_dump(throws(fn() => $f->fromHexadecimal('{00112233-4455-4677-8899-aabbccddeeff}'), InvalidArgumentException::class));
-// GuidStringCodec byte-order semantics preserved through the strict path.
+// Guid codec must not corrupt network identity (toString-only checks are false-green).
 $gf = new UuidFactory();
 $gf->setCodec(new GuidStringCodec());
-var_dump($gf->fromHexadecimal($fixed->getHex())->toString() === $fixed->toString());
-var_dump($gf->fromInteger((string) $fixed->getInteger())->toString() === $fixed->toString());
+var_dump($gf->fromHexadecimal($fixed->getHex())->equals($fixed));
+var_dump($gf->fromInteger((string) $fixed->getInteger())->equals($fixed));
 
 // CR-006: over-long validator input is rejected without a fatal, valid input still passes.
 $canonical = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';

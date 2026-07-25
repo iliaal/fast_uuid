@@ -32,9 +32,11 @@ abstract class AbstractUuid implements UuidInterface
         ?ConstructionToken $token = null,
     )
     {
-        if ($token !== ConstructionToken::Trusted) {
-            $this->assertCoreMatches($core);
-        }
+        // Always validate version/class binding. ConstructionToken::Trusted is
+        // retained for call-site compatibility but no longer skips the check
+        // (it was a public capability token anyone could pass).
+        unset($token);
+        $this->assertCoreMatches($core);
         $this->core = $core;
         if ($codec !== null && \get_class($codec) !== StringCodec::class) {
             $this->codec = $codec;
@@ -57,7 +59,9 @@ abstract class AbstractUuid implements UuidInterface
             : $this->codec->encode($this);
     }
     public function __toString(): string { return $this->toString(); }
-    public function getUrn(): string { return 'urn:uuid:' . $this->toString(); }
+    // Identity forms are always RFC/network order from the core. Codec only
+    // reshapes toString()/getBytes() presentation (Guid mixed-endian, COMB, …).
+    public function getUrn(): string { return $this->core->getUrn(); }
     public function getVersion(): ?int { return $this->core->getVersion(); }
     public function getVariant(): int { return $this->core->getVariant(); }
     public function jsonSerialize(): string { return $this->toString(); }
@@ -82,10 +86,10 @@ abstract class AbstractUuid implements UuidInterface
     }
 
     // --- cold path: wrap into ramsey-shaped objects --------------------
-    public function getHex(): Hexadecimal { return new Hexadecimal(\str_replace('-', '', $this->toString())); }
+    public function getHex(): Hexadecimal { return new Hexadecimal($this->core->getHex()); }
     public function getInteger(): IntegerObject
     {
-        return new IntegerObject(\FastUuid\Uuid::fromHexadecimal($this->getHex())->getInteger());
+        return new IntegerObject($this->core->getInteger());
     }
     public function getFields(): FieldsInterface
     {
@@ -96,13 +100,23 @@ abstract class AbstractUuid implements UuidInterface
     public function getDateTime(): \DateTimeInterface { return $this->core->getDateTime(); }
 
     // --- serialization parity ------------------------------------------
-    public function serialize(): string { return $this->toString(); }
+    // Always persist RFC network-order bytes so restore is independent of the
+    // process-global factory codec (Guid/COMB presentation text is not portable).
+    public function serialize(): string { return $this->core->getBytes(); }
 
     public function unserialize(string $data): void
     {
-        $uuid = \strlen($data) === 16
-            ? Uuid::getFactory()->fromBytes($data)
-            : Uuid::getFactory()->fromString($data);
+        if (\strlen($data) === 16) {
+            $core = \FastUuid\Uuid::fromBytes($data);
+            $this->assertCoreMatches($core);
+            $this->core = $core;
+            $this->codec = null;
+            $this->canonical = null;
+            return;
+        }
+        // Legacy text payloads (36-char canonical / urn / braced) from older
+        // serialize() output: decode via the current factory.
+        $uuid = Uuid::getFactory()->fromString($data);
         $this->restoreUuid($uuid);
     }
 

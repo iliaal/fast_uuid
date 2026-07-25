@@ -132,6 +132,22 @@ class UuidFactory implements UuidFactoryInterface
             $localIdentifier = $localIdentifier->toString();
         }
         $node = $this->resolveNode($node);
+        if ($this->customTimeGenerator) {
+            // Time generator supplies a v1-shaped layout; stamp version 2 and
+            // overwrite time_low / clock_seq_low with DCE local id / domain.
+            $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 2);
+            $idBe = self::dceLocalIdBytes($localDomain, $localIdentifier);
+            $b[0] = $idBe[0];
+            $b[1] = $idBe[1];
+            $b[2] = $idBe[2];
+            $b[3] = $idBe[3];
+            $b[9] = \chr($localDomain & 0xff);
+            return new UuidV2(
+                \FastUuid\Uuid::fromBytes($b),
+                $this->codec,
+                ConstructionToken::Trusted,
+            );
+        }
         return new UuidV2(
             \FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq),
             $this->codec,
@@ -200,8 +216,32 @@ class UuidFactory implements UuidFactoryInterface
 
     public function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
+        if (!$this->customRandomGenerator) {
+            return new UuidV7(
+                \FastUuid\Uuid::uuid7($dateTime),
+                $this->codec,
+                ConstructionToken::Trusted,
+            );
+        }
+        // Custom RNG: take the C core's time layout, then replace rand_a/rand_b
+        // with bytes from the application generator (ramsey factory parity).
+        $base = \FastUuid\Uuid::uuid7($dateTime);
+        $bytes = $base->getBytes();
+        $rnd = $this->getRandomGenerator()->generate(10);
+        if (\strlen($rnd) !== 10) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'Random generator must return exactly 10 bytes for uuid7, got ' . \strlen($rnd)
+            );
+        }
+        $randA = ((\ord($rnd[0]) << 4) | (\ord($rnd[1]) >> 4)) & 0x0fff;
+        $bytes[6] = \chr(0x70 | (($randA >> 8) & 0x0f));
+        $bytes[7] = \chr($randA & 0xff);
+        $bytes[8] = \chr(0x80 | (\ord($rnd[2]) & 0x3f));
+        for ($i = 0; $i < 7; $i++) {
+            $bytes[9 + $i] = $rnd[3 + $i];
+        }
         return new UuidV7(
-            \FastUuid\Uuid::uuid7($dateTime),
+            \FastUuid\Uuid::fromBytes($bytes),
             $this->codec,
             ConstructionToken::Trusted,
         );
@@ -224,24 +264,20 @@ class UuidFactory implements UuidFactoryInterface
 
     public function fromInteger(string $integer): UuidInterface
     {
-        $core = \FastUuid\Uuid::fromInteger($integer);
-        if ($this->codec === null || \get_class($this->codec) === StringCodec::class) {
-            return $this->wrap($core);
-        }
-        return $this->fromHexadecimal($core->getHex());
+        // Integer is always the RFC 128-bit network-order value. Never route
+        // through a presentation codec (Guid/COMB would byte-swap the identity).
+        return $this->wrap(\FastUuid\Uuid::fromInteger($integer));
     }
 
     public function fromHexadecimal(Hexadecimal|string $hex): UuidInterface
     {
-        // Strict 32-hex input only: unlike fromString(), a hexadecimal
-        // identifier is not a canonical/URN/braced UUID string. Validate the
-        // shape here, then dispatch through the codec's string decode() (ramsey
-        // parity) so a custom codec sees the same entry point it does for hex.
+        // Strict 32-hex input only: network-order hex identity, not Guid text.
+        // Attach the factory codec for presentation only (toString/getBytes).
         $h = (string) $hex;
         if (\strlen($h) !== 32 || !\preg_match('/\A[0-9a-fA-F]{32}\z/', $h)) {
             throw new \FastUuid\Exception\InvalidArgumentException('Invalid hexadecimal UUID (expect 32 hex chars)');
         }
-        return $this->getCodec()->decode($h);
+        return $this->wrap(\FastUuid\Uuid::fromHexadecimal($h));
     }
 
     public function fromDateTime(
@@ -295,5 +331,46 @@ class UuidFactory implements UuidFactoryInterface
         $b[6] = \chr((\ord($b[6]) & 0x0f) | ($version << 4));
         $b[8] = \chr((\ord($b[8]) & 0x3f) | 0x80);
         return $b;
+    }
+
+    /** 4-byte big-endian DCE local identifier (0..2^32-1), portable on 32-bit PHP. */
+    private static function dceLocalIdBytes(int $localDomain, int|string|null $id): string
+    {
+        if ($id === null) {
+            if ($localDomain === 0 || $localDomain === 1) {
+                $uid = $localDomain === 1 ? \getmygid() : \getmyuid();
+                if ($uid === false) {
+                    throw new \FastUuid\Exception\InvalidArgumentException(
+                        'localIdentifier is required (could not read process uid/gid)'
+                    );
+                }
+                $id = $uid;
+            } else {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'localIdentifier is required for DCE domains other than PERSON (0) and GROUP (1)'
+                );
+            }
+        }
+        if (\is_string($id)) {
+            if ($id === '' || ($id[0] === '0' && \strlen($id) > 1) || !\preg_match('/\A[0-9]+\z/', $id)) {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'localIdentifier string must be a canonical decimal number'
+                );
+            }
+            if (\strlen($id) > 10 || (\strlen($id) === 10 && \strcmp($id, '4294967295') > 0)) {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'localIdentifier out of range (0..4294967295)'
+                );
+            }
+            $hex = \str_pad(\base_convert($id, 10, 16), 8, '0', \STR_PAD_LEFT);
+            return (string) \hex2bin($hex);
+        }
+        if ($id < 0 || $id > 0xFFFFFFFF) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'localIdentifier out of range (0..4294967295)'
+            );
+        }
+        // pack('N') accepts the full unsigned range on both 32- and 64-bit.
+        return \pack('N', $id);
     }
 }

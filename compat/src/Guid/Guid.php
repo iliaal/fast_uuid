@@ -5,25 +5,37 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Guid;
 
 use FastUuid\Compat\Codec\GuidStringCodec;
+use FastUuid\Compat\Rfc4122\FieldsInterface;
+use FastUuid\Compat\Type\Hexadecimal;
+use FastUuid\Compat\Type\Integer as IntegerObject;
+use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 
 /**
  * A GUID is the same logical UUID presented in Microsoft's mixed-endian byte
- * order: getBytes()/toString() byte-reverse the first three fields. Mirrors
- * Ramsey\Uuid\Guid\Guid closely enough for storage interop.
+ * order: getBytes()/toString() byte-reverse the first three fields. Identity
+ * accessors (getHex/getInteger/getUrn/fields) stay network-order via the
+ * inner UUID. Mirrors Ramsey\Uuid\Guid\Guid closely enough for storage interop.
  */
-final class Guid implements \Stringable, \JsonSerializable
+final class Guid implements UuidInterface
 {
     private GuidStringCodec $codec;
+    private UuidInterface $uuid;
 
-    public function __construct(private readonly UuidInterface $uuid)
+    public function __construct(UuidInterface $uuid)
     {
+        $this->uuid = $uuid;
         $this->codec = new GuidStringCodec();
     }
 
     public function getUuid(): UuidInterface
     {
         return $this->uuid;
+    }
+
+    public function getCore(): \FastUuid\Uuid
+    {
+        return $this->uuid->getCore();
     }
 
     /** Mixed-endian (GUID-ordered) raw bytes. */
@@ -45,5 +57,82 @@ final class Guid implements \Stringable, \JsonSerializable
     public function jsonSerialize(): string
     {
         return $this->toString();
+    }
+
+    public function getUrn(): string
+    {
+        return $this->uuid->getUrn();
+    }
+
+    public function getHex(): Hexadecimal
+    {
+        return $this->uuid->getHex();
+    }
+
+    public function getInteger(): IntegerObject
+    {
+        return $this->uuid->getInteger();
+    }
+
+    public function getFields(): FieldsInterface
+    {
+        return $this->uuid->getFields();
+    }
+
+    public function getVersion(): ?int
+    {
+        return $this->uuid->getVersion();
+    }
+
+    public function getVariant(): int
+    {
+        return $this->uuid->getVariant();
+    }
+
+    public function getDateTime(): \DateTimeInterface
+    {
+        return $this->uuid->getDateTime();
+    }
+
+    public function equals(?object $other): bool
+    {
+        if ($other instanceof self) {
+            return $this->uuid->equals($other->uuid);
+        }
+        return $this->uuid->equals($other);
+    }
+
+    public function compareTo(mixed $other): int
+    {
+        if ($other instanceof self) {
+            return $this->uuid->compareTo($other->uuid);
+        }
+        return $this->uuid->compareTo($other);
+    }
+
+    public function serialize(): string
+    {
+        return $this->uuid->serialize();
+    }
+
+    public function unserialize(string $data): void
+    {
+        $this->uuid = \strlen($data) === 16
+            ? Uuid::fromBytes($data)
+            : Uuid::fromString($data);
+        $this->codec = new GuidStringCodec();
+    }
+
+    public function __serialize(): array
+    {
+        return ['bytes' => $this->serialize()];
+    }
+
+    public function __unserialize(array $data): void
+    {
+        if (!isset($data['bytes']) || !\is_string($data['bytes'])) {
+            throw new \ValueError(\sprintf('%s(): Argument #1 ($data) is invalid', __METHOD__));
+        }
+        $this->unserialize($data['bytes']);
     }
 }

@@ -41,7 +41,9 @@ var_dump($adapter->toString() === $guidText);
 
 Uuid::setFactory($guidFactory);
 $roundTrip = unserialize(serialize(Uuid::fromString($guidText)));
-var_dump($roundTrip->toString() === $guidText);
+// Portable payload is network-order bytes; presentation codec is not restored.
+// Identity (core) must match the UUID that Guid text decoded to.
+var_dump($roundTrip->getCore()->toString() === $canonical);
 ?>
 --EXPECT--
 bool(true)
