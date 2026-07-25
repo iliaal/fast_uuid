@@ -739,6 +739,66 @@ static zend_result fu_clockseq_arg(zend_long clockseq, zend_bool cs_null, int *o
     return SUCCESS;
 }
 
+static zend_result fu_local_id_arg(zend_long local_domain, zend_string *id_str,
+                                   zend_long id_long, zend_bool id_null, uint32_t *out) {
+    if (id_null) {
+        if (local_domain != 0 && local_domain != 1) {
+            zend_throw_exception(fu_ex_invalid_arg,
+                "localIdentifier is required for DCE domains other than PERSON (0) and GROUP (1)", 0);
+            return FAILURE;
+        }
+#ifndef PHP_WIN32
+        *out = (local_domain == 1) ? (uint32_t)getgid() : (uint32_t)getuid();
+        return SUCCESS;
+#else
+        /* No POSIX uid/gid: a silent 0 would be indistinguishable from root. */
+        zend_throw_exception(fu_ex_invalid_arg,
+            "localIdentifier is required on Windows (no process uid/gid to fall back to)", 0);
+        return FAILURE;
+#endif
+    }
+
+    if (!id_str) {
+        if (id_long < 0 || (uint64_t)id_long > 0xFFFFFFFFULL) {
+            zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0);
+            return FAILURE;
+        }
+        *out = (uint32_t)id_long;
+        return SUCCESS;
+    }
+
+    const char *sv = ZSTR_VAL(id_str);
+    size_t sl = ZSTR_LEN(id_str);
+    if (sl == 0) {
+        zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0);
+        return FAILURE;
+    }
+    if (sl > 1 && sv[0] == '0') {
+        zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a canonical decimal number", 0);
+        return FAILURE;
+    }
+    if (sl > 10) {
+        zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0);
+        return FAILURE;
+    }
+    for (size_t i = 0; i < sl; i++) {
+        if (sv[i] < '0' || sv[i] > '9') {
+            zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0);
+            return FAILURE;
+        }
+    }
+
+    errno = 0;
+    char *end = NULL;
+    unsigned long long value = strtoull(sv, &end, 10);
+    if (errno == ERANGE || end != sv + sl || value > 0xFFFFFFFFULL) {
+        zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0);
+        return FAILURE;
+    }
+    *out = (uint32_t)value;
+    return SUCCESS;
+}
+
 /* Read whole seconds + sub-second microseconds off a DateTimeInterface. Throws
    (returns FAILURE) if either call fails or raises. */
 static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t *micros) {
@@ -885,38 +945,7 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
         RETURN_THROWS();
     }
     uint32_t local_id;
-    if (!id_null) {
-        if (id_str) {
-            const char *sv = ZSTR_VAL(id_str); size_t sl = ZSTR_LEN(id_str);
-            if (sl == 0) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0); RETURN_THROWS(); }
-            if (sl > 1 && sv[0] == '0') { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a canonical decimal number", 0); RETURN_THROWS(); }
-            if (sl > 10) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
-            for (size_t i = 0; i < sl; i++) {
-                if (sv[i] < '0' || sv[i] > '9') { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier string must be a decimal number", 0); RETURN_THROWS(); }
-            }
-            errno = 0; char *end = NULL;
-            unsigned long long v = strtoull(sv, &end, 10);
-            if (errno == ERANGE || end != sv + sl || v > 0xFFFFFFFFULL) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
-            local_id = (uint32_t)v;
-        } else {
-            if (id_long < 0 || (uint64_t)id_long > 0xFFFFFFFFULL) { zend_throw_exception(fu_ex_invalid_arg, "localIdentifier out of range (0..4294967295)", 0); RETURN_THROWS(); }
-            local_id = (uint32_t)id_long;
-        }
-    } else if (local_domain == 0 || local_domain == 1) {
-        /* only PERSON/GROUP auto-fill from the POSIX uid/gid */
-#ifndef PHP_WIN32
-        local_id = (local_domain == 1) ? (uint32_t)getgid() : (uint32_t)getuid();
-#else
-        /* No POSIX uid/gid: a silent 0 would be indistinguishable from root. */
-        zend_throw_exception(fu_ex_invalid_arg,
-            "localIdentifier is required on Windows (no process uid/gid to fall back to)", 0);
-        RETURN_THROWS();
-#endif
-    } else {
-        zend_throw_exception(fu_ex_invalid_arg,
-            "localIdentifier is required for DCE domains other than PERSON (0) and GROUP (1)", 0);
-        RETURN_THROWS();
-    }
+    if (fu_local_id_arg(local_domain, id_str, id_long, id_null, &local_id) == FAILURE) RETURN_THROWS();
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
     int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
@@ -975,6 +1004,27 @@ static zend_result fu_v7_at_ms(unsigned char *b, zend_long ms) {
     return fu_gen_v7_at(b, (uint64_t)ms, 0);
 }
 
+static zend_result fu_v7_at_datetime(unsigned char *b, zend_object *dtobj) {
+    int64_t sec;
+    uint32_t micros;
+    if (fu_dt_secs_micros(dtobj, &sec, &micros) == FAILURE) return FAILURE;
+    if (sec < 0) { /* v7 timestamps are unsigned ms since the unix epoch */
+        zend_throw_exception(fu_ex_invalid_arg, "uuid7 does not support dates before 1970-01-01", 0);
+        return FAILURE;
+    }
+    if (sec > 281474976710LL) { /* sec*1000 must fit the 48-bit ms field (max ~year 10889) */
+        zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
+        return FAILURE;
+    }
+    uint64_t ms = (uint64_t)sec * 1000ULL + micros / 1000ULL;
+    if (ms > FU_MS48_MAX) { /* precise 48-bit ceiling (boundary second + sub-ms) */
+        zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
+        return FAILURE;
+    }
+    uint64_t sub = ((uint64_t)(micros % 1000) * 4096ULL) / 1000ULL; /* sub-ms us -> 12-bit */
+    return fu_gen_v7_at(b, ms, sub);
+}
+
 PHP_METHOD(FastUuid_Uuid, uuid7) {
     zval *when = NULL;
     ZEND_PARSE_PARAMETERS_START(0, 1)
@@ -982,30 +1032,14 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
         Z_PARAM_ZVAL_OR_NULL(when)
     ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (when && Z_TYPE_P(when) == IS_LONG) {
-        if (fu_v7_at_ms(b, Z_LVAL_P(when)) == FAILURE) RETURN_THROWS();
-    } else if (when && Z_TYPE_P(when) == IS_OBJECT &&
+    zend_result result;
+    if (when == NULL || Z_TYPE_P(when) == IS_NULL) {
+        result = fu_gen_v7(b);
+    } else if (Z_TYPE_P(when) == IS_LONG) {
+        result = fu_v7_at_ms(b, Z_LVAL_P(when));
+    } else if (Z_TYPE_P(when) == IS_OBJECT &&
                instanceof_function(Z_OBJ_P(when)->ce, php_date_get_interface_ce())) {
-        zend_object *dtobj = Z_OBJ_P(when);
-        int64_t sec; uint32_t micros;
-        if (fu_dt_secs_micros(dtobj, &sec, &micros) == FAILURE) RETURN_THROWS();
-        if (sec < 0) { /* v7 timestamps are unsigned ms since the unix epoch */
-            zend_throw_exception(fu_ex_invalid_arg, "uuid7 does not support dates before 1970-01-01", 0);
-            RETURN_THROWS();
-        }
-        if (sec > 281474976710LL) { /* sec*1000 must fit the 48-bit ms field (max ~year 10889) */
-            zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
-            RETURN_THROWS();
-        }
-        uint64_t ms  = (uint64_t)sec * 1000ULL + micros / 1000ULL;
-        if (ms > FU_MS48_MAX) { /* precise 48-bit ceiling (boundary second + sub-ms) */
-            zend_throw_exception(fu_ex_invalid_arg, "uuid7 timestamp out of range (max ~year 10889)", 0);
-            RETURN_THROWS();
-        }
-        uint64_t sub = ((uint64_t)(micros % 1000) * 4096ULL) / 1000ULL; /* sub-ms us -> 12-bit */
-        if (fu_gen_v7_at(b, ms, sub) == FAILURE) RETURN_THROWS();
-    } else if (when == NULL || Z_TYPE_P(when) == IS_NULL) {
-        if (fu_gen_v7(b) == FAILURE) RETURN_THROWS();
+        result = fu_v7_at_datetime(b, Z_OBJ_P(when));
     } else {
         zend_argument_type_error(1, "must be of type int|DateTimeInterface|null, %s given",
 #if PHP_VERSION_ID >= 80300
@@ -1016,6 +1050,7 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
 #endif
         RETURN_THROWS();
     }
+    if (result == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
 }
 

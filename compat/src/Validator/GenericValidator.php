@@ -32,12 +32,6 @@ class GenericValidator implements ValidatorInterface
             $uuid = \substr($uuid, 1, -1);
         }
 
-        return $uuid === '00000000-0000-0000-0000-000000000000'
-            || (\strlen($uuid) === 36
-                && $uuid[8] === '-'
-                && $uuid[13] === '-'
-                && $uuid[18] === '-'
-                && $uuid[23] === '-'
-                && \FastUuid\Uuid::isValid($uuid));
+        return \strlen($uuid) === 36 && \FastUuid\Uuid::isValid($uuid);
     }
 }
