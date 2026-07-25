@@ -42,6 +42,14 @@ final class WrapperClass
     /** @return class-string<\FastUuid\Compat\AbstractUuid> */
     public static function for(\FastUuid\Uuid $core): string
     {
+        // Hot path: RFC versions 1–8. getVersion() is null only for nil, max,
+        // and non-RFC variants — skip the 16-byte getBytes() alloc for those.
+        $version = $core->getVersion();
+        if ($version !== null) {
+            return self::VERSION_CLASSES[$version]
+                ?? 'FastUuid\Compat\Nonstandard\Uuid';
+        }
+
         $bytes = $core->getBytes();
         if ($bytes === self::NIL_BYTES) {
             return 'FastUuid\Compat\Rfc4122\NilUuid';
@@ -49,12 +57,7 @@ final class WrapperClass
         if ($bytes === self::MAX_BYTES) {
             return 'FastUuid\Compat\Rfc4122\MaxUuid';
         }
-        if ($core->getVariant() !== 2) {
-            return 'FastUuid\Compat\Nonstandard\Uuid';
-        }
-
-        return self::VERSION_CLASSES[$core->getVersion()]
-            ?? 'FastUuid\Compat\Nonstandard\Uuid';
+        return 'FastUuid\Compat\Nonstandard\Uuid';
     }
 
     /** @param class-string<\FastUuid\Compat\AbstractUuid> $class */
