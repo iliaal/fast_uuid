@@ -25,11 +25,15 @@ name: Release Linux & macOS binaries
 on:
   release:
     types: [published]
+  # Build-only dry run, so /release-ext can compile every lane against the
+  # release commit before the tag exists. The upload step is gated on the real
+  # release event, so a dispatch run never touches release assets.
+  workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: release-linux-${{ github.event.release.tag_name }}
+  group: release-linux-${{ github.event.release.tag_name || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -63,8 +67,17 @@ jobs:
           coverage: none
 
       - name: Build and upload prebuilt binary
+        if: github.event_name == 'release'
         uses: php/pie-ext-binary-builder@5298761950f63c7e9565ed7004e922b346e4386c # 0.0.3
         with:
           release-tag: ${{ github.event.release.tag_name }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           configure-flags: '--enable-fast-uuid'
+
+      - name: Build and test only (pre-tag dry run)
+        if: github.event_name != 'release'
+        run: |
+          phpize
+          ./configure --enable-fast-uuid
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+          make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1

@@ -150,6 +150,40 @@ jobs:
             | grep -F 'AArch64 NEON'
           make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
 
+  macos-canary:
+    # release-linux.yml ships prebuilt binaries for macos-14; without this job
+    # the clang/BSD-libc lane is first compiled by the release event itself,
+    # after the tag is already public. 8.4 stands in for 8.5 (same toolchain).
+    name: "PHP 8.4 (macOS arm64 canary)"
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # master
+        with:
+          php-version: '8.4'
+          tools: none
+          extensions: none
+        env:
+          phpts: nts
+      - name: Build and test
+        run: |
+          phpize
+          ./configure --enable-fast-uuid
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+          php -d extension="$PWD/modules/fast_uuid.so" --ri fast_uuid \
+            | grep -F 'AArch64 NEON'
+          make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+      - name: Dump diffs on failure
+        if: failure()
+        run: |
+          for f in tests/*.diff tests/*.out tests/*.log; do
+            [ -e "$f" ] || continue
+            echo "===== $f ====="; cat "$f"
+          done
+
   windows-canary:
     name: "PHP ${{ matrix.php }} ${{ matrix.ts }} ${{ matrix.arch }} (Windows canary)"
     runs-on: windows-2022
