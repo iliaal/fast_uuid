@@ -154,8 +154,8 @@ abstract class AbstractUuid implements UuidInterface
 
     private function assertCoreMatches(\FastUuid\Uuid $core): void
     {
-        if (!WrapperClass::matches($core, static::class)) {
-            $expected = WrapperClass::for($core);
+        $expected = WrapperClass::for($core);
+        if ($expected !== static::class) {
             throw new \FastUuid\Exception\InvalidArgumentException(\sprintf(
                 '%s cannot wrap bytes that resolve to %s',
                 static::class,

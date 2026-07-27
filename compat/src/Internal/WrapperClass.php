@@ -28,15 +28,12 @@ final class WrapperClass
         return self::instantiate(self::for($core), $core, $codec);
     }
 
-    // Runs on every wrapper construction: for() already resolves the one class
-    // a core may wrap, so the version/variant re-derivation it replaced (an
-    // array_search over the class names plus a getVariant() call) was redundant.
-    public static function matches(\FastUuid\Uuid $core, string $class): bool
-    {
-        return self::for($core) === $class;
-    }
-
-    /** @return class-string<\FastUuid\Compat\AbstractUuid> */
+    /**
+     * Resolves the single wrapper class a core may carry. Callers compare the
+     * result against their own class rather than re-deriving version/variant.
+     *
+     * @return class-string<\FastUuid\Compat\AbstractUuid>
+     */
     public static function for(\FastUuid\Uuid $core): string
     {
         // Hot path: RFC versions 1–8. getVersion() is null only for nil, max,

@@ -1476,17 +1476,21 @@ static zend_result fu_gen_v4_batch_n(zval *arr, uint32_t n, int as_bytes) {
     return SUCCESS;
 }
 
-#define FU_V4_BATCH_FN(fname, as_bytes) \
-PHP_FUNCTION(fname) { \
-    zend_long count; \
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END(); \
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS(); \
-    array_init_size(return_value, n); \
-    if (fu_gen_v4_batch_n(return_value, n, (as_bytes)) == FAILURE) RETURN_THROWS(); \
+PHP_FUNCTION(uuid_v4_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    if (fu_gen_v4_batch_n(return_value, n, 0) == FAILURE) RETURN_THROWS();
 }
-FU_V4_BATCH_FN(uuid_v4_batch, 0)
-FU_V4_BATCH_FN(uuid_v4_bin_batch, 1)
-#undef FU_V4_BATCH_FN
+
+PHP_FUNCTION(uuid_v4_bin_batch) {
+    zend_long count;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
+    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+    array_init_size(return_value, n);
+    if (fu_gen_v4_batch_n(return_value, n, 1) == FAILURE) RETURN_THROWS();
+}
 
 /* v7 batch: one clock_gettime for the whole batch, then advance the
    monotonic (key, rand_b) counter in pure C — same semantics as n×fu_gen_v7
