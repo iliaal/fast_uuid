@@ -1425,7 +1425,9 @@ PHP_FUNCTION(fname) { \
     if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { \
         zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); \
     } \
-    gen(b, ns, ZSTR_VAL(nm), ZSTR_LEN(nm)); ret(b); \
+    gen(b, ns, ZSTR_VAL(nm), ZSTR_LEN(nm)); \
+    if (UNEXPECTED(EG(exception))) RETURN_THROWS(); /* name cap: b is unwritten */ \
+    ret(b); \
 }
 FU_NAME_BASED_FN(uuid_v3, fu_gen_v3, FU_RETURN_FORMATTED)
 FU_NAME_BASED_FN(uuid_v3_bin, fu_gen_v3, FU_RETURN_BYTES)
@@ -1451,21 +1453,40 @@ PHP_FUNCTION(uuid_v8_bin) {
     FU_RETURN_BYTES(b);
 }
 
-#define FU_BATCH_FN(fname, gen, add) \
+/* v4 batch: draw the CSPRNG bytes for FU_V4_CHUNK UUIDs at a time instead of
+   16 bytes per UUID (~8% per UUID on aarch64), then stamp version/variant. */
+#define FU_V4_CHUNK 64
+static zend_result fu_gen_v4_batch_n(zval *arr, uint32_t n, int as_bytes) {
+    unsigned char chunk[FU_V4_CHUNK * 16];
+    uint32_t done = 0;
+    while (done < n) {
+        uint32_t take = (n - done > FU_V4_CHUNK) ? FU_V4_CHUNK : (n - done);
+        if (fu_rand(chunk, (size_t)take * 16) == FAILURE) return FAILURE;
+        for (uint32_t i = 0; i < take; i++) {
+            unsigned char *b = chunk + i * 16;
+            fu_set_ver_var(b, 0x40);
+            if (as_bytes) {
+                fu_add_next_bytes(arr, b);
+            } else {
+                fu_add_next_formatted(arr, b);
+            }
+        }
+        done += take;
+    }
+    return SUCCESS;
+}
+
+#define FU_V4_BATCH_FN(fname, as_bytes) \
 PHP_FUNCTION(fname) { \
     zend_long count; \
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END(); \
     uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS(); \
     array_init_size(return_value, n); \
-    for (uint32_t i = 0; i < n; i++) { \
-        unsigned char b[16]; \
-        if (gen(b) == FAILURE) RETURN_THROWS(); \
-        add(return_value, b); \
-    } \
+    if (fu_gen_v4_batch_n(return_value, n, (as_bytes)) == FAILURE) RETURN_THROWS(); \
 }
-FU_BATCH_FN(uuid_v4_batch, fu_gen_v4, fu_add_next_formatted)
-FU_BATCH_FN(uuid_v4_bin_batch, fu_gen_v4, fu_add_next_bytes)
-#undef FU_BATCH_FN
+FU_V4_BATCH_FN(uuid_v4_batch, 0)
+FU_V4_BATCH_FN(uuid_v4_bin_batch, 1)
+#undef FU_V4_BATCH_FN
 
 /* v7 batch: one clock_gettime for the whole batch, then advance the
    monotonic (key, rand_b) counter in pure C — same semantics as n×fu_gen_v7

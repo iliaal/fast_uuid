@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `FastUuid\UuidValueInterface` carries the full value surface (`toString()`, `getBytes()`, `getFields()`, …); `FastUuid\UuidInterface` stays the bare marker. `FastUuid\Exception\UuidExceptionInterface` lets one `catch` cover every exception the extension throws.
+- `FastUuid\Compat\UuidFactoryInterface`, and `UuidFactory` / `GenericValidator` are no longer `final`, so an application can subclass or replace them. `Uuid::setFactory()` accepts any `UuidFactoryInterface`; `uuid7()`, `uuid8()`, and `fromHexadecimal()` throw `UnsupportedOperationException` when the installed factory does not implement them (ramsey parity).
+- Compat `Nonstandard\Fields`, the `Type\TypeInterface` / `Type\NumberInterface` value-object interfaces, and `\Serializable` on `UuidInterface` and `Rfc4122\FieldsInterface`, mirroring the ramsey shapes. `Guid\Guid` now implements `UuidInterface`.
+
+### Changed
+- `uuid_v7_batch()` and `uuid_v7_bin_batch()` read the clock once per call instead of once per UUID: about 2.6x faster per UUID (aarch64, release build). Every UUID in one call now carries the batch-start millisecond, so `getDateTime()` on the tail of a large batch can trail the wall clock by the batch duration (a 100,000 batch takes ~8 ms). Values stay unique, sorted, and monotonic against the next single call.
+- The `node` and `localIdentifier` arguments are declared as unions in the parameter parser, so a wrong type now raises `TypeError` instead of `FastUuid\Exception\InvalidArgumentException`, and weak mode coerces `true` / `1.0` to an int before the range check.
+- `uuid3()` and `uuid5()` reject a `$name` longer than 16 MiB.
+- Compat `Rfc4122\Fields` validates the RFC variant and version in its constructor.
+- Compat `serialize()` persists 16 raw network-order bytes instead of canonical text, so the payload no longer depends on the process-global factory codec. `unserialize()` still accepts the older text payloads.
+- Compat `UuidFactory::fromHexadecimal()` and `fromInteger()` no longer route through the configured codec, reversing part of the 0.4.0 change: a hexadecimal or integer identity is always the network-order value, while the codec keeps reshaping `toString()` and `getBytes()`.
+- A custom `RandomGeneratorInterface` now feeds compat `uuid7()`, and a custom `TimeGeneratorInterface` now feeds compat `uuid2()`.
+- `Internal\ConstructionToken::Trusted` no longer skips the wrapper-class check, so every compat wrapper validates its core on construction. That validation costs roughly a third of the construction throughput against 0.4.0 (aarch64, release: `UuidFactory::fromBytes()` 1.81M to 1.19M ops/s); the check itself is a keyed lookup and a single `getVersion()` call.
+
+### Fixed
+- Compat `unserialize()` dropped the presentation codec, so `getBytes()` and `toString()` silently changed representation across a serialize round trip: a value written with `OrderedTimeCodec` read back in network byte order, which does not match the column it came from. The active factory codec is re-attached on restore.
+- Procedural `uuid_v3()`, `uuid_v3_bin()`, `uuid_v5()`, and `uuid_v5_bin()` formatted an unwritten stack buffer when the name-length cap threw. The exception surfaced correctly, but the discarded return value was built from uninitialized bytes.
+- A forked child wipes the inherited CSPRNG buffer and xoshiro seed rather than only marking them stale, so a memory disclosure in the child cannot recover the parent's remaining random bytes.
+- Compat `Nonstandard\Uuid::getVersion()` returns null, agreeing with its `Fields`.
+- Compat `Fields::getTimestamp()` no longer throws for versions that carry no timestamp; it returns the assembled field, as ramsey does.
+- Compat `StringCodec` throws `InvalidUuidStringException` rather than `InvalidArgumentException` for a malformed UUID string.
+
 ## [0.4.0] - 2026-07-09
 
 ### Added

@@ -28,14 +28,11 @@ final class WrapperClass
         return self::instantiate(self::for($core), $core, $codec);
     }
 
+    // Runs on every wrapper construction: for() already resolves the one class
+    // a core may wrap, so the version/variant re-derivation it replaced (an
+    // array_search over the class names plus a getVariant() call) was redundant.
     public static function matches(\FastUuid\Uuid $core, string $class): bool
     {
-        $version = \array_search($class, self::VERSION_CLASSES, true);
-        if ($version !== false) {
-            return $core->getVariant() === 2
-                && $core->getVersion() === $version;
-        }
-
         return self::for($core) === $class;
     }
 

@@ -110,7 +110,10 @@ abstract class AbstractUuid implements UuidInterface
             $core = \FastUuid\Uuid::fromBytes($data);
             $this->assertCoreMatches($core);
             $this->core = $core;
-            $this->codec = null;
+            // Re-attach the active presentation codec: dropping it here would
+            // silently change getBytes()/toString() across a serialize round
+            // trip (an OrderedTime column would read back network-order).
+            $this->codec = self::factoryCodec();
             $this->canonical = null;
             return;
         }
@@ -136,6 +139,17 @@ abstract class AbstractUuid implements UuidInterface
         $this->core = $core;
         $this->codec = $uuid instanceof self ? $uuid->codec : null;
         $this->canonical = null;
+    }
+
+    private static function factoryCodec(): ?CodecInterface
+    {
+        $factory = Uuid::getFactory();
+        if (!$factory instanceof UuidFactory) {
+            return null;
+        }
+        $codec = $factory->getCodec();
+
+        return \get_class($codec) === StringCodec::class ? null : $codec;
     }
 
     private function assertCoreMatches(\FastUuid\Uuid $core): void
