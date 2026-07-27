@@ -54,6 +54,12 @@ final class WrapperClass
         return 'FastUuid\Compat\Nonstandard\Uuid';
     }
 
+    // The constructor re-derives this class from the same core, so each wrapper
+    // costs two for() calls. Handing it a vouch to skip the second one measured
+    // slower on every path (fu-r7h): a userland static call plus four static
+    // property accesses costs more than the getVersion() call and array lookup
+    // it avoids, and the factory paths, which construct wrappers directly and
+    // never receive a vouch, pay the failed lookup on top of the full check.
     /** @param class-string<\FastUuid\Compat\AbstractUuid> $class */
     private static function instantiate(
         string $class,
