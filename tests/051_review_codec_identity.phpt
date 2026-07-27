@@ -16,26 +16,31 @@ use FastUuid\Compat\Provider\RandomGeneratorInterface;
 use FastUuid\Compat\Provider\TimeGeneratorInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
-// --- Guid/COMB identity stays network-order (CR-001) ---
+// --- derived identity follows toString(), as ramsey defines it (CR-001) ---
 $fixed = Uuid::fromString('00112233-4455-4677-8899-aabbccddeeff');
 $gf = new UuidFactory();
 $gf->setCodec(new GuidStringCodec());
 var_dump($gf->fromHexadecimal($fixed->getHex())->equals($fixed));
 var_dump($gf->fromInteger((string) $fixed->getInteger())->equals($fixed));
+// The Guid codec reshapes bytes only, so its text and hex stay canonical.
 $g4 = $gf->uuid4();
 var_dump($g4->getHex()->toString() === $g4->getCore()->getHex());
 var_dump((string) $g4->getInteger() === $g4->getCore()->getInteger());
+var_dump($g4->getUrn() === 'urn:uuid:' . $g4->toString());
 
+// COMB does reshape the text, and every derived form follows it.
 $cf = new UuidFactory();
 $cf->setCodec(new TimestampFirstCombCodec());
 $c4 = $cf->uuid4();
-var_dump($c4->getHex()->toString() === $c4->getCore()->getHex());
+var_dump($c4->getHex()->toString() === \str_replace('-', '', $c4->toString()));
+var_dump($c4->getUrn() === 'urn:uuid:' . $c4->toString());
+var_dump($c4->getHex()->toString() !== $c4->getCore()->getHex());
 var_dump($cf->fromInteger((string) $c4->getCore()->getInteger())->equals($c4));
 
 // --- serialize persists 16 network bytes; cross-codec restore works (CR-002) ---
-// fromBytes keeps network identity under Guid codec (fromString of RFC text would swap).
+// Canonical text decodes to the network core under the Guid codec.
 Uuid::setFactory($gf);
-$ser = serialize($gf->fromBytes($fixed->getBytes()));
+$ser = serialize($gf->fromString($fixed->toString()));
 Uuid::setFactory(new UuidFactory());
 $back = unserialize($ser);
 var_dump($back->equals($fixed));
@@ -108,6 +113,9 @@ var_dump($ns instanceof \FastUuid\Compat\Nonstandard\Uuid);
 var_dump($ns->getVersion() === null && $ns->getFields()->getVersion() === null);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

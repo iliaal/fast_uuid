@@ -19,13 +19,11 @@ use FastUuid\Compat\UuidInterface;
  */
 final class Guid implements UuidInterface
 {
-    private GuidStringCodec $codec;
     private UuidInterface $uuid;
 
     public function __construct(UuidInterface $uuid)
     {
         $this->uuid = $uuid;
-        $this->codec = new GuidStringCodec();
     }
 
     public function getUuid(): UuidInterface
@@ -44,9 +42,11 @@ final class Guid implements UuidInterface
         return GuidStringCodec::swap($this->uuid->getCore()->getBytes());
     }
 
+    /** Canonical RFC text: a GUID's string form is not byte-swapped, only its
+        byte array is. */
     public function toString(): string
     {
-        return $this->codec->encode($this->uuid);
+        return $this->uuid->toString();
     }
 
     public function __toString(): string
@@ -120,7 +120,6 @@ final class Guid implements UuidInterface
         $this->uuid = \strlen($data) === 16
             ? Uuid::fromBytes($data)
             : Uuid::fromString($data);
-        $this->codec = new GuidStringCodec();
     }
 
     public function __serialize(): array

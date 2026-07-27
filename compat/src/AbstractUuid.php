@@ -59,37 +59,69 @@ abstract class AbstractUuid implements UuidInterface
             : $this->codec->encode($this);
     }
     public function __toString(): string { return $this->toString(); }
-    // Identity forms are always RFC/network order from the core. Codec only
-    // reshapes toString()/getBytes() presentation (Guid mixed-endian, COMB, …).
-    public function getUrn(): string { return $this->core->getUrn(); }
+    // Every derived form follows toString(), as ramsey defines them: getUrn() is
+    // 'urn:uuid:' . toString(), getHex() is toString() without the hyphens, and
+    // comparison is strcmp over toString(). Under the default codec toString()
+    // is the core's own canonical form, so these read the core directly.
+    public function getUrn(): string
+    {
+        return $this->codec === null
+            ? $this->core->getUrn()
+            : 'urn:uuid:' . $this->toString();
+    }
     public function getVersion(): ?int { return $this->core->getVersion(); }
     public function getVariant(): int { return $this->core->getVariant(); }
     public function jsonSerialize(): string { return $this->toString(); }
 
     public function compareTo(mixed $other): int
     {
-        if ($other instanceof UuidInterface) {
+        if ($this->codec === null && $other instanceof self && $other->codec === null) {
             return $this->core->compareTo($other->getCore());
         }
-        return $this->core->compareTo($other);
+        if ($this->codec === null && !$other instanceof UuidInterface) {
+            return $this->core->compareTo($other);
+        }
+        $compare = \strcmp($this->toString(), self::stringify($other));
+
+        return $compare <=> 0;
     }
 
     public function equals(?object $other): bool
     {
         if ($other instanceof UuidInterface) {
-            return $this->core->equals($other->getCore());
+            return $this->codec === null && $other instanceof self && $other->codec === null
+                ? $this->core->equals($other->getCore())
+                : $this->toString() === $other->toString();
         }
         if ($other instanceof \FastUuid\Uuid) {
-            return $this->core->equals($other);
+            return $this->codec === null
+                ? $this->core->equals($other)
+                : $this->toString() === $other->toString();
         }
         return false;
     }
 
+    private static function stringify(mixed $other): string
+    {
+        if ($other instanceof UuidInterface || $other instanceof \FastUuid\Uuid) {
+            return $other->toString();
+        }
+
+        return (string) $other;
+    }
+
     // --- cold path: wrap into ramsey-shaped objects --------------------
-    public function getHex(): Hexadecimal { return new Hexadecimal($this->core->getHex()); }
+    public function getHex(): Hexadecimal
+    {
+        return new Hexadecimal($this->codec === null
+            ? $this->core->getHex()
+            : \str_replace('-', '', $this->toString()));
+    }
     public function getInteger(): IntegerObject
     {
-        return new IntegerObject($this->core->getInteger());
+        return new IntegerObject($this->codec === null
+            ? $this->core->getInteger()
+            : \FastUuid\Uuid::fromHexadecimal($this->getHex()->toString())->getInteger());
     }
     public function getFields(): FieldsInterface
     {

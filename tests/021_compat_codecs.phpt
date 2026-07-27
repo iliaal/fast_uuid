@@ -25,8 +25,11 @@ var_dump($threw);
 
 $u4 = Uuid::uuid4();
 $tf = new TimestampFirstCombCodec();
-var_dump($tf->decodeBytes($tf->encodeBinary($u4))->equals($u4));
-var_dump($tf->decode($tf->encode($u4))->equals($u4));
+// equals() compares presentation (ramsey: strcmp over toString()), and a codec
+// decode hands back a UUID carrying that codec, so round-trip identity is
+// asserted on the core. Verified against ramsey 4.9.2: it returns false here too.
+var_dump($tf->decodeBytes($tf->encodeBinary($u4))->getCore()->equals($u4->getCore()));
+var_dump($tf->decode($tf->encode($u4))->getCore()->equals($u4->getCore()));
 var_dump($tf->encodeBinary($u4) !== $u4->getBytes());
 
 $tl = new TimestampLastCombCodec();

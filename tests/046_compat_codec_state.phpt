@@ -24,28 +24,36 @@ var_dump($ordered->encodeBinary($uuid) === $orderedBytes);
 var_dump($orderedUuid->getBytes() === $orderedBytes);
 var_dump($orderedUuid->toString() === $canonical);
 
+// A GUID is mixed-endian in its byte array only. The text form is the plain
+// RFC string, so encode()/decode() and every identity accessor stay canonical.
 $guid = new GuidStringCodec();
 $networkBytes = hex2bin('00112233445516778899aabbccddeeff');
-$guidText = '33221100-5544-7716-8899-aabbccddeeff';
+$guidBytes = hex2bin('33221100554477168899aabbccddeeff');
 $guidFactory = new UuidFactory();
 $guidFactory->setCodec($guid);
-var_dump($guid->encodeBinary($uuid) === $networkBytes);
-var_dump($guid->decodeBytes($networkBytes)->equals($uuid));
-var_dump($guid->encode($uuid) === $guidText);
-var_dump($guidFactory->fromString($guidText)->toString() === $guidText);
-var_dump($guidFactory->fromBytes($networkBytes)->getBytes() === $networkBytes);
+var_dump($guid->encodeBinary($uuid) === $guidBytes);
+var_dump($guid->decodeBytes($guidBytes)->equals($uuid));
+var_dump($guid->encode($uuid) === $canonical);
+var_dump($guidFactory->fromString($canonical)->toString() === $canonical);
+var_dump($guidFactory->fromBytes($guidBytes)->getBytes() === $guidBytes);
+var_dump($guidFactory->fromBytes($guidBytes)->getCore()->getBytes() === $networkBytes);
 
 $adapter = new Guid($uuid);
 var_dump(bin2hex($adapter->getBytes()) === '33221100554477168899aabbccddeeff');
-var_dump($adapter->toString() === $guidText);
+var_dump($adapter->toString() === $canonical);
 
 Uuid::setFactory($guidFactory);
-$roundTrip = unserialize(serialize(Uuid::fromString($guidText)));
-// Portable payload is network-order bytes; presentation codec is not restored.
-// Identity (core) must match the UUID that Guid text decoded to.
+$roundTrip = unserialize(serialize(Uuid::fromString($canonical)));
+// The payload is network-order bytes and the active factory's codec is
+// re-attached, so both identity and presentation survive the round trip.
 var_dump($roundTrip->getCore()->toString() === $canonical);
+var_dump($roundTrip->toString() === $canonical);
+var_dump($roundTrip->getBytes() === $guidBytes);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

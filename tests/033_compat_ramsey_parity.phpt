@@ -20,8 +20,10 @@ $orig = Uuid::fromBytes(hex2bin('000102030405460788090a0b0c0d0e0f'));
 $comb = new TimestampFirstCombCodec();
 $enc = $comb->encodeBinary($orig);
 var_dump(bin2hex($enc) === '0a0b0c0d0e0f46078809000102030405');
-var_dump($comb->decodeBytes($enc)->equals($orig));
-var_dump($comb->decode($comb->encode($orig))->equals($orig));
+// Identity on the core: equals() follows presentation, and a decoded UUID
+// carries the COMB codec (ramsey 4.9.2 behaves the same way).
+var_dump($comb->decodeBytes($enc)->getCore()->equals($orig->getCore()));
+var_dump($comb->decode($comb->encode($orig))->getCore()->equals($orig->getCore()));
 
 // v2 fields: the local identifier (time_low) must not leak into the
 // timestamp; ramsey and the C decoder both zero the low 32 bits.

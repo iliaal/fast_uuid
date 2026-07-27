@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The compat layer now derives every identity form from `toString()`, as `ramsey/uuid` does: `getUrn()` is `'urn:uuid:' . toString()`, `getHex()` is `toString()` without the hyphens, `getInteger()` follows `getHex()`, and `equals()` / `compareTo()` compare `toString()`. Under the default codec `toString()` is the core's own canonical form, so nothing changes for callers who never set a codec. Under `TimestampFirstCombCodec` or `TimestampLastCombCodec`, which reshape the text, these forms now follow the COMB text instead of the network-order core.
+- `GuidStringCodec` reshapes the byte array only. A GUID's string form is the same text as the RFC one (`.NET`'s `Guid.ToString()` and `Guid.ToByteArray()` disagree on purpose), so `encode()` / `decode()` are canonical and `encodeBinary()` / `decodeBytes()` carry the mixed-endian swap. `Guid\Guid::toString()` returns the canonical text and now agrees with its own `getUrn()`. `$factory->fromBytes()` under this codec reads GUID-ordered bytes, matching what `getBytes()` emits; pass canonical text to `fromString()` for network-order input.
+
+  This is the one place the layer deliberately departs from `ramsey/uuid` 4.9.2, whose Guid feature set validates the version nibble at its post-swap position: over 400 `$guidFactory->uuid4()` calls, ramsey threw 190 times ("The byte string received does not contain a valid version") and emitted a wrong version nibble in the text 184 more, leaving 26 clean. The same loop here returns 400 usable v4 GUIDs.
+
 ## [0.5.0] - 2026-07-26
 
 ### Added

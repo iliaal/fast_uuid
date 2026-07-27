@@ -17,8 +17,11 @@ $raw = $u4->getBytes();
 $gbytes = $g->getBytes();
 
 var_dump($gbytes[0] === $raw[3] && $gbytes[3] === $raw[0] && substr($gbytes, 8) === substr($raw, 8));
-var_dump((new GuidStringCodec())->decodeBytes($raw)->equals($u4));
-var_dump(strlen($g->toString()) === 36);
+// decodeBytes() takes GUID-ordered bytes, so it round-trips getBytes().
+var_dump((new GuidStringCodec())->decodeBytes($gbytes)->equals($u4));
+// Only the byte array is mixed-endian; the text is the plain RFC form.
+var_dump($g->toString() === $u4->toString());
+var_dump($g->getUrn() === 'urn:uuid:' . $g->toString());
 
 $fixed = Uuid::fromString('00112233-4455-4677-8899-aabbccddeeff');
 $codec = new GuidStringCodec();
@@ -26,8 +29,9 @@ $factory = new UuidFactory();
 $factory->setCodec($codec);
 var_dump($factory->fromString($codec->encode($fixed))->equals($fixed));
 var_dump($factory->fromBytes($codec->encodeBinary($fixed))->equals($fixed));
-// Identity forms must stay network-order even when the factory codec is Guid
-// (toString-only checks are false-green under double-swap).
+// The Guid codec reshapes bytes only, so its text is the canonical RFC form and
+// every derived identity follows it (ramsey 4.9.2 parity).
+var_dump($codec->encode($fixed) === $fixed->toString());
 $viaHex = $factory->fromHexadecimal($fixed->getHex());
 $viaInt = $factory->fromInteger((string) $fixed->getInteger());
 var_dump($viaHex->equals($fixed));
@@ -41,6 +45,8 @@ var_dump((new Guid($fixed)) instanceof \FastUuid\Compat\UuidInterface);
 var_dump((new Guid($fixed))->getHex()->toString() === $fixed->getHex()->toString());
 ?>
 --EXPECT--
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)
