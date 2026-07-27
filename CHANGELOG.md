@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-26
+
 ### Changed
 - The compat layer now derives every identity form from `toString()`, as `ramsey/uuid` does: `getUrn()` is `'urn:uuid:' . toString()`, `getHex()` is `toString()` without the hyphens, `getInteger()` follows `getHex()`, and `equals()` / `compareTo()` compare `toString()`. Under the default codec `toString()` is the core's own canonical form, so nothing changes for callers who never set a codec. Under `TimestampFirstCombCodec` or `TimestampLastCombCodec`, which reshape the text, these forms now follow the COMB text instead of the network-order core.
 - `GuidStringCodec` reshapes the byte array only. A GUID's string form is the same text as the RFC one (`.NET`'s `Guid.ToString()` and `Guid.ToByteArray()` disagree on purpose), so `encode()` / `decode()` are canonical and `encodeBinary()` / `decodeBytes()` carry the mixed-endian swap. `Guid\Guid::toString()` returns the canonical text and now agrees with its own `getUrn()`. `$factory->fromBytes()` under this codec reads GUID-ordered bytes, matching what `getBytes()` emits; pass canonical text to `fromString()` for network-order input.
@@ -189,7 +191,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/iliaal/fast_uuid/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/iliaal/fast_uuid/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/iliaal/fast_uuid/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/iliaal/fast_uuid/compare/0.2.2...0.3.0
