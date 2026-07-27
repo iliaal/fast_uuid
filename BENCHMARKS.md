@@ -70,8 +70,13 @@ shown for reference):
 | `uuid_v4_batch`       | 22.5             | +15%           |
 | `uuid_v4_bin_batch`   | 25               | +28%           |
 | `uuid_v7()` (single)  | 19.8             | n/a            |
-| `uuid_v7_batch`       | 25               | +26%           |
-| `uuid_v7_bin_batch`   | **29**           | +47%           |
+| `uuid_v7_batch`       | 52               | +163%          |
+| `uuid_v7_bin_batch`   | **79**           | +299%          |
+
+The v7 batches pull ahead of the v4 ones because they read the clock once per
+call and advance the monotonic counter in C, rather than calling
+`clock_gettime()` per UUID. The trade is that every UUID in one call carries the
+batch-start millisecond.
 
 The single-call binary forms (`uuid_v4_bin()`, `uuid_v7_bin()`, and the
 name-based `uuid_v3_bin()`/`uuid_v5_bin()`) return the same raw bytes without

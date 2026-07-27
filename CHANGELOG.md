@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-26
+
 ### Added
 - `FastUuid\UuidValueInterface` carries the full value surface (`toString()`, `getBytes()`, `getFields()`, …); `FastUuid\UuidInterface` stays the bare marker. `FastUuid\Exception\UuidExceptionInterface` lets one `catch` cover every exception the extension throws.
 - `FastUuid\Compat\UuidFactoryInterface`, and `UuidFactory` / `GenericValidator` are no longer `final`, so an application can subclass or replace them. `Uuid::setFactory()` accepts any `UuidFactoryInterface`; `uuid7()`, `uuid8()`, and `fromHexadecimal()` throw `UnsupportedOperationException` when the installed factory does not implement them (ramsey parity).
@@ -14,13 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `uuid_v7_batch()` and `uuid_v7_bin_batch()` read the clock once per call instead of once per UUID: about 2.6x faster per UUID (aarch64, release build). Every UUID in one call now carries the batch-start millisecond, so `getDateTime()` on the tail of a large batch can trail the wall clock by the batch duration (a 100,000 batch takes ~8 ms). Values stay unique, sorted, and monotonic against the next single call.
+- `uuid_v4_batch()` and `uuid_v4_bin_batch()` draw CSPRNG bytes for 64 UUIDs per call instead of 16 bytes per UUID: 7.7% and 6.4% faster per UUID (aarch64, release build).
 - The `node` and `localIdentifier` arguments are declared as unions in the parameter parser, so a wrong type now raises `TypeError` instead of `FastUuid\Exception\InvalidArgumentException`, and weak mode coerces `true` / `1.0` to an int before the range check.
 - `uuid3()` and `uuid5()` reject a `$name` longer than 16 MiB.
 - Compat `Rfc4122\Fields` validates the RFC variant and version in its constructor.
 - Compat `serialize()` persists 16 raw network-order bytes instead of canonical text, so the payload no longer depends on the process-global factory codec. `unserialize()` still accepts the older text payloads.
 - Compat `UuidFactory::fromHexadecimal()` and `fromInteger()` no longer route through the configured codec, reversing part of the 0.4.0 change: a hexadecimal or integer identity is always the network-order value, while the codec keeps reshaping `toString()` and `getBytes()`.
 - A custom `RandomGeneratorInterface` now feeds compat `uuid7()`, and a custom `TimeGeneratorInterface` now feeds compat `uuid2()`.
-- `Internal\ConstructionToken::Trusted` no longer skips the wrapper-class check, so every compat wrapper validates its core on construction. That validation costs roughly a third of the construction throughput against 0.4.0 (aarch64, release: `UuidFactory::fromBytes()` 1.81M to 1.19M ops/s); the check itself is a keyed lookup and a single `getVersion()` call.
+- `Internal\ConstructionToken::Trusted` no longer skips the wrapper-class check, so every compat wrapper validates its core on construction. The check is one `getVersion()` call and a class-name comparison, but it runs on every wrapper, and construction is about a third slower than 0.4.0 (aarch64, release: `UuidFactory::fromBytes()` 1.81M to 1.21M ops/s).
 
 ### Fixed
 - Compat `unserialize()` dropped the presentation codec, so `getBytes()` and `toString()` silently changed representation across a serialize round trip: a value written with `OrderedTimeCodec` read back in network byte order, which does not match the column it came from. The active factory codec is re-attached on restore.
@@ -180,7 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.5.0...HEAD
+[0.5.0]: https://github.com/iliaal/fast_uuid/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/iliaal/fast_uuid/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/iliaal/fast_uuid/compare/0.2.2...0.3.0
 [0.2.2]: https://github.com/iliaal/fast_uuid/compare/0.2.1...0.2.2

@@ -117,7 +117,9 @@ The local identifier occupies bytes 0 to 3 (big-endian); the local domain is sto
 - `FastUuid\Exception\InvalidUuidStringException` (extends the above): an unparseable UUID string.
 - `FastUuid\Exception\UnsupportedOperationException` (extends `\LogicException`, matching `ramsey/uuid` 4.x): raised by `getDateTime()` on a non-time-based version.
 
-Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp past the 48-bit millisecond field, a `fromDateTime` instant outside the v1 Gregorian window, a non-canonical or >128-bit decimal string for `fromInteger`, a node outside `0..2^48-1`, a clock sequence outside `0..0x3fff`, or `uuid2` without an explicit local identifier for a non-PERSON/GROUP domain all throw `InvalidArgumentException`.
+All three implement `FastUuid\Exception\UuidExceptionInterface` (extends `\Throwable`), so one `catch` covers everything the extension throws.
+
+Out-of-range factory inputs are rejected, not silently truncated: a v7 timestamp past the 48-bit millisecond field, a `fromDateTime` instant outside the v1 Gregorian window, a non-canonical or >128-bit decimal string for `fromInteger`, a node outside `0..2^48-1`, a clock sequence outside `0..0x3fff`, a `uuid3()`/`uuid5()` name over 16 MiB, or `uuid2` without an explicit local identifier for a non-PERSON/GROUP domain all throw `InvalidArgumentException`. Range is checked after type: a `node` or `localIdentifier` of the wrong type raises `TypeError` from the parameter parser, since both are declared `int|string|null`.
 
 ## Procedural API
 
@@ -168,9 +170,9 @@ skip canonical formatting and return raw 16-byte strings. Million UUIDs/sec:
 | Batch operation          | fast_uuid (proc) |
 |--------------------------|-----------------:|
 | `uuid_v4_batch`          | 22.5             |
-| `uuid_v7_batch`          | 25               |
+| `uuid_v7_batch`          | 52               |
 | `uuid_v4_bin_batch`      | 25               |
-| `uuid_v7_bin_batch`      | **29**           |
+| `uuid_v7_bin_batch`      | **79**           |
 
 The `fast_uuid` operations are fast enough (~50 ns) that scheduler noise
 dominates a single run, so read the `fast_uuid` columns as order-of-magnitude,
