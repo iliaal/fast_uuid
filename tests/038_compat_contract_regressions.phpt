@@ -60,7 +60,9 @@ $validator = new GenericValidator();
 var_dump($validator->validate('urn:uuid:' . $canonical));
 var_dump($validator->validate('urn:uuid:{' . $canonical . '}'));
 var_dump($validator->validate('urn:' . $canonical) === false);
-var_dump($validator->validate('{urn:uuid:' . $canonical . '}') === false);
+// composed wrappers of a valid uuid are accepted; of garbage, rejected (fu-cus)
+var_dump($validator->validate('{urn:uuid:' . $canonical . '}'));
+var_dump($validator->validate('{urn:uuid:nope}') === false);
 
 // The integer-millisecond uuid7 facade is 64-bit only (ms > PHP_INT_MAX on
 // 32-bit PHP); fall back to the DateTime path there.
@@ -104,6 +106,7 @@ var_dump(throws(fn() => (new GuidStringCodec())->decode($badHyphen), InvalidArgu
 var_dump(throws(fn() => (new TimestampFirstCombCodec())->decode($badHyphen), InvalidArgumentException::class));
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
 bool(true)

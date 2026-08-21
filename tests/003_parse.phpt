@@ -27,6 +27,11 @@ var_dump(Uuid::isValid('not-a-uuid') === false);
 var_dump(Uuid::isValid('') === false);
 var_dump(Uuid::isValid(substr($s, 0, 35)) === false);
 
+// composed wrappers: {urn:uuid:...} and urn:uuid:{...} (fu-cus)
+var_dump(Uuid::isValid('{urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8}'));
+var_dump(Uuid::fromString('{urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8}')->toString() === '6ba7b810-9dad-11d1-80b4-00c04fd430c8');
+var_dump(Uuid::fromString('urn:uuid:{6BA7B810-9DAD-11D1-80B4-00C04FD430C8}')->toString() === '6ba7b810-9dad-11d1-80b4-00c04fd430c8');
+
 // bad input throws
 $threw = false;
 try {
@@ -37,6 +42,9 @@ try {
 var_dump($threw);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

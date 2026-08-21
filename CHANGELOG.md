@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Compat `Guid\Guid::unserialize()` restored through the process-global factory codec, so under a `GuidStringCodec` factory the network-order payload `serialize()` wrote was byte-swapped on restore, silently yielding a different identifier. Restore now parses natively and attaches the codec for presentation only.
+- Compat `AbstractUuid::unserialize()` legacy-text payloads (pre-0.5.0 output) went through the factory codec as well: under a COMB codec the restored core identity was field-reordered while the presentation text masked it. Both payload shapes now parse natively; the presentation codec is still re-attached.
+
+### Changed
+- The tolerant parser and the compat validators accept the composed wrapper forms `{urn:uuid:...}` and `urn:uuid:{...}`; previously each wrapper worked alone but their composition was rejected.
+
 ## [0.6.0] - 2026-07-26
 
 ### Changed

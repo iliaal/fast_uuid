@@ -54,3 +54,7 @@ _inspect/
 .codesage/findings/
 .codesage/reviews/
 .plan/
+
+# local build/test artifacts
+/php_test_results_*.txt
+config.h.in~

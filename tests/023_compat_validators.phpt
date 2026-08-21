@@ -16,7 +16,8 @@ $upper = strtoupper($s);
 $urn = 'urn:uuid:' . $s;
 $urnBraced = 'urn:uuid:{' . $s . '}';
 $badUrn = 'urn:' . $s;
-$badWrappedUrn = '{urn:uuid:' . $s . '}';
+$badWrappedUrn = '{urn:uuid:' . $s . '}'; // composed wrapper of a VALID uuid: accepted (fu-cus)
+$badComposed = '{urn:uuid:nope}';         // composed wrapper of garbage: rejected
 $braced = '{' . $s . '}';
 $futureVariant = 'a1b2c3d4-e5f6-4718-f93a-4b5c6d7e8f90';
 
@@ -29,7 +30,9 @@ var_dump((new GenericValidator())->validate(Uuid::NIL));
 var_dump((new GenericValidator())->validate('nope') === false);
 var_dump((new GenericValidator())->validate($bare) === false);
 var_dump((new GenericValidator())->validate($badUrn) === false);
-var_dump((new GenericValidator())->validate($badWrappedUrn) === false);
+// composed wrapper forms mirror the C parser (fu-cus)
+var_dump((new GenericValidator())->validate($badWrappedUrn));
+var_dump((new GenericValidator())->validate($badComposed) === false);
 var_dump((new GenericValidator())->validate('a1b2c3d4-e5f6-4718-893a-4b5c6d7e8fg0') === false);
 var_dump((new GenericValidator())->validate($futureVariant));
 
@@ -39,13 +42,17 @@ var_dump((new NonstandardValidator())->validate($urn));
 var_dump((new NonstandardValidator())->validate($urnBraced));
 var_dump((new NonstandardValidator())->validate($bare) === false);
 var_dump((new NonstandardValidator())->validate($badUrn) === false);
-var_dump((new NonstandardValidator())->validate($badWrappedUrn) === false);
+// NonstandardValidator shares GenericValidator's wrapper grammar (fu-cus)
+var_dump((new NonstandardValidator())->validate($badWrappedUrn));
+var_dump((new NonstandardValidator())->validate($badComposed) === false);
 var_dump((new NonstandardValidator())->validate($futureVariant));
 
 var_dump(Uuid::isValid($s) === true);
 var_dump(Uuid::isValid($bare) === false);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

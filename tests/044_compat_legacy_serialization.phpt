@@ -38,8 +38,21 @@ try {
 } catch (FastUuid\Exception\InvalidArgumentException) {
     var_dump(true);
 }
+
+// fu-3p7: legacy TEXT payloads restore the same core identity even when the
+// process-global factory codec reorders bytes (COMB); presentation stays
+// codec-shaped while the wrapped core is untouched.
+$combFactory = new FastUuid\Compat\UuidFactory();
+$combFactory->setCodec(new FastUuid\Compat\Codec\TimestampFirstCombCodec());
+Uuid::setFactory($combFactory);
+$v1legacy = Uuid::uuid1();
+$coreText = $v1legacy->getCore()->toString();
+$legacyCopy = (new ReflectionClass(get_class($v1legacy)))->newInstanceWithoutConstructor();
+$legacyCopy->unserialize($coreText);
+var_dump($legacyCopy->getCore()->toString() === $coreText);
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
 bool(true)

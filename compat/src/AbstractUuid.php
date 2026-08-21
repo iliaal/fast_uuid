@@ -138,21 +138,19 @@ abstract class AbstractUuid implements UuidInterface
 
     public function unserialize(string $data): void
     {
-        if (\strlen($data) === 16) {
-            $core = \FastUuid\Uuid::fromBytes($data);
-            $this->assertCoreMatches($core);
-            $this->core = $core;
-            // Re-attach the active presentation codec: dropping it here would
-            // silently change getBytes()/toString() across a serialize round
-            // trip (an OrderedTime column would read back network-order).
-            $this->codec = self::factoryCodec();
-            $this->canonical = null;
-            return;
-        }
-        // Legacy text payloads (36-char canonical / urn / braced) from older
-        // serialize() output: decode via the current factory.
-        $uuid = Uuid::getFactory()->fromString($data);
-        $this->restoreUuid($uuid);
+        // Parse natively for both payload shapes: never route through the
+        // factory codec, whose decode()/decodeBytes() may reorder bytes (COMB)
+        // or byte-swap fields (Guid) and silently change the identity.
+        $core = \strlen($data) === 16
+            ? \FastUuid\Uuid::fromBytes($data)
+            : \FastUuid\Uuid::fromString($data);
+        $this->assertCoreMatches($core);
+        $this->core = $core;
+        // Re-attach the active presentation codec: dropping it here would
+        // silently change getBytes()/toString() across a serialize round
+        // trip (an OrderedTime column would read back network-order).
+        $this->codec = self::factoryCodec();
+        $this->canonical = null;
     }
 
     public function __serialize(): array { return ['bytes' => $this->serialize()]; }
@@ -162,15 +160,6 @@ abstract class AbstractUuid implements UuidInterface
             throw new \ValueError(\sprintf('%s(): Argument #1 ($data) is invalid', __METHOD__));
         }
         $this->unserialize($data['bytes']);
-    }
-
-    private function restoreUuid(UuidInterface $uuid): void
-    {
-        $core = $uuid->getCore();
-        $this->assertCoreMatches($core);
-        $this->core = $core;
-        $this->codec = $uuid instanceof self ? $uuid->codec : null;
-        $this->canonical = null;
     }
 
     private static function factoryCodec(): ?CodecInterface

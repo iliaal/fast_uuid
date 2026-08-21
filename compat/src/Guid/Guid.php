@@ -117,9 +117,13 @@ final class Guid implements UuidInterface
 
     public function unserialize(string $data): void
     {
+        // Parse natively and wrap for presentation only: routing through the
+        // factory codec's decodeBytes() would byte-swap the network-order
+        // payload serialize() wrote under a GuidStringCodec factory.
+        $factory = Uuid::getFactory();
         $this->uuid = \strlen($data) === 16
-            ? Uuid::fromBytes($data)
-            : Uuid::fromString($data);
+            ? $factory->wrap(\FastUuid\Uuid::fromBytes($data))
+            : $factory->wrap(\FastUuid\Uuid::fromString($data));
     }
 
     public function __serialize(): array

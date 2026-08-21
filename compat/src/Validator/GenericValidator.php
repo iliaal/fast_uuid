@@ -25,11 +25,15 @@ class GenericValidator implements ValidatorInterface
         if (\strlen($uuid) > 47) {
             return false;
         }
-        if (\strlen($uuid) >= 9 && \strncasecmp($uuid, 'urn:uuid:', 9) === 0) {
-            $uuid = \substr($uuid, 9);
-        }
-        if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[\strlen($uuid) - 1] === '}') {
-            $uuid = \substr($uuid, 1, -1);
+        // Strip urn:/{} wrappers in any composition up to depth 2, mirroring
+        // the C parser (fu_parse): {urn:uuid:...} and urn:uuid:{...} are valid.
+        for ($pass = 0; $pass < 2; $pass++) {
+            if (\strlen($uuid) >= 9 && \strncasecmp($uuid, 'urn:uuid:', 9) === 0) {
+                $uuid = \substr($uuid, 9);
+            }
+            if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[\strlen($uuid) - 1] === '}') {
+                $uuid = \substr($uuid, 1, -1);
+            }
         }
 
         return \strlen($uuid) === 36 && \FastUuid\Uuid::isValid($uuid);

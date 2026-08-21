@@ -43,8 +43,23 @@ var_dump($gwrap->getHex()->toString() === $gwrap->getCore()->getHex());
 var_dump((string) $gwrap->getInteger() === $gwrap->getCore()->getInteger());
 var_dump((new Guid($fixed)) instanceof \FastUuid\Compat\UuidInterface);
 var_dump((new Guid($fixed))->getHex()->toString() === $fixed->getHex()->toString());
+
+// fu-o2o: serialize() writes network-order bytes; restore must not re-swap
+// them even when the process-global factory codec is GuidStringCodec.
+$guid = new Guid(Uuid::uuid4());
+$payload = serialize($guid);
+$guidFactory = new UuidFactory();
+$guidFactory->setCodec(new GuidStringCodec());
+Uuid::setFactory($guidFactory);
+$restored = unserialize($payload);
+var_dump($restored->equals($guid));
+var_dump($restored->getUuid()->getCore()->toString() === $guid->getUuid()->getCore()->toString());
+var_dump($restored->getBytes() === $guid->getBytes());
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)
