@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-03
+
 ### Fixed
 - Compat `Guid\Guid::unserialize()` restored through the process-global factory codec, so under a `GuidStringCodec` factory the network-order payload `serialize()` wrote was byte-swapped on restore, silently yielding a different identifier. Restore now parses natively and attaches the codec for presentation only.
 - Compat `AbstractUuid::unserialize()` legacy-text payloads (pre-0.5.0 output) went through the factory codec as well: under a COMB codec the restored core identity was field-reordered while the presentation text masked it. Both payload shapes now parse natively; the presentation codec is still re-attached.
@@ -208,7 +210,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/iliaal/fast_uuid/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/iliaal/fast_uuid/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/iliaal/fast_uuid/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/iliaal/fast_uuid/compare/0.3.0...0.4.0
