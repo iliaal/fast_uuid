@@ -61,14 +61,43 @@ var_dump(count($v7b) === 6);
 var_dump($v7b === $sorted);
 var_dump(array_reduce($v7b, fn(bool $ok, string $b): bool => $ok && is_rfc_bytes($b, 7), true));
 
-// Invalid batch counts throw the extension's argument exception.
-foreach ([0, -1] as $bad) {
-    $threw = false;
-    try { uuid_v4_batch($bad); } catch (\FastUuid\Exception\InvalidArgumentException) { $threw = true; }
-    var_dump($threw);
+// Invalid batch counts throw the extension's argument exception on every
+// batch entry point (all four share fu_batch_count_arg wiring).
+foreach (['uuid_v4_batch', 'uuid_v7_batch', 'uuid_v4_bin_batch', 'uuid_v7_bin_batch'] as $fn) {
+    foreach ([0, -1, 100001] as $bad) {
+        $threw = false;
+        try { $fn($bad); } catch (\FastUuid\Exception\InvalidArgumentException) { $threw = true; }
+        var_dump($threw);
+    }
+}
+// Out-of-range ms rejects mirror the string form (029:39-40) on the binary
+// path (both share fu_v7_at_ms). 64-bit only: the ceiling exceeds 32-bit int.
+if (PHP_INT_SIZE >= 8) {
+    foreach ([-1, 281474976710656] as $badMs) {
+        $threw = false;
+        try { uuid_v7_at_bin($badMs); } catch (\FastUuid\Exception\InvalidArgumentException) { $threw = true; }
+        var_dump($threw);
+    }
+} else {
+    // 32-bit fallback: the ceiling literal exceeds PHP_INT_MAX, so pin the
+    // in-range edges of the binary path instead (same two outputs).
+    var_dump(Uuid::fromBytes(uuid_v7_at_bin(0))->getTimestampMillis() === 0);
+    var_dump(is_rfc_bytes(uuid_v7_at_bin(2147483647), 7));
 }
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

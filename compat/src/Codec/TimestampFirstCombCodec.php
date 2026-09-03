@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
+use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
@@ -18,7 +19,7 @@ final class TimestampFirstCombCodec extends StringCodec
     {
         // ramsey's swapBytes(): exchange the first 6 and last 6 bytes,
         // bytes 6-9 stay in place. The swap is its own inverse.
-        $b = $uuid->getCore()->getBytes();
+        $b = WrapperClass::coreBytes($uuid);
 
         return \substr($b, 10, 6) . \substr($b, 6, 4) . \substr($b, 0, 6);
     }

@@ -32,8 +32,9 @@ php /path/to/php-src/build/gen_stub.php fast_uuid.stub.php
 
 Generation is non-deterministic, so tests assert booleans rather than literal
 UUID values: write `var_dump(<bool expr>);` and put `bool(true)` in `--EXPECT--`.
-Each test declares `--EXTENSIONS--\nfast_uuid`. Compat tests also start
-their `--FILE--` body with `require __DIR__ . '/_autoload.inc';`. The compat
+Each test declares `--EXTENSIONS--\nfast_uuid`. Compat tests start
+their `--FILE--` body with `require __DIR__ . '/_autoload.inc';` as the first
+statement after any `declare(strict_types=1)`, which must legally come first. The
 layer has no external extension dependencies, so tests must not require `ctype`
 or other extensions.
 

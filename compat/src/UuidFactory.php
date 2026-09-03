@@ -35,6 +35,11 @@ use FastUuid\Compat\Validator\ValidatorInterface;
  * TimeGeneratorInterface or NodeProviderInterface intentionally routes off the
  * C fast path where needed (ramsey-compat behaviour) so application-supplied
  * generators win for uuid1/uuid4/uuid6 and node providers also feed uuid2.
+ *
+ * Entropy ownership: once a custom provider is swapped in, the UUID bits it
+ * feeds rest entirely on that provider's entropy — the C CSPRNG is bypassed
+ * for those paths. Do not swap in a non-cryptographic generator for
+ * secrecy-sensitive IDs.
  */
 class UuidFactory implements UuidFactoryInterface
 {
@@ -56,6 +61,10 @@ class UuidFactory implements UuidFactoryInterface
         return $this->randomGenerator ??= new DefaultRandomGenerator();
     }
 
+    /**
+     * Swap the random source for uuid4 and custom-RNG uuid7. From here on the
+     * application generator owns UUID entropy on those paths (see class note).
+     */
     public function setRandomGenerator(RandomGeneratorInterface $generator): void
     {
         $this->randomGenerator = $generator;
@@ -67,6 +76,10 @@ class UuidFactory implements UuidFactoryInterface
         return $this->timeGenerator ??= new DefaultTimeGenerator();
     }
 
+    /**
+     * Swap the time source for uuid1/uuid2/uuid6 custom layouts. The
+     * application generator owns those bytes from here on (see class note).
+     */
     public function setTimeGenerator(TimeGeneratorInterface $generator): void
     {
         $this->timeGenerator = $generator;
@@ -78,6 +91,10 @@ class UuidFactory implements UuidFactoryInterface
         return $this->nodeProvider ??= new RandomNodeProvider();
     }
 
+    /**
+     * Swap the node source feeding uuid1/uuid2/uuid6 when no explicit node
+     * is passed. The application provider owns those bytes (see class note).
+     */
     public function setNodeProvider(NodeProviderInterface $provider): void
     {
         $this->nodeProvider = $provider;
@@ -128,6 +145,14 @@ class UuidFactory implements UuidFactoryInterface
         int|string|Hexadecimal|null $node = null,
         ?int $clockSeq = null,
     ): UuidInterface {
+        // Guard before either path: the custom-generator branch used to mask
+        // out-of-range domains with & 0xff (256 became 0, -1 became 255)
+        // while the C core throws, minting different security domains.
+        if ($localDomain < 0 || $localDomain > 0xff) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'localDomain must be 0..255 (PERSON=0, GROUP=1, ORG=2)'
+            );
+        }
         if ($localIdentifier instanceof IntegerObject) {
             $localIdentifier = $localIdentifier->toString();
         }
@@ -223,10 +248,26 @@ class UuidFactory implements UuidFactoryInterface
                 ConstructionToken::Trusted,
             );
         }
-        // Custom RNG: take the C core's time layout, then replace rand_a/rand_b
-        // with bytes from the application generator (ramsey factory parity).
-        $base = \FastUuid\Uuid::uuid7($dateTime);
-        $bytes = $base->getBytes();
+        // Custom RNG: lay out the v7 timestamp directly instead of minting
+        // from the C core's monotonic generator. Minting first would burn a
+        // monotonic slot and then break ordering by substituting uncorrelated
+        // random bytes (the emitted UUID could sort below an already issued
+        // same-tick UUID). All 74 random bits come from the app generator.
+        $ms = self::v7Millis($dateTime);
+        if ($ms < 0 || $ms > 0xFFFFFFFFFFFF) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'uuid7 timestamp out of range (max ~year 10889)'
+            );
+        }
+        $bytes = \pack(
+            'C6',
+            ($ms >> 40) & 0xff,
+            ($ms >> 32) & 0xff,
+            ($ms >> 24) & 0xff,
+            ($ms >> 16) & 0xff,
+            ($ms >> 8) & 0xff,
+            $ms & 0xff,
+        ) . "\0\0\0\0\0\0\0\0\0\0";
         $rnd = $this->getRandomGenerator()->generate(10);
         if (\strlen($rnd) !== 10) {
             throw new \FastUuid\Exception\InvalidArgumentException(
@@ -275,7 +316,7 @@ class UuidFactory implements UuidFactoryInterface
         // Attach the factory codec for presentation only (toString/getBytes).
         $h = (string) $hex;
         if (\strlen($h) !== 32 || !\preg_match('/\A[0-9a-fA-F]{32}\z/', $h)) {
-            throw new \FastUuid\Exception\InvalidArgumentException('Invalid hexadecimal UUID (expect 32 hex chars)');
+            throw new \FastUuid\Exception\InvalidUuidStringException('Invalid hexadecimal UUID (expect 32 hex chars)');
         }
         return $this->wrap(\FastUuid\Uuid::fromHexadecimal($h));
     }
@@ -303,9 +344,27 @@ class UuidFactory implements UuidFactoryInterface
         return WrapperClass::instantiateMapped($core, $codec ?? $this->codec);
     }
 
-    private function coreNamespace(UuidInterface|string $ns): \FastUuid\Uuid
+    /**
+     * Resolve a namespace to its core handle. Prefers getCore() where the
+     * implementation offers it (AbstractUuid, Guid); any other UuidInterface
+     * — third-party Ramsey implementations, doubles — or Stringable resolves
+     * via its string form so a missing getCore() is never a fatal Error.
+     */
+    private function coreNamespace(UuidInterface|\Stringable|string $ns): \FastUuid\Uuid
     {
-        return $ns instanceof UuidInterface ? $ns->getCore() : $this->fromString($ns)->getCore();
+        if ($ns instanceof UuidInterface && \method_exists($ns, 'getCore')) {
+            $core = $ns->getCore();
+            if ($core instanceof \FastUuid\Uuid) {
+                return $core;
+            }
+        }
+        try {
+            return $this->fromString((string) $ns)->getCore();
+        } catch (\FastUuid\Exception\InvalidUuidStringException $e) {
+            throw $e;
+        } catch (\FastUuid\Exception\InvalidArgumentException $e) {
+            throw new \FastUuid\Exception\InvalidArgumentException('Invalid namespace', 0, $e);
+        }
     }
 
     private function resolveNode(int|string|Hexadecimal|null $node): int|string|null
@@ -333,12 +392,27 @@ class UuidFactory implements UuidFactoryInterface
         return $b;
     }
 
-    /** 4-byte big-endian DCE local identifier (0..2^32-1), portable on 32-bit PHP. */
+    /**
+     * 4-byte big-endian DCE local identifier (0..2^32-1), portable on 32-bit PHP.
+     *
+     * Auto-fill reads the PROCESS identity — posix_getuid()/posix_getgid()
+     * where available, getmyuid()/getmygid() otherwise — matching the C
+     * core's getuid()/getgid(). Script-owner ids would diverge on compat vs
+     * core whenever the file owner differs from the worker process.
+     */
     private static function dceLocalIdBytes(int $localDomain, int|string|null $id): string
     {
         if ($id === null) {
             if ($localDomain === 0 || $localDomain === 1) {
-                $uid = $localDomain === 1 ? \getmygid() : \getmyuid();
+                if (\PHP_OS_FAMILY === 'Windows') {
+                    throw new \FastUuid\Exception\InvalidArgumentException(
+                        'localIdentifier is required on Windows (no process uid/gid to fall back to)'
+                    );
+                }
+                $posixFn = $localDomain === 1 ? 'posix_getgid' : 'posix_getuid';
+                $uid = \function_exists($posixFn)
+                    ? $posixFn()
+                    : ($localDomain === 1 ? \getmygid() : \getmyuid());
                 if ($uid === false) {
                     throw new \FastUuid\Exception\InvalidArgumentException(
                         'localIdentifier is required (could not read process uid/gid)'
@@ -372,5 +446,20 @@ class UuidFactory implements UuidFactoryInterface
         }
         // pack('N') accepts the full unsigned range on both 32- and 64-bit.
         return \pack('N', $id);
+    }
+    /**
+     * v7 timestamp in whole milliseconds: explicit int passes through,
+     * DateTime via U+V second+millisecond fields, null as current time.
+     * Manual layout only — never mints from the C monotonic generator.
+     */
+    private static function v7Millis(int|\DateTimeInterface|null $dateTime): int
+    {
+        if ($dateTime === null) {
+            return (int) (\microtime(true) * 1000);
+        }
+        if (\is_int($dateTime)) {
+            return $dateTime;
+        }
+        return ((int) $dateTime->format('U')) * 1000 + (int) $dateTime->format('v');
     }
 }

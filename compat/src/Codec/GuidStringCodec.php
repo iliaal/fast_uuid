@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
+use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
@@ -29,7 +30,7 @@ final class GuidStringCodec extends StringCodec
 
     public function encodeBinary(UuidInterface $uuid): string
     {
-        return self::swap($uuid->getCore()->getBytes());
+        return self::swap(WrapperClass::coreBytes($uuid));
     }
 
     public function decodeBytes(string $bytes): UuidInterface

@@ -91,7 +91,8 @@ var_dump(substr($providerFactory->fromDateTime(new DateTimeImmutable('@0'))->get
 $compat = CompatUuid::fromString($canonical);
 $core = CoreUuid::fromString($canonical);
 var_dump($compat->compareTo($core) === 0);
-var_dump($compat->compareTo($canonical) === 0);
+// CR-015 narrowing: strings/scalars to compareTo() throw; UuidInterface only.
+var_dump(throws(fn() => $compat->compareTo($canonical), InvalidArgumentException::class));
 var_dump(throws(fn() => $compat->compareTo(new stdClass()), InvalidArgumentException::class));
 
 $nonRfc = CoreUuid::fromString('00000000-0000-1000-0000-000000000000');

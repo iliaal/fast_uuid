@@ -360,7 +360,12 @@ static zend_result fu_rand_u64(uint64_t *out) {
    tick). Discard all three so the child refills/reseeds from the kernel before
    next use. Runs in the child, in the forking thread, so FAST_UUID_G resolves
    to that thread's globals under ZTS (pcntl_fork always forks a PHP thread with
-   a live TSRM cache). */
+   a live TSRM cache). A fork() issued off the PHP thread (native thread via
+   FFI/another extension) copies the PHP thread's globals into the child but
+   the handler cannot reach another thread's TSRM storage to reset them, so it
+   resets only the forking thread's state: such a child MUST re-exec (or
+   restart the interpreter) before generating UUIDs, else parent and child
+   emit colliding output and reuse CSPRNG bytes. */
 static void fu_atfork_child(void) {
 #ifdef ZTS
     /* A fork() issued by a native thread that never entered PHP (another
@@ -668,9 +673,12 @@ static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
 }
 
 /* Resolve a UUID-valued argument (namespace, equals, compareTo) to 16 bytes.
-   Accepts a native Uuid (zero-copy), any Stringable (incl. a userland or
-   compat FastUuid UuidInterface) by parsing its string form, or a UUID string.
-   Returns 0 on a non-match or unparseable value; on a throwing __toString it
+   Accepts a native Uuid (zero-copy), a compat/userland wrapper via its
+   raw-bytes accessor, any other Stringable by parsing its string form, or a
+   UUID string. getCore() is preferred: a codec-shaped getBytes()/toString()
+   (COMB, Guid) still parses as valid hex yet decodes to the wrong bytes, so
+   raw accessors win and the Stringable fallback assumes canonical RFC text.
+   Returns 0 on a non-match or unparseable value; on a throwing accessor it
    leaves EG(exception) set, which the caller must honor rather than
    overwrite. */
 static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
@@ -679,6 +687,45 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
         if (instanceof_function(ce, fast_uuid_ce)) {
             memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
             return 1;
+        }
+        /* Compat wrapper (or anything exposing the core object): unwrap to
+           the canonical bytes instead of parsing possibly reshaped text. */
+        if (zend_hash_str_exists(&ce->function_table, "getcore", sizeof("getcore") - 1)) {
+            zval zv, fn, ret;
+            ZVAL_OBJ(&zv, Z_OBJ_P(z));
+            ZVAL_STRING(&fn, "getCore");
+            ZVAL_UNDEF(&ret);
+            if (call_user_function(NULL, &zv, &fn, &ret, 0, NULL) == SUCCESS && !EG(exception)
+                && Z_TYPE(ret) == IS_OBJECT && instanceof_function(Z_OBJCE(ret), fast_uuid_ce)) {
+                memcpy(ns, fu_from_zobj(Z_OBJ_P(&ret))->b, 16);
+                zval_ptr_dtor(&fn);
+                zval_ptr_dtor(&ret);
+                return 1;
+            }
+            zval_ptr_dtor(&fn);
+            if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
+            if (EG(exception)) return 0;
+        }
+        /* Foreign UuidInterface (e.g. ramsey/uuid): getBytes() is the 16 raw
+           network-order bytes; take them directly, never via toString().
+           Gated on Stringable so arbitrary objects exposing getBytes()
+           (blobs, buffers) never resolve as UUIDs. */
+        if (instanceof_function(ce, zend_ce_stringable)
+            && zend_hash_str_exists(&ce->function_table, "getbytes", sizeof("getbytes") - 1)) {
+            zval zv, fn, ret;
+            ZVAL_OBJ(&zv, Z_OBJ_P(z));
+            ZVAL_STRING(&fn, "getBytes");
+            ZVAL_UNDEF(&ret);
+            if (call_user_function(NULL, &zv, &fn, &ret, 0, NULL) == SUCCESS && !EG(exception)
+                && Z_TYPE(ret) == IS_STRING && Z_STRLEN(ret) == 16) {
+                memcpy(ns, Z_STRVAL(ret), 16);
+                zval_ptr_dtor(&fn);
+                zval_ptr_dtor(&ret);
+                return 1;
+            }
+            zval_ptr_dtor(&fn);
+            if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
+            if (EG(exception)) return 0;
         }
         if (instanceof_function(ce, zend_ce_stringable)) {
             zval t; ZVAL_OBJ(&t, Z_OBJ_P(z));
@@ -824,10 +871,11 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
     zval zdt; ZVAL_OBJ(&zdt, dtobj);
     zval fn, ret;
     ZVAL_STRING(&fn, "getTimestamp");
+    ZVAL_UNDEF(&ret);
     zend_result cr = call_user_function(NULL, &zdt, &fn, &ret, 0, NULL);
     zval_ptr_dtor(&fn);
     if (cr != SUCCESS || EG(exception)) {
-        zval_ptr_dtor(&ret);
+        if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
         if (!EG(exception)) {
             zend_throw_exception(fu_ex_unsupported, "DateTime getTimestamp() failed", 0);
         }
@@ -839,11 +887,17 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
         return FAILURE;
     }
     *secs = (int64_t)Z_LVAL(ret);
-    zval_ptr_dtor(&ret);
     zval afmt; ZVAL_STRING(&fn, "format"); ZVAL_STRING(&afmt, "u");
+    ZVAL_UNDEF(&ret);
     cr = call_user_function(NULL, &zdt, &fn, &ret, 1, &afmt);
     zval_ptr_dtor(&fn); zval_ptr_dtor(&afmt);
-    if (cr != SUCCESS || EG(exception)) { zval_ptr_dtor(&ret); return FAILURE; }
+    if (cr != SUCCESS || EG(exception)) {
+        if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
+        if (!EG(exception)) {
+            zend_throw_exception(fu_ex_unsupported, "DateTime format(\"u\") failed", 0);
+        }
+        return FAILURE;
+    }
     /* A DateTime subclass may override format(): a non-canonical "u" (e.g.
        "1000000" carries into the seconds, "-1"/"abc"/"1e2" coerce to a bogus
        microsecond) would shift the encoded timestamp. The built-in format("u")
@@ -877,10 +931,11 @@ static zend_result fu_make_datetime_from_string(zval *rv, int64_t secs, uint32_t
     ZVAL_STRING(&args[0], "U.u");
     ZVAL_STR(&args[1], buf); /* transfers buf ref */
     zend_result ok = FAILURE;
+    ZVAL_UNDEF(&ret);
     if (call_user_function(NULL, NULL, &callable, &ret, 2, args) == SUCCESS && Z_TYPE(ret) == IS_OBJECT) {
         ZVAL_COPY_VALUE(rv, &ret);
         ok = SUCCESS;
-    } else {
+    } else if (Z_TYPE(ret) != IS_UNDEF) {
         zval_ptr_dtor(&ret);
     }
     zval_ptr_dtor(&callable);
@@ -899,10 +954,23 @@ static zend_result fu_make_datetime_from_string(zval *rv, int64_t secs, uint32_t
 static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
 #if PHP_VERSION_ID >= 80400
     if (secs >= (int64_t) ZEND_LONG_MIN && secs <= (int64_t) ZEND_LONG_MAX) {
-        php_date_instantiate(php_date_get_immutable_ce(), rv);
-        php_date_obj *dobj = php_date_obj_from_obj(Z_OBJ_P(rv));
-        php_date_initialize_from_ts_long(dobj, (zend_long)secs, (int)micros);
-        return SUCCESS;
+        zval tmp;
+        ZVAL_UNDEF(&tmp);
+        php_date_instantiate(php_date_get_immutable_ce(), &tmp);
+        /* php_date_initialize_from_ts_long() returns void: timelib may still
+           saturate on extreme inputs (v1 spans 1582..5236), so verify the
+           built time round-trips and fall through to the throwing string
+           path otherwise. */
+        if (!EG(exception) && Z_TYPE(tmp) == IS_OBJECT) {
+            php_date_obj *dobj = php_date_obj_from_obj(Z_OBJ_P(&tmp));
+            php_date_initialize_from_ts_long(dobj, (zend_long)secs, (int)micros);
+            if (dobj->time && (int64_t)dobj->time->sse == secs
+                && (int64_t)dobj->time->us == (int64_t)micros) {
+                ZVAL_COPY_VALUE(rv, &tmp);
+                return SUCCESS;
+            }
+        }
+        if (Z_TYPE(tmp) != IS_UNDEF) zval_ptr_dtor(&tmp);
     }
 #endif
     return fu_make_datetime_from_string(rv, secs, micros);
@@ -1628,13 +1696,25 @@ PHP_MINIT_FUNCTION(fast_uuid) {
        crashes. Load via extension=, not dl(), on musl/Alpine. */
     static int atfork_registered = 0;
     if (!atfork_registered) {
-        /* Only latch on success so a subsequent MINIT can retry. Registration
-           failing (ENOMEM at startup) and the process then forking and
-           generating is an accepted, documented limitation, not guarded in the
-           hot path (see CLAUDE.md). */
+        /* Only latch on success so a subsequent MINIT can retry. A failed
+           registration (ENOMEM at startup) leaves forked children sharing
+           generator state, so fork()+generate is unsafe afterwards; signal
+           it loudly at load rather than duplicating UUIDs silently. */
         if (pthread_atfork(NULL, NULL, fu_atfork_child) == 0) {
             atfork_registered = 1;
+        } else {
+            php_error_docref(NULL, E_WARNING,
+                "fast_uuid: pthread_atfork registration failed; forked children may duplicate UUID output");
         }
+#if defined(__linux__) && !defined(__GLIBC__)
+        /* musl keeps a DSO's atfork handlers across dlclose: a dl()-loaded
+           (MODULE_TEMPORARY) copy leaves a dangling handler after teardown
+           and the next fork() crashes. Loud at load, not at fork. */
+        if (fast_uuid_module_entry.type == MODULE_TEMPORARY) {
+            php_error_docref(NULL, E_WARNING,
+                "fast_uuid: dl() loading is unsupported on this libc (dangling atfork handler after unload); use extension= instead");
+        }
+#endif
     }
 #else
     {
@@ -1650,8 +1730,20 @@ PHP_MINIT_FUNCTION(fast_uuid) {
 #endif
 
     zend_class_entry *marker_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
+    if (!marker_ce) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\UuidInterface");
+        return FAILURE;
+    }
     zend_class_entry *iface_ce = register_class_FastUuid_UuidValueInterface(marker_ce);
+    if (!iface_ce) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\UuidValueInterface");
+        return FAILURE;
+    }
     fast_uuid_ce = register_class_FastUuid_Uuid(iface_ce);
+    if (!fast_uuid_ce) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\Uuid");
+        return FAILURE;
+    }
     fast_uuid_ce->create_object = fu_create;
 
     memcpy(&fu_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
@@ -1668,12 +1760,28 @@ PHP_MINIT_FUNCTION(fast_uuid) {
        \LogicException (ramsey uses LogicException, not RuntimeException). */
     zend_class_entry *uuid_exception_ce =
         register_class_FastUuid_Exception_UuidExceptionInterface(zend_ce_throwable);
+    if (!uuid_exception_ce) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\Exception\\UuidExceptionInterface");
+        return FAILURE;
+    }
     fu_ex_invalid_arg = register_class_FastUuid_Exception_InvalidArgumentException(
         spl_ce_InvalidArgumentException, uuid_exception_ce);
+    if (!fu_ex_invalid_arg) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\Exception\\InvalidArgumentException");
+        return FAILURE;
+    }
     fu_ex_invalid_str = register_class_FastUuid_Exception_InvalidUuidStringException(
         fu_ex_invalid_arg, uuid_exception_ce);
+    if (!fu_ex_invalid_str) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\Exception\\InvalidUuidStringException");
+        return FAILURE;
+    }
     fu_ex_unsupported = register_class_FastUuid_Exception_UnsupportedOperationException(
         spl_ce_LogicException, uuid_exception_ce);
+    if (!fu_ex_unsupported) {
+        php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\Exception\\UnsupportedOperationException");
+        return FAILURE;
+    }
 
     return SUCCESS;
 }
@@ -1682,6 +1790,13 @@ PHP_MINFO_FUNCTION(fast_uuid) {
     php_info_print_table_start();
     php_info_print_table_row(2, "fast_uuid support", "enabled");
     php_info_print_table_row(2, "version", PHP_FAST_UUID_VERSION);
+#ifndef PHP_WIN32
+    php_info_print_table_row(2, "fork safety", "pthread_atfork child-state reset"
+#if defined(__linux__) && !defined(__GLIBC__)
+        " (on this libc load via extension=, not dl())"
+#endif
+    );
+#endif
 #ifdef FU_X86
     php_info_print_table_row(2, "SIMD hex formatter", fu_has_ssse3 ? "SSSE3" : "scalar (CPU lacks SSSE3)");
 #elif defined(FU_AARCH64)

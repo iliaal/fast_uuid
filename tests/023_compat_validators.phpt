@@ -34,7 +34,9 @@ var_dump((new GenericValidator())->validate($badUrn) === false);
 var_dump((new GenericValidator())->validate($badWrappedUrn));
 var_dump((new GenericValidator())->validate($badComposed) === false);
 var_dump((new GenericValidator())->validate('a1b2c3d4-e5f6-4718-893a-4b5c6d7e8fg0') === false);
-var_dump((new GenericValidator())->validate($futureVariant));
+// CR-011 distinction: Generic enforces RFC variant nibbles (8/9/a/b), so a
+// future-variant UUID is rejected here but accepted by Nonstandard below.
+var_dump((new GenericValidator())->validate($futureVariant) === false);
 
 var_dump((new NonstandardValidator())->validate($s));
 var_dump((new NonstandardValidator())->validate($upper));

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Internal;
 
+use FastUuid\Compat\UuidInterface;
+
 final class WrapperClass
 {
     private const NIL_BYTES = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -67,5 +69,23 @@ final class WrapperClass
         ?\FastUuid\Compat\Codec\CodecInterface $codec,
     ): \FastUuid\Compat\UuidInterface {
         return new $class($core, $codec, ConstructionToken::Trusted);
+    }
+
+    /**
+     * Network-order bytes for any UuidInterface: zero-copy getCore() for
+     * in-tree wrappers, string-form parse for third-party implementations
+     * and doubles (which have no getCore() since CR-005). The string form is
+     * assumed canonical (CR-007); codec-shaped text must go through the
+     * owning codec's decode(), never here.
+     */
+    public static function coreBytes(UuidInterface $uuid): string
+    {
+        if (\method_exists($uuid, 'getCore')) {
+            $core = $uuid->getCore();
+            if ($core instanceof \FastUuid\Uuid) {
+                return $core->getBytes();
+            }
+        }
+        return \FastUuid\Uuid::fromString($uuid->toString())->getBytes();
     }
 }

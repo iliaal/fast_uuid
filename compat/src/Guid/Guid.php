@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Guid;
 
 use FastUuid\Compat\Codec\GuidStringCodec;
+use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\Rfc4122\FieldsInterface;
 use FastUuid\Compat\Type\Hexadecimal;
 use FastUuid\Compat\Type\Integer as IntegerObject;
@@ -31,15 +32,19 @@ final class Guid implements UuidInterface
         return $this->uuid;
     }
 
+    /**
+     * Core handle for the inner UUID. Resolves via bytes so foreign
+     * implementations without getCore() (CR-005) work as inners.
+     */
     public function getCore(): \FastUuid\Uuid
     {
-        return $this->uuid->getCore();
+        return \FastUuid\Uuid::fromBytes(WrapperClass::coreBytes($this->uuid));
     }
 
     /** Mixed-endian (GUID-ordered) raw bytes. */
     public function getBytes(): string
     {
-        return GuidStringCodec::swap($this->uuid->getCore()->getBytes());
+        return GuidStringCodec::swap(WrapperClass::coreBytes($this->uuid));
     }
 
     /** Canonical RFC text: a GUID's string form is not byte-swapped, only its
@@ -94,7 +99,7 @@ final class Guid implements UuidInterface
         return $this->uuid->getDateTime();
     }
 
-    public function equals(?object $other): bool
+    public function equals(mixed $other): bool
     {
         if ($other instanceof self) {
             return $this->uuid->equals($other->uuid);

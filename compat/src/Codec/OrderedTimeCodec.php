@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FastUuid\Compat\Codec;
 
+use FastUuid\Compat\Internal\WrapperClass;
 use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 use FastUuid\Exception\UnsupportedOperationException;
@@ -21,7 +22,7 @@ final class OrderedTimeCodec extends StringCodec
         if ($uuid->getVersion() !== 1) {
             throw new InvalidArgumentException('Expected a version 1 (time-based) UUID');
         }
-        $b = $uuid->getCore()->getBytes();
+        $b = WrapperClass::coreBytes($uuid);
 
         return $b[6] . $b[7] . $b[4] . $b[5] . $b[0] . $b[1] . $b[2] . $b[3] . \substr($b, 8);
     }

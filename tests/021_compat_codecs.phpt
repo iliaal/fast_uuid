@@ -38,8 +38,19 @@ var_dump($tl->decode($tl->encode($u4))->equals($u4));
 $sc = new StringCodec();
 var_dump($sc->decode($sc->encode($u4))->equals($u4));
 var_dump($sc->decodeBytes($sc->encodeBinary($u4))->equals($u4));
+
+// TimestampLastCombCodec rejects malformed input like its siblings (038:102-106).
+$badHyphen = '0011223344-5546778899-aabbccddeeff';
+$threw = false;
+try { $tl->decode($badHyphen); } catch (InvalidArgumentException) { $threw = true; }
+var_dump($threw);
+$threw = false;
+try { $tl->decodeBytes(str_repeat("\0", 15)); } catch (InvalidArgumentException) { $threw = true; }
+var_dump($threw);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

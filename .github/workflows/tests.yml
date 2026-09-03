@@ -16,6 +16,7 @@ jobs:
   arginfo-sync:
     name: Generated arginfo matches stub
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,6 +37,7 @@ jobs:
   build-test:
     name: "PHP ${{ matrix.php }} (NTS)"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +83,7 @@ jobs:
   zts-canary:
     name: "PHP 8.4 (ZTS canary)"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -103,6 +106,7 @@ jobs:
   scalar-canary:
     name: "PHP 8.4 (forced scalar formatter)"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -129,6 +133,7 @@ jobs:
   arm64-canary:
     name: "PHP 8.4 (ARM64 NEON canary)"
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -156,6 +161,7 @@ jobs:
     # after the tag is already public. 8.4 stands in for 8.5 (same toolchain).
     name: "PHP 8.4 (macOS arm64 canary)"
     runs-on: macos-14
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -187,6 +193,7 @@ jobs:
   windows-canary:
     name: "PHP ${{ matrix.php }} ${{ matrix.ts }} ${{ matrix.arch }} (Windows canary)"
     runs-on: windows-2022
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -211,6 +218,7 @@ jobs:
   composer-validate:
     name: "composer validate --strict"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -228,6 +236,7 @@ jobs:
   pie-smoke:
     name: "PIE path-repository build (PHP 8.4)"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -238,8 +247,12 @@ jobs:
           tools: phpize, php-config
           coverage: none
       - name: Download PIE
+        env:
+          PIE_VERSION: '1.4.10'
+          PIE_SHA256: b88792235c8e80be568436d4cb043b49fd1869c89b64e83d23e2882ae19d70a8
         run: |
-          curl -fsSL -o /tmp/pie.phar https://github.com/php/pie/releases/latest/download/pie.phar
+          curl -fsSL -o /tmp/pie.phar "https://github.com/php/pie/releases/download/${PIE_VERSION}/pie.phar"
+          echo "${PIE_SHA256}  /tmp/pie.phar" | sha256sum -c -
           chmod +x /tmp/pie.phar
       - name: PIE build smoke
         run: |

@@ -151,9 +151,13 @@ final class Uuid
     }
 
     /**
-     * Canonical-form validation via the factory's validator (RFC 4122 shape).
-     * For the more permissive parser (bare 32-hex, urn:, braces) use
-     * \FastUuid\Uuid::isValid().
+     * Strict validation via the factory's validator (default
+     * GenericValidator): canonical 8-4-4-4-12 form with RFC version/variant
+     * nibbles after urn:/{} unwrapping; nil exempt. Bare 32-hex and
+     * non-RFC nibbles are rejected here even though the tolerant core
+     * parser (\FastUuid\Uuid::isValid()) accepts them — swapping the
+     * factory validator changes the acceptance set; NonstandardValidator
+     * lifts the nibble constraints while keeping the canonical shape.
      */
     public static function isValid(string $uuid): bool
     {

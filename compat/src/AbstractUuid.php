@@ -73,41 +73,73 @@ abstract class AbstractUuid implements UuidInterface
     public function getVariant(): int { return $this->core->getVariant(); }
     public function jsonSerialize(): string { return $this->toString(); }
 
+    /**
+     * Byte-order comparison over the core handles, independent of any
+     * presentation codec. Only UuidInterface and \FastUuid\Uuid are accepted;
+     * anything else (strings, scalars, null) throws InvalidArgumentException
+     * so the outcome never depends on codec state.
+     */
     public function compareTo(mixed $other): int
     {
-        if ($this->codec === null && $other instanceof self && $other->codec === null) {
-            return $this->core->compareTo($other->getCore());
-        }
-        if ($this->codec === null && !$other instanceof UuidInterface) {
-            return $this->core->compareTo($other);
-        }
-        $compare = \strcmp($this->toString(), self::stringify($other));
-
-        return $compare <=> 0;
-    }
-
-    public function equals(?object $other): bool
-    {
         if ($other instanceof UuidInterface) {
-            return $this->codec === null && $other instanceof self && $other->codec === null
-                ? $this->core->equals($other->getCore())
-                : $this->toString() === $other->toString();
+            if ($other instanceof self && $this->codec === null && $other->codec === null) {
+                return $this->core->compareTo($other->getCore());
+            }
+            return $this->core->compareTo(self::coreOf($other));
         }
         if ($other instanceof \FastUuid\Uuid) {
-            return $this->codec === null
-                ? $this->core->equals($other)
-                : $this->toString() === $other->toString();
+            return $this->core->compareTo($other);
+        }
+        throw new \FastUuid\Exception\InvalidArgumentException(
+            'Not comparable: expected UuidInterface or FastUuid\\Uuid'
+        );
+    }
+
+    /**
+     * Never throws on scalars: only UUID values resolving to the same 128
+     * bits compare true. Strings and Stringables delegate to the core's
+     * tolerant parser (unparseable input is false, not a throw).
+     */
+    public function equals(mixed $other): bool
+    {
+        if ($other instanceof UuidInterface) {
+            if ($other instanceof self && $this->codec === null && $other->codec === null) {
+                return $this->core->equals($other->getCore());
+            }
+            try {
+                return $this->core->equals(self::coreOf($other));
+            } catch (\FastUuid\Exception\InvalidArgumentException) {
+                return false;
+            }
+        }
+        if ($other instanceof \FastUuid\Uuid || \is_string($other) || $other instanceof \Stringable) {
+            return $this->core->equals($other);
         }
         return false;
     }
 
-    private static function stringify(mixed $other): string
+    /**
+     * Resolve any UuidInterface to its core handle: fast path for our own
+     * wrappers, string-form parse for third-party Ramsey implementations
+     * and doubles (which have no getCore()).
+     */
+    private static function coreOf(UuidInterface $other): \FastUuid\Uuid
     {
-        if ($other instanceof UuidInterface || $other instanceof \FastUuid\Uuid) {
-            return $other->toString();
+        if (\method_exists($other, 'getCore')) {
+            $core = $other->getCore();
+            if ($core instanceof \FastUuid\Uuid) {
+                return $core;
+            }
         }
-
-        return (string) $other;
+        try {
+            return \FastUuid\Uuid::fromString($other->toString());
+        } catch (\FastUuid\Exception\InvalidArgumentException $e) {
+            throw new \FastUuid\Exception\InvalidArgumentException(
+                'Not comparable: UUID string form is unparseable',
+                0,
+                $e,
+            );
+        }
     }
 
     // --- cold path: wrap into ramsey-shaped objects --------------------
@@ -117,11 +149,15 @@ abstract class AbstractUuid implements UuidInterface
             ? $this->core->getHex()
             : \str_replace('-', '', $this->toString()));
     }
+    /**
+     * Always the RFC 128-bit network-order value from the core bytes.
+     * Deriving from getHex() would read presentation-permuted text under
+     * byte-reordering codecs (Guid/COMB) and silently break
+     * fromInteger(getInteger()) round-trips.
+     */
     public function getInteger(): IntegerObject
     {
-        return new IntegerObject($this->codec === null
-            ? $this->core->getInteger()
-            : \FastUuid\Uuid::fromHexadecimal($this->getHex()->toString())->getInteger());
+        return new IntegerObject($this->core->getInteger());
     }
     public function getFields(): FieldsInterface
     {
