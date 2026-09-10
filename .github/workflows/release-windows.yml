@@ -1,21 +1,9 @@
 name: Release Windows binaries
 
-# Triggered when a GitHub Release is published (manual or from a tag push
-# via /release-ext). Builds the extension on every supported PHP version
-# x architecture x thread-safety variant on Windows runners, then
-# uploads each .dll as a release asset following the PIE-compatible
-# naming convention (php_fast_uuid-<version>-<php_x.y>-<ts|nts>-vs17-<arch>.zip).
-#
-# The PHPT suite runs here (run-tests: 'true') so Windows artifacts are
-# never shipped without Windows test coverage -- the tests.yml matrix is
-# Linux-only, so this lane is the only place the suite exercises MSVC builds.
-
 on:
   release:
     types: [published]
-  # Manual trigger to validate the MSVC build against a branch without
-  # publishing a release. The upload job is gated to the release event, so a
-  # dispatch run only exercises the build matrix.
+  # Validate MSVC builds before publishing a release.
   workflow_dispatch:
 
 permissions: {}
@@ -68,11 +56,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'release'
-    # GITHUB_TOKEN defaults to read-only for `contents:` on newer repos.
-    # The release/asset-upload API needs write access; without this block
-    # `gh release upload` returns HTTP 403 "Resource not accessible by
-    # integration". See ~/ai/wiki/architecture/php-extensions.md, the
-    # "Windows binary releases" section, for the full backstory.
     permissions:
       contents: write # Uploads Windows binaries to the published release.
     steps:

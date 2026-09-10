@@ -19,13 +19,11 @@ function coreRejects(string $s): bool {
 $c = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 $canon = Uuid::fromString($c);
 
-// The C parser strips urn:uuid: prefixes and braces (in either order).
 foreach (['urn:uuid:' . $c, 'urn:uuid:{' . $c . '}', '{urn:uuid:' . $c . '}'] as $form) {
     var_dump(Uuid::isValid($form));
     var_dump(Uuid::fromString($form)->equals($canon));
 }
 
-// Composed wrappers of garbage stay rejected at the core layer too.
 var_dump(Uuid::isValid('{urn:uuid:nope}') === false);
 var_dump(coreRejects('{urn:uuid:nope}'));
 ?>

@@ -14,7 +14,6 @@ final class Integer implements NumberInterface
     public function __construct(string|int|float|\Stringable $value)
     {
         if (\is_float($value)) {
-            // Only whole, finite floats map to an integer (42.0 -> "42").
             if (!\is_finite($value) || \floor($value) !== $value) {
                 throw new InvalidArgumentException('Value must be a signed integer or a string containing only digits');
             }

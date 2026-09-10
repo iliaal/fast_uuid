@@ -18,11 +18,9 @@ var_dump($u->getVariant() === 2);
 var_dump($u->toString() === '00010203-0405-8607-8809-0a0b0c0d0e0f');
 var_dump(Uuid::fromString($u->toString())->getVersion() === 8);
 
-// Procedural form produces the identical layout.
 var_dump(uuid_v8($bytes) === '00010203-0405-8607-8809-0a0b0c0d0e0f');
 var_dump(uuid_is_valid(uuid_v8(random_bytes(16))));
 
-// Compat mapping: v8 wraps as UuidV8.
 $c = CompatUuid::uuid8($bytes);
 var_dump($c instanceof UuidV8);
 var_dump($c->getVersion() === 8);
@@ -34,7 +32,6 @@ var_dump(uuid_v5(Uuid::NAMESPACE_DNS, 'www.example.com') === '2ed6657d-e927-568b
 var_dump(uuid_v3(Uuid::NAMESPACE_DNS, 'php.net') === Uuid::uuid3(Uuid::NAMESPACE_DNS, 'php.net')->toString());
 var_dump(uuid_v5(Uuid::NAMESPACE_DNS, 'php.net') === Uuid::uuid5(Uuid::NAMESPACE_DNS, 'php.net')->toString());
 
-// Invalid namespace is rejected on the procedural path too.
 $threw = false;
 try { uuid_v3('not-a-namespace', 'x'); } catch (\FastUuid\Exception\InvalidArgumentException) { $threw = true; }
 var_dump($threw);

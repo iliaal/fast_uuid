@@ -59,7 +59,6 @@ function mismatchThrows(string $class, Uuid $core): bool {
     }
 }
 
-// Every wrapper accepts the core that resolves to its own class.
 foreach ($map as $k => $class) {
     $w = new $class($cores[$k]);
     var_dump($w->getCore()->equals($cores[$k]));

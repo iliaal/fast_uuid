@@ -8,16 +8,13 @@ use FastUuid\Uuid;
 use FastUuid\Exception\InvalidArgumentException;
 use FastUuid\Exception\InvalidUuidStringException;
 
-// Variant decode across all four families (byte 8 high bits).
 var_dump(Uuid::fromString('6ba7b810-9dad-11d1-00b4-00c04fd430c8')->getVariant() === 0); // NCS
 var_dump(Uuid::fromString('6ba7b810-9dad-11d1-80b4-00c04fd430c8')->getVariant() === 2); // RFC
 var_dump(Uuid::fromString('6ba7b810-9dad-11d1-c0b4-00c04fd430c8')->getVariant() === 6); // Microsoft
 var_dump(Uuid::fromString('6ba7b810-9dad-11d1-e0b4-00c04fd430c8')->getVariant() === 7); // future
-// Non-RFC variants report no version.
 var_dump(Uuid::fromString('6ba7b810-9dad-11d1-c0b4-00c04fd430c8')->getVersion() === null);
 var_dump(Uuid::fromString('6ba7b810-9dad-11d1-e0b4-00c04fd430c8')->getVersion() === null);
 
-// fromInteger rejects out-of-range and non-numeric input.
 $max = Uuid::fromString(Uuid::MAX);
 var_dump(Uuid::fromInteger($max->getInteger())->equals($max)); // 2^128-1 still accepted
 foreach ([

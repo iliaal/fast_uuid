@@ -73,7 +73,6 @@ final class Fields implements FieldsInterface
 
     public function getVariant(): int
     {
-        // RFC 4122 variant detection (returns ramsey Uuid::RFC_4122 == 2 for the common case)
         $octet = \ord($this->bytes[8]);
         if (($octet & 0x80) === 0x00) return 0;        // NCS
         if (($octet & 0xc0) === 0x80) return 2;        // RFC 4122
@@ -85,9 +84,7 @@ final class Fields implements FieldsInterface
     {
         $b = $this->bytes;
         $v = $this->getVersion();
-        // Reassemble as a hex string rather than hexdec()+shifts: the 60-bit
-        // value exceeds PHP_INT_MAX on 32-bit PHP, where hexdec() returns float
-        // and the bit-ops silently truncate. String slicing stays exact.
+        // Hex strings preserve all 60 bits on 32-bit PHP; hexdec()+shifts do not.
         if ($v === 6) {
             // v6: most-significant first across bytes 0..7, version nibble at
             // hex offset 12 — concat the 48 high bits with the 12 low bits.
@@ -100,9 +97,7 @@ final class Fields implements FieldsInterface
             return new Hexadecimal('000' . bin2hex(substr($b, 0, 6)));
         }
         if ($v === 2) {
-            // v2 (DCE): time_low carries the local identifier, so only the
-            // upper 28 timestamp bits survive. Zero the low 32 like ramsey
-            // and the C decoder (fu_decode_time).
+            // DCE replaces time_low with the local identifier; zero those 32 bits.
             $timeMid = bin2hex(substr($b, 4, 2));
             $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
             return new Hexadecimal($timeHi . $timeMid . '00000000');

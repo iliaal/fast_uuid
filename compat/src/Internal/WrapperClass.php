@@ -38,8 +38,7 @@ final class WrapperClass
      */
     public static function for(\FastUuid\Uuid $core): string
     {
-        // Hot path: RFC versions 1–8. getVersion() is null only for nil, max,
-        // and non-RFC variants — skip the 16-byte getBytes() alloc for those.
+        // Versioned UUIDs avoid allocating getBytes() for nil/max checks.
         $version = $core->getVersion();
         if ($version !== null) {
             return self::VERSION_CLASSES[$version]
@@ -56,12 +55,7 @@ final class WrapperClass
         return 'FastUuid\Compat\Nonstandard\Uuid';
     }
 
-    // The constructor re-derives this class from the same core, so each wrapper
-    // costs two for() calls. Handing it a vouch to skip the second one measured
-    // slower on every path (fu-r7h): a userland static call plus four static
-    // property accesses costs more than the getVersion() call and array lookup
-    // it avoids, and the factory paths, which construct wrappers directly and
-    // never receive a vouch, pay the failed lookup on top of the full check.
+    // Rechecking in the constructor measured cheaper than a trusted-call cache.
     /** @param class-string<\FastUuid\Compat\AbstractUuid> $class */
     private static function instantiate(
         string $class,
@@ -72,11 +66,8 @@ final class WrapperClass
     }
 
     /**
-     * Network-order bytes for any UuidInterface: zero-copy getCore() for
-     * in-tree wrappers, string-form parse for third-party implementations
-     * and doubles (which have no getCore() since CR-005). The string form is
-     * assumed canonical (CR-007); codec-shaped text must go through the
-     * owning codec's decode(), never here.
+     * Without getCore(), the string form must be canonical RFC text;
+     * codec-shaped text requires its owning codec's decode().
      */
     public static function coreBytes(UuidInterface $uuid): string
     {

@@ -41,10 +41,8 @@ foreach ($vectors as [$s, $ver, $var]) {
     var_dump(CoreUuid::isValid($s));
     var_dump($core->getVersion() === $ver);
     var_dump($core->getVariant() === $var);
-    // The compat canonical codec decodes to the same core bytes.
     $dec = $sc->decode($s);
     var_dump($dec->getCore()->equals($core));
-    // Version/variant survive the layer crossing both ways.
     var_dump($dec->getVersion() === $ver);
     var_dump($dec->getVariant() === $var);
     if ($ver !== null || $s === CoreUuid::NIL || $s === CoreUuid::MAX) {

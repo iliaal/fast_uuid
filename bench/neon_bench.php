@@ -25,8 +25,8 @@ if (str_starts_with($op, 'ramsey') || str_starts_with($op, 'compat')) {
     }
 }
 
-$bytes = hex2bin('a1b2c3d4e5f60718293a4b5c6d7e8f90'); // fixed 16 bytes for from_bin
-$canon = 'a1b2c3d4-e5f6-4718-893a-4b5c6d7e8f90';      // fixed canonical for parse
+$bytes = hex2bin('a1b2c3d4e5f60718293a4b5c6d7e8f90');
+$canon = 'a1b2c3d4-e5f6-4718-893a-4b5c6d7e8f90';
 $batchSize = 100;
 $unitsPerIter = str_ends_with($op, '_batch') ? $batchSize : 1;
 $warmIters = str_ends_with($op, '_batch') ? max(1, intdiv($WARM, $batchSize)) : $WARM;

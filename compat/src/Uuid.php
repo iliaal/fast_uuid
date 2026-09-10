@@ -48,7 +48,6 @@ final class Uuid
     public const UUID_TYPE_REORDERED_TIME = 6;
     public const UUID_TYPE_UNIX_TIME      = 7;
     public const UUID_TYPE_CUSTOM         = 8;
-    // Deprecated ramsey aliases, kept for drop-in source compatibility.
     public const UUID_TYPE_IDENTIFIER = 2; // @deprecated alias of UUID_TYPE_DCE_SECURITY
     public const UUID_TYPE_PEABODY    = 6; // @deprecated alias of UUID_TYPE_REORDERED_TIME
 

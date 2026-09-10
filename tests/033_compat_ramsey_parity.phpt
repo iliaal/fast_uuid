@@ -20,8 +20,6 @@ $orig = Uuid::fromBytes(hex2bin('000102030405460788090a0b0c0d0e0f'));
 $comb = new TimestampFirstCombCodec();
 $enc = $comb->encodeBinary($orig);
 var_dump(bin2hex($enc) === '0a0b0c0d0e0f46078809000102030405');
-// Identity on the core: equals() follows presentation, and a decoded UUID
-// carries the COMB codec (ramsey 4.9.2 behaves the same way).
 var_dump($comb->decodeBytes($enc)->getCore()->equals($orig->getCore()));
 var_dump($comb->decode($comb->encode($orig))->getCore()->equals($orig->getCore()));
 
@@ -36,13 +34,10 @@ var_dump($v2->getLocalDomain() === 0);
 $v2big = Uuid::fromBytes(hex2bin('ffffffffabcd2ef08000aabbccddeeff'));
 var_dump($v2big->getLocalIdentifier()->toString() === '4294967295');
 
-// Fields::getVersion mirrors the C-layer variant guard: no version for
-// non-RFC variants, and both surfaces agree.
 $ms = Uuid::fromBytes(hex2bin('123456789abc4defc011aabbccddeeff'));
 var_dump($ms instanceof NonstandardUuid);
 var_dump($ms->getVersion() === null && $ms->getFields()->getVersion() === null);
 
-// Max UUID clockSeq reports unmasked ffff (ramsey MaxTrait), nil stays 0000.
 var_dump(Uuid::fromString(Uuid::MAX)->getFields()->getClockSeq()->toString() === 'ffff');
 var_dump(Uuid::fromString(Uuid::NIL)->getFields()->getClockSeq()->toString() === '0000');
 
@@ -50,7 +45,6 @@ var_dump(Uuid::fromString(Uuid::NIL)->getFields()->getClockSeq()->toString() ===
 $v7 = Uuid::uuid7(new DateTimeImmutable('@1700000000'));
 var_dump($v7->getFields()->getTimestamp()->toString() === '000018bcfe56800');
 
-// OrderedTimeCodec refuses to decode bytes that don't restore to version 1.
 $threw = false;
 try { (new OrderedTimeCodec())->decodeBytes(str_repeat("\x00", 16)); }
 catch (UnsupportedOperationException) { $threw = true; }

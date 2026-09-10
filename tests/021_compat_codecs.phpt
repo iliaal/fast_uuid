@@ -25,9 +25,6 @@ var_dump($threw);
 
 $u4 = Uuid::uuid4();
 $tf = new TimestampFirstCombCodec();
-// equals() compares presentation (ramsey: strcmp over toString()), and a codec
-// decode hands back a UUID carrying that codec, so round-trip identity is
-// asserted on the core. Verified against ramsey 4.9.2: it returns false here too.
 var_dump($tf->decodeBytes($tf->encodeBinary($u4))->getCore()->equals($u4->getCore()));
 var_dump($tf->decode($tf->encode($u4))->getCore()->equals($u4->getCore()));
 var_dump($tf->encodeBinary($u4) !== $u4->getBytes());
@@ -39,7 +36,6 @@ $sc = new StringCodec();
 var_dump($sc->decode($sc->encode($u4))->equals($u4));
 var_dump($sc->decodeBytes($sc->encodeBinary($u4))->equals($u4));
 
-// TimestampLastCombCodec rejects malformed input like its siblings (038:102-106).
 $badHyphen = '0011223344-5546778899-aabbccddeeff';
 $threw = false;
 try { $tl->decode($badHyphen); } catch (InvalidArgumentException) { $threw = true; }

@@ -14,7 +14,6 @@ final class Hexadecimal implements TypeInterface
     public function __construct(string|\Stringable $value)
     {
         $v = (string) $value;
-        // Accept a case-insensitive "0x"/"0X" prefix (ramsey parity).
         if (\strlen($v) >= 2 && $v[0] === '0' && ($v[1] === 'x' || $v[1] === 'X')) {
             $v = \substr($v, 2);
         }

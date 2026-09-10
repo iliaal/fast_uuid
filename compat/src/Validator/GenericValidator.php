@@ -50,10 +50,8 @@ class GenericValidator implements ValidatorInterface
     }
 
     /**
-     * Strip urn:/{} wrappers in any composition up to depth 2, mirroring
-     * the C parser (fu_parse). Returns null when the input is implausibly
-     * long before any substr() copy: the longest valid wrapped form is
-     * "urn:uuid:{...}" = 9 + 1 + 36 + 1 = 47 bytes.
+     * Match fu_parse's wrapper grammar; cap copies at the longest accepted
+     * form, "urn:uuid:{...}" (47 bytes).
      */
     protected static function stripWrappers(string $uuid): ?string
     {

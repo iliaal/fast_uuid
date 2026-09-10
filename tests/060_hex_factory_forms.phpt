@@ -19,11 +19,9 @@ function hexRejects(string $hex): bool {
 
 $hex = '0a1b2c3d4e5f60718293a4b5c6d7e8f9';
 
-// Uppercase hex is valid input, normalized to lowercase.
 var_dump(Uuid::fromHexadecimal(strtoupper($hex))->getHex() === $hex);
 var_dump(Uuid::fromHexadecimal($hex)->getHex() === $hex);
 
-// Every other malformed shape throws InvalidUuidStringException.
 foreach ([
     'xyz',
     '0x' . $hex,

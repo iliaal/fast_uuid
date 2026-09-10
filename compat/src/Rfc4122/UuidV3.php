@@ -6,5 +6,4 @@ namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\AbstractUuid;
 
-/** RFC 9562 / RFC 4122 — UuidV3. */
 final class UuidV3 extends AbstractUuid {}

@@ -15,7 +15,6 @@ function v8Rejects(callable $fn): bool {
     }
 }
 
-// Only exactly 16 bytes are accepted; off-by-one lengths throw on both forms.
 foreach ([15, 17] as $len) {
     $b = str_repeat("\0", $len);
     var_dump(v8Rejects(fn() => uuid_v8($b)));

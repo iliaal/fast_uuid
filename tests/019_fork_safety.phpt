@@ -31,8 +31,6 @@ $primedV7 = uuid_v7();
 
 $pid = pcntl_fork();
 if ($pid === 0) {
-    // Child: fork-unaware state would hand back the same bytes / same v7
-    // (key, rand_b) the parent is about to draw. Write what the child sees.
     file_put_contents($tmp, implode("\n", [uuid_v4(), uuid_v4_fast(), uuid_v7(), uuid_v7()]));
     exit(0);
 }
@@ -47,12 +45,8 @@ unlink($tmp);
 var_dump($parentCrypto !== $childCrypto); // crypto buffer invalidated in the child
 var_dump($parentFast   !== $childFast);   // xoshiro reseeded in the child
 
-// The child must not continue the parent's (key, rand_b) sequence. An inherited
-// counter only produces a literal duplicate when both processes generate inside
-// the same 244 ns key bucket, which userland cannot force -- so assert the
-// signature rather than the equality: identical 60-bit key plus a rand_b drawn
-// from the parent's base. `$parentV7 !== $childV7` alone is a false green; it
-// still passes with the v7 reset compiled out of the atfork handler.
+// Userland cannot force both processes into the same 244 ns tick. Inequality
+// alone misses an inherited v7 counter; also compare the key/counter signature.
 var_dump(!(v7key($primedV7) === v7key($childV7)
     && v7randbHigh($primedV7) === v7randbHigh($childV7)));
 var_dump(!(v7key($parentV7) === v7key($childV7)

@@ -6,11 +6,6 @@ fast_uuid
 <?php
 require __DIR__ . '/_autoload.inc';
 
-// Every wrapper validates its core against its own class on construction, and
-// no argument a caller controls can turn that off. Guards CR-003, where
-// ConstructionToken::Trusted skipped the check and was a public enum: this test
-// fails on four lines if that skip comes back.
-
 use FastUuid\Compat\Internal\ConstructionToken;
 use FastUuid\Compat\Rfc4122\UuidV1;
 use FastUuid\Compat\Rfc4122\UuidV4;
@@ -36,7 +31,6 @@ $wrapped = $factory->fromBytes($v1core->getBytes());
 var_dump($wrapped instanceof UuidV1);
 var_dump(mismatchThrows(fn() => new UuidV4($v1core, null, ConstructionToken::Trusted)));
 
-// Matching class and core: accepted, with or without a token.
 var_dump((new UuidV1($v1core))->getCore()->toString() === $v1core->toString());
 
 // A distinct core object carrying identical bytes is treated on its own merits.
@@ -44,7 +38,6 @@ $twin = \FastUuid\Uuid::fromBytes($v1core->getBytes());
 var_dump($twin->equals($v1core) && $twin !== $v1core);
 var_dump(mismatchThrows(fn() => new UuidV4($twin, null, ConstructionToken::Trusted)));
 
-// Every decode entry point still lands on the right wrapper.
 var_dump($factory->fromString($v4core->toString()) instanceof UuidV4);
 var_dump($factory->fromBytes($v4core->getBytes()) instanceof UuidV4);
 var_dump($factory->wrap($v4core) instanceof UuidV4);

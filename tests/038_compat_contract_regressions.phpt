@@ -60,7 +60,6 @@ $validator = new GenericValidator();
 var_dump($validator->validate('urn:uuid:' . $canonical));
 var_dump($validator->validate('urn:uuid:{' . $canonical . '}'));
 var_dump($validator->validate('urn:' . $canonical) === false);
-// composed wrappers of a valid uuid are accepted; of garbage, rejected (fu-cus)
 var_dump($validator->validate('{urn:uuid:' . $canonical . '}'));
 var_dump($validator->validate('{urn:uuid:nope}') === false);
 
@@ -91,7 +90,6 @@ var_dump(substr($providerFactory->fromDateTime(new DateTimeImmutable('@0'))->get
 $compat = CompatUuid::fromString($canonical);
 $core = CoreUuid::fromString($canonical);
 var_dump($compat->compareTo($core) === 0);
-// CR-015 narrowing: strings/scalars to compareTo() throw; UuidInterface only.
 var_dump(throws(fn() => $compat->compareTo($canonical), InvalidArgumentException::class));
 var_dump(throws(fn() => $compat->compareTo(new stdClass()), InvalidArgumentException::class));
 

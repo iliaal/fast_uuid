@@ -61,11 +61,8 @@
 # endif
 static int fu_has_ssse3 = 0;   /* set in MINIT via an explicit CPUID probe */
 
-/* Detect SSSE3 with a direct CPUID leaf-1 probe (ECX bit 9) rather than
-   __builtin_cpu_supports(), which pulls in libgcc's __cpu_model global and
-   trips an R_X86_64_PC32 relocation in -shared under some toolchains
-   (e.g. zig cc / compiler-rt). The CI nm guard fails the build if
-   __cpu_model reappears. */
+/* Direct CPUID avoids libgcc's __cpu_model and its -shared relocation
+   failure under toolchains such as zig cc / compiler-rt. */
 static int fu_detect_ssse3(void) {
 # if defined(_MSC_VER)
     int regs[4];
@@ -156,17 +153,13 @@ static int fu_compare(zval *a, zval *b) {
 /* formatting / parsing                                               */
 /* ------------------------------------------------------------------ */
 
-/* scalar 16-byte -> 32 lowercase hex chars (default / no SIMD path) */
 static inline void fu_hex32_scalar(const unsigned char *b, char *o) {
     const char *L = fu_lut;
     for (int i = 0; i < 16; i++) { o[i*2] = L[b[i]*2]; o[i*2+1] = L[b[i]*2+1]; }
 }
 
 #ifdef FU_X86
-/* SSSE3 pshufb-LUT path: 16 bytes -> 32 hex in a handful of vector ops.
-   x86 only and runtime-gated on fu_has_ssse3. AVX2 offers no win for a single
-   16-byte value (the work fits one XMM register); a batch API would be the
-   place for a 256-bit path. */
+/* A single UUID fits one XMM register; AVX2 offers no benefit here. */
 FU_TARGET_SSSE3 static void fu_hex32_ssse3(const unsigned char *b, char *o) {
     const __m128i v    = _mm_loadu_si128((const __m128i *)b);
     const __m128i mask = _mm_set1_epi8(0x0f);
@@ -280,10 +273,8 @@ static zend_result fu_cast(zend_object *o, zval *ret, int type) {
     return zend_std_cast_object_tostring(o, ret, type);
 }
 
-/* The object stores its state in fu_obj, not in the property table, so the
-   std handlers show var_dump() an empty object and var_export() emits an
-   unrebuildable __set_state(array()). Surface a virtual "uuid" string for
-   both; __set_state() (below) parses it back. */
+/* State lives outside the property table. Expose "uuid" for debugging and
+   var_export()/__set_state() round-trips. */
 static HashTable *fu_get_debug_info(zend_object *o, int *is_temp) {
     zval zv;
     HashTable *ht = zend_new_array(1);
@@ -344,7 +335,6 @@ static uint64_t fu_xs_next(void) {
     return r;
 }
 
-/* draw 8 crypto bytes as a big-endian uint64 (rand_b assembly for v7) */
 static zend_result fu_rand_u64(uint64_t *out) {
     unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE;
     *out = ((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
@@ -353,19 +343,10 @@ static zend_result fu_rand_u64(uint64_t *out) {
 }
 
 #ifndef PHP_WIN32
-/* After fork(), parent and child would otherwise share inherited generator
-   state, yielding identical output across processes: the CSPRNG buffer bytes
-   (uuid_v4), the xoshiro seed (uuid_v4_fast), and the v7 monotonic key/counter
-   (uuid7 emits the same (key, rand_b) when both processes increment within one
-   tick). Discard all three so the child refills/reseeds from the kernel before
-   next use. Runs in the child, in the forking thread, so FAST_UUID_G resolves
-   to that thread's globals under ZTS (pcntl_fork always forks a PHP thread with
-   a live TSRM cache). A fork() issued off the PHP thread (native thread via
-   FFI/another extension) copies the PHP thread's globals into the child but
-   the handler cannot reach another thread's TSRM storage to reset them, so it
-   resets only the forking thread's state: such a child MUST re-exec (or
-   restart the interpreter) before generating UUIDs, else parent and child
-   emit colliding output and reuse CSPRNG bytes. */
+/* Discard inherited CSPRNG, xoshiro, and v7 state to prevent duplicate UUIDs.
+   Under ZTS, only the forking thread's globals are reachable. A child forked
+   off the PHP thread must re-exec or restart PHP before generating UUIDs;
+   other threads' inherited state cannot be reset here. */
 static void fu_atfork_child(void) {
 #ifdef ZTS
     /* A fork() issued by a native thread that never entered PHP (another
@@ -389,8 +370,6 @@ static void fu_atfork_child(void) {
 /* generators                                                         */
 /* ------------------------------------------------------------------ */
 
-/* Generators return zend_result: a CSPRNG failure (FAILURE, exception pending)
-   short-circuits the layout immediately rather than running on zeroed bytes. */
 /* RFC 9562 version nibble (high of b[6]) + RFC variant bits on b[8]. */
 static inline void fu_set_ver_var(unsigned char *b, unsigned char ver_hi) {
     b[6] = (b[6] & 0x0f) | ver_hi;
@@ -412,9 +391,7 @@ static zend_result fu_gen_v4_fast(unsigned char *b) {
     return SUCCESS;
 }
 
-/* fill clock_seq (b[8] variant+hi, b[9] low) and node (b[10..15]). When both
-   are randomized a single 8-byte CSPRNG draw supplies them; otherwise each is
-   drawn only as needed. Shared by the v1 and v6 layouts. */
+/* Randomize clock_seq and node in one CSPRNG draw when neither is supplied. */
 static zend_result fu_lay_clockseq_node(unsigned char *b, const unsigned char *node, int clockseq) {
     unsigned char rnode[6];
     if (clockseq < 0 && !node) {
@@ -445,11 +422,8 @@ static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *
 }
 
 #ifdef PHP_WIN32
-/* GetSystemTimePreciseAsFileTime is resolved at runtime, not import-linked: the
-   x86 import library shipped with the PHP 8.1/8.2 Windows build SDK omits it, so
-   a direct call fails at link time (LNK2019) for those 32-bit targets. MINIT
-   resolves the pointer once (single-threaded, so the file-static is race-free);
-   pre-Win8 hosts that lack the symbol fall back to GetSystemTimeAsFileTime. */
+/* PHP 8.1/8.2's x86 Windows SDK omits this import (LNK2019). Resolve once in
+   single-threaded MINIT; pre-Win8 falls back to GetSystemTimeAsFileTime. */
 typedef void (WINAPI *fu_precise_time_fn)(LPFILETIME);
 static fu_precise_time_fn fu_precise_time = NULL;
 #endif
@@ -592,7 +566,6 @@ static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
     return fu_lay_v7(b, ms, sub, randb);
 }
 
-/* Returns 0 and throws if name is longer than FU_MAX_NAME_BYTES. */
 static int fu_name_len_ok(size_t nl) {
     if (UNEXPECTED(nl > FU_MAX_NAME_BYTES)) {
         zend_throw_exception_ex(fu_ex_invalid_arg, 0,
@@ -688,8 +661,6 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
             memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
             return 1;
         }
-        /* Compat wrapper (or anything exposing the core object): unwrap to
-           the canonical bytes instead of parsing possibly reshaped text. */
         if (zend_hash_str_exists(&ce->function_table, "getcore", sizeof("getcore") - 1)) {
             zval zv, fn, ret;
             ZVAL_OBJ(&zv, Z_OBJ_P(z));
@@ -852,14 +823,8 @@ static zend_result fu_local_id_arg(zend_long local_domain, zend_string *id_str,
 /* Read whole seconds + sub-second microseconds off a DateTimeInterface. Throws
    (returns FAILURE) if either call fails or raises. */
 static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t *micros) {
-    /* Fast path: read the unix timestamp and microseconds straight off the
-       object's timelib_time when the seconds-since-epoch cache is current (the
-       usual case for a freshly-constructed DateTime). This is exactly what
-       getTimestamp() + format("u") return, without two userland method calls.
-       Restricted to the exact built-in classes: a DateTime[Immutable] subclass
-       may override getTimestamp(), so it must go through the method call. An
-       out-of-date or uninitialized object falls back too (timelib_update_ts is
-       not exported to extensions). */
+    /* Only exact built-in classes can bypass overridable methods. A stale or
+       missing timelib cache must fall back: timelib_update_ts is not exported. */
     if (dtobj->ce == php_date_get_immutable_ce() || dtobj->ce == php_date_get_date_ce()) {
         php_date_obj *dobj = php_date_obj_from_obj(dtobj);
         if (dobj->time && dobj->time->sse_uptodate) {
@@ -898,10 +863,8 @@ static zend_result fu_dt_secs_micros(zend_object *dtobj, int64_t *secs, uint32_t
         }
         return FAILURE;
     }
-    /* A DateTime subclass may override format(): a non-canonical "u" (e.g.
-       "1000000" carries into the seconds, "-1"/"abc"/"1e2" coerce to a bogus
-       microsecond) would shift the encoded timestamp. The built-in format("u")
-       always yields exactly six digits, so require that shape. */
+    /* Subclasses can override format("u"); require six digits to prevent
+       coercion or carry into the seconds field. */
     if (Z_TYPE(ret) != IS_STRING || Z_STRLEN(ret) != 6) {
         zval_ptr_dtor(&ret);
         zend_throw_exception(fu_ex_invalid_arg, "DateTime format(\"u\") must return six decimal digits", 0);
@@ -975,11 +938,6 @@ static zend_result fu_make_datetime(zval *rv, int64_t secs, uint32_t micros) {
 #endif
     return fu_make_datetime_from_string(rv, secs, micros);
 }
-
-/* arginfo, method/function tables, and class registrators are generated from
-   fast_uuid.stub.php into fast_uuid_arginfo.h (included near the top of this
-   file). Regenerate with php-src's build/gen_stub.php after any signature
-   change. */
 
 /* ------------------------------------------------------------------ */
 /* static factories                                                   */
@@ -1223,7 +1181,6 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
 /* ------------------------------------------------------------------ */
 
 PHP_METHOD(FastUuid_Uuid, __construct) {
-    /* intentionally private: use factory methods */
     zend_throw_exception(fu_ex_invalid_arg, "Use FastUuid\\Uuid::uuid* / from* factories", 0);
     RETURN_THROWS();
 }
@@ -1391,9 +1348,7 @@ PHP_METHOD(FastUuid_Uuid, jsonSerialize) {
     RETURN_STR(fu_str(fu_from_zobj(Z_OBJ_P(getThis()))));
 }
 
-/* Serialize the raw 16 bytes so the value survives sessions/queues/caches.
-   The default object serializer would emit an empty property bag and restore
-   as the nil UUID, silently corrupting the identifier. */
+/* The default serializer sees no properties and would restore the nil UUID. */
 PHP_METHOD(FastUuid_Uuid, __serialize) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
@@ -1414,7 +1369,6 @@ PHP_METHOD(FastUuid_Uuid, __unserialize) {
     memcpy(u->b, Z_STRVAL_P(zb), 16);
 }
 
-/* Rebuild from var_export() output (see fu_get_properties_for). */
 PHP_METHOD(FastUuid_Uuid, __set_state) {
     HashTable *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ARRAY_HT(data) ZEND_PARSE_PARAMETERS_END();
@@ -1640,7 +1594,6 @@ PHP_FUNCTION(uuid_is_valid) {
     RETURN_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
 }
 
-/* raw fast random bytes (handy for a ramsey RandomGeneratorInterface adapter) */
 PHP_FUNCTION(fast_uuid_random_bytes) {
     zend_long n;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(n) ZEND_PARSE_PARAMETERS_END();

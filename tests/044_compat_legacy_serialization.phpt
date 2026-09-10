@@ -39,9 +39,7 @@ try {
     var_dump(true);
 }
 
-// fu-3p7: legacy TEXT payloads restore the same core identity even when the
-// process-global factory codec reorders bytes (COMB); presentation stays
-// codec-shaped while the wrapped core is untouched.
+// Legacy text preserves network identity under a byte-reordering factory codec.
 $combFactory = new FastUuid\Compat\UuidFactory();
 $combFactory->setCodec(new FastUuid\Compat\Codec\TimestampFirstCombCodec());
 Uuid::setFactory($combFactory);

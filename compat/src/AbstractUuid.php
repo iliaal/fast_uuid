@@ -32,9 +32,7 @@ abstract class AbstractUuid implements UuidInterface
         ?ConstructionToken $token = null,
     )
     {
-        // Always validate version/class binding. ConstructionToken::Trusted is
-        // retained for call-site compatibility but no longer skips the check
-        // (it was a public capability token anyone could pass).
+        // The public token remains for call-site compatibility, not authorization.
         unset($token);
         $this->assertCoreMatches($core);
         $this->core = $core;
@@ -45,7 +43,6 @@ abstract class AbstractUuid implements UuidInterface
 
     public function getCore(): \FastUuid\Uuid { return $this->core; }
 
-    // --- hot path: direct delegation -----------------------------------
     public function getBytes(): string
     {
         return $this->codec === null
@@ -59,10 +56,6 @@ abstract class AbstractUuid implements UuidInterface
             : $this->codec->encode($this);
     }
     public function __toString(): string { return $this->toString(); }
-    // Every derived form follows toString(), as ramsey defines them: getUrn() is
-    // 'urn:uuid:' . toString(), getHex() is toString() without the hyphens, and
-    // comparison is strcmp over toString(). Under the default codec toString()
-    // is the core's own canonical form, so these read the core directly.
     public function getUrn(): string
     {
         return $this->codec === null
@@ -118,11 +111,6 @@ abstract class AbstractUuid implements UuidInterface
         return false;
     }
 
-    /**
-     * Resolve any UuidInterface to its core handle: fast path for our own
-     * wrappers, string-form parse for third-party Ramsey implementations
-     * and doubles (which have no getCore()).
-     */
     private static function coreOf(UuidInterface $other): \FastUuid\Uuid
     {
         if (\method_exists($other, 'getCore')) {
@@ -142,7 +130,6 @@ abstract class AbstractUuid implements UuidInterface
         }
     }
 
-    // --- cold path: wrap into ramsey-shaped objects --------------------
     public function getHex(): Hexadecimal
     {
         return new Hexadecimal($this->codec === null
@@ -167,24 +154,19 @@ abstract class AbstractUuid implements UuidInterface
     }
     public function getDateTime(): \DateTimeInterface { return $this->core->getDateTime(); }
 
-    // --- serialization parity ------------------------------------------
     // Always persist RFC network-order bytes so restore is independent of the
     // process-global factory codec (Guid/COMB presentation text is not portable).
     public function serialize(): string { return $this->core->getBytes(); }
 
     public function unserialize(string $data): void
     {
-        // Parse natively for both payload shapes: never route through the
-        // factory codec, whose decode()/decodeBytes() may reorder bytes (COMB)
-        // or byte-swap fields (Guid) and silently change the identity.
+        // The factory codec may reorder bytes and corrupt the stored identity.
         $core = \strlen($data) === 16
             ? \FastUuid\Uuid::fromBytes($data)
             : \FastUuid\Uuid::fromString($data);
         $this->assertCoreMatches($core);
         $this->core = $core;
-        // Re-attach the active presentation codec: dropping it here would
-        // silently change getBytes()/toString() across a serialize round
-        // trip (an OrderedTime column would read back network-order).
+        // Preserve the active factory's byte and string presentation on restore.
         $this->codec = self::factoryCodec();
         $this->canonical = null;
     }

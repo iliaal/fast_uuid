@@ -9,7 +9,6 @@ use FastUuid\Compat\Type\Integer;
 use FastUuid\Compat\UuidFactory;
 use FastUuid\Compat\Provider\RandomGeneratorInterface;
 
-// negative zero normalizes to "0", not "-"
 var_dump((string) new Integer('-0') === '0');
 var_dump((string) new Integer('0') === '0');
 var_dump((string) new Integer('007') === '7');
@@ -17,7 +16,6 @@ var_dump((string) new Integer('-007') === '-7');
 var_dump((string) new Integer('42') === '42');
 var_dump((string) new Integer(-42) === '-42');
 
-// a random generator returning the wrong length is rejected up front
 $f = new UuidFactory();
 $f->setRandomGenerator(new class implements RandomGeneratorInterface {
     public function generate(int $length): string { return "\x00\x00\x00"; }

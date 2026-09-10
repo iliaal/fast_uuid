@@ -18,14 +18,12 @@ function randb_of(string $b): int {
         + ord($b[13]) * 65536 + ord($b[14]) * 256 + ord($b[15]);
 }
 
-// explicit path is now microsecond-precise (was second-precision only).
 $dt  = new DateTimeImmutable('2023-01-01 12:34:56.123456', new DateTimeZone('UTC'));
 $b   = Uuid::uuid7($dt)->getBytes();
 $sec = $dt->getTimestamp();
 var_dump(ms_of($b) === $sec * 1000 + 123);            // 48-bit field carries the ms
 var_dump(rand_a($b) === intdiv(456 * 4096, 1000));    // rand_a = floor(frac_ms * 4096) = 1867
 
-// two timestamps 1ms apart now differ in the ms field (would have been equal at sec precision).
 $a = Uuid::uuid7(new DateTimeImmutable('2023-01-01 00:00:00.000000', new DateTimeZone('UTC')))->getBytes();
 $c = Uuid::uuid7(new DateTimeImmutable('2023-01-01 00:00:00.001000', new DateTimeZone('UTC')))->getBytes();
 var_dump(ms_of($c) - ms_of($a) === 1);
@@ -57,7 +55,6 @@ var_dump($stepsOk);
 // getDateTime stays ms-only (ramsey-compat): decoded microseconds are always a 1000-multiple.
 var_dump(((int) Uuid::uuid7()->getDateTime()->format('u')) % 1000 === 0);
 
-// to* aliases mirror their get* counterparts exactly.
 $u = Uuid::uuid4();
 var_dump($u->toBytes() === $u->getBytes());
 var_dump($u->toHexadecimal() === $u->getHex());

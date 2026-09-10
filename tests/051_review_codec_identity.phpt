@@ -16,7 +16,6 @@ use FastUuid\Compat\Provider\RandomGeneratorInterface;
 use FastUuid\Compat\Provider\TimeGeneratorInterface;
 use FastUuid\Exception\InvalidArgumentException;
 
-// --- derived identity follows toString(), as ramsey defines it (CR-001) ---
 $fixed = Uuid::fromString('00112233-4455-4677-8899-aabbccddeeff');
 $gf = new UuidFactory();
 $gf->setCodec(new GuidStringCodec());
@@ -28,7 +27,6 @@ var_dump($g4->getHex()->toString() === $g4->getCore()->getHex());
 var_dump((string) $g4->getInteger() === $g4->getCore()->getInteger());
 var_dump($g4->getUrn() === 'urn:uuid:' . $g4->toString());
 
-// COMB does reshape the text, and every derived form follows it.
 $cf = new UuidFactory();
 $cf->setCodec(new TimestampFirstCombCodec());
 $c4 = $cf->uuid4();
@@ -37,7 +35,6 @@ var_dump($c4->getUrn() === 'urn:uuid:' . $c4->toString());
 var_dump($c4->getHex()->toString() !== $c4->getCore()->getHex());
 var_dump($cf->fromInteger((string) $c4->getCore()->getInteger())->equals($c4));
 
-// --- serialize persists 16 network bytes; cross-codec restore works (CR-002) ---
 // Canonical text decodes to the network core under the Guid codec.
 Uuid::setFactory($gf);
 $ser = serialize($gf->fromString($fixed->toString()));
@@ -56,7 +53,6 @@ try {
 }
 var_dump($threw);
 
-// --- custom RandomGenerator feeds uuid7 rand bits (CR-004) ---
 class FixedTen implements RandomGeneratorInterface {
     public function __construct(private string $bytes) {}
     public function generate(int $length): string {
@@ -70,14 +66,11 @@ $rf = new UuidFactory();
 $rf->setRandomGenerator(new FixedTen("\xaa\xbb\xcc\xdd\xee\xff\x11\x22\x33\x44"));
 $a = $rf->uuid7(0);
 $b = $rf->uuid7(0);
-// same ms + same custom rand => identical v7
 var_dump($a->equals($b));
 var_dump($a->getVersion() === 7);
-// uuid4 still uses the custom generator (version/variant bits applied on top)
 $u4b = $rf->uuid4()->getBytes();
 var_dump($u4b[0] === "\x22" && (ord($u4b[6]) & 0xf0) === 0x40 && (ord($u4b[8]) & 0xc0) === 0x80);
 
-// --- custom TimeGenerator feeds uuid2 (CR-007) ---
 class FixedTime implements TimeGeneratorInterface {
     public function generate($node = null, ?int $clockSeq = null): string {
         // v1-shaped layout with recognizable time_mid/time_hi
@@ -89,13 +82,10 @@ $tf->setTimeGenerator(new FixedTime());
 $v2 = $tf->uuid2(0, 0x89abcdef);
 var_dump($v2->getVersion() === 2);
 var_dump(bin2hex(substr($v2->getBytes(), 0, 4)) === '89abcdef');
-// time_mid from generator preserved
 var_dump(bin2hex(substr($v2->getBytes(), 4, 2)) === '1111');
 
-// --- name length cap (CR-009) ---
 $threw = false;
 try {
-    // Allocate just over 16 MiB without hashing if possible — expect throw
     $big = str_repeat('x', 16 * 1024 * 1024 + 1);
     \FastUuid\Uuid::uuid5(\FastUuid\Uuid::fromString(Uuid::NAMESPACE_DNS), $big);
 } catch (InvalidArgumentException) {
@@ -103,7 +93,6 @@ try {
 }
 var_dump($threw);
 
-// --- Nonstandard getVersion is null (CR-005) ---
 // RFC variant + unassigned version nibble 0
 $b = str_repeat("\x01", 16);
 $b[6] = chr((ord($b[6]) & 0x0f) | 0x00);

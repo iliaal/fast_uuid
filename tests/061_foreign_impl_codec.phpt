@@ -57,14 +57,12 @@ $comb = new TimestampFirstCombCodec();
 var_dump($comb->encodeBinary($f4) === $comb->encodeBinary($w4));
 $ord = new OrderedTimeCodec();
 var_dump($ord->encodeBinary($f1) === $ord->encodeBinary($w1));
-// RV1: Guid over a foreign inner resolves via bytes, no getCore Error.
 $g = new \FastUuid\Compat\Guid\Guid($f4);
 var_dump($g->getBytes() === (new \FastUuid\Compat\Guid\Guid($w4))->getBytes());
 var_dump($guid->encodeBinary($g) === $guid->encodeBinary($w4));
 // RV2: non-Stringable object exposing getBytes() never resolves as UUID bytes.
 $blob = new class($w4->getBytes()) { public function __construct(private string $b) {} public function getBytes(): string { return $this->b; } };
 var_dump($w4->getCore()->equals($blob) === false);
-// RV3: uuid3 garbage namespace preserves the InvalidUuidString subclass.
 try {
     \FastUuid\Compat\Uuid::uuid3('not-a-uuid', 'name');
     var_dump(false);

@@ -1,13 +1,6 @@
 name: Deploy docs to GitHub Pages
 
-# Publishes docs/ (the static API reference at docs/index.html) to GitHub
-# Pages via the Actions deploy pipeline instead of the legacy Jekyll
-# builder. The legacy builder is deprecated and failed transiently on
-# this repo; this workflow uploads docs/ as a static artifact and deploys
-# it deterministically, with build logs, on every push that touches it.
-#
-# Requires the repository Pages source to be set to "GitHub Actions"
-# (build_type=workflow). .nojekyll in docs/ keeps the upload verbatim.
+# Requires Pages source "GitHub Actions" (build_type=workflow).
 
 on:
   push:
@@ -19,8 +12,6 @@ on:
 
 permissions: {}
 
-# Allow one concurrent deployment; don't cancel an in-progress one so a
-# running publish always finishes.
 concurrency:
   group: pages
   cancel-in-progress: false

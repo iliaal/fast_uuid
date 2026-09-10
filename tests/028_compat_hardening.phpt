@@ -29,7 +29,6 @@ var_dump($flag('customNodeProvider') === false);
 var_dump($flag('customTimeGenerator') === false);
 var_dump($flag('customRandomGenerator') === false);
 
-// a genuinely custom provider still wins (routes off the C fast path)
 $f2 = new UuidFactory();
 $f2->setNodeProvider(new class implements NodeProviderInterface {
     public function getNode(): string { return hex2bin('aabbccddeeff'); }
@@ -44,10 +43,8 @@ var_dump(get_class(unserialize($ser)) === \FastUuid\Compat\Rfc4122\UuidV4::class
 // Payload is raw 16 network bytes; swap them for v1 bytes inside the blob.
 $tampered = str_replace($v4->getBytes(), Uuid::uuid1()->getBytes(), $ser);
 var_dump(throws(fn() => unserialize($tampered)));
-// nil/max round-trip cleanly under the same check
 var_dump(get_class(unserialize(serialize($factory->fromString(Uuid::NIL)))) === \FastUuid\Compat\Rfc4122\NilUuid::class);
 
-// --- CR-009: Fields requires exactly 16 bytes -------------------------------
 var_dump(throws(fn() => new Fields('')));
 var_dump(throws(fn() => new Fields('short')));
 var_dump((new Fields(Uuid::uuid4()->getBytes()))->getVariant() === 2); // 16 bytes ok

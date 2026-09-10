@@ -36,20 +36,16 @@ var_dump($v7->getVersion() === 7);
 var_dump($v7->getVariant() === 2);
 var_dump(strlen((string)$v7) === 36);
 
-// NIL: no version, NCS variant
 $nil = Uuid::fromString(Uuid::NIL);
 var_dump($nil->getVersion() === null);
 var_dump($nil->getVariant() === 0);
 
-// MAX: no version
 $max = Uuid::fromString(Uuid::MAX);
 var_dump($max->getVersion() === null);
 
-// name-based v3 is deterministic
 var_dump(Uuid::uuid3(Uuid::NAMESPACE_DNS, 'example.com')->toString()
        === Uuid::uuid3(Uuid::NAMESPACE_DNS, 'example.com')->toString());
 
-// random v4 twice are not equal
 var_dump(Uuid::uuid4()->equals(Uuid::uuid4()) === false);
 ?>
 --EXPECT--

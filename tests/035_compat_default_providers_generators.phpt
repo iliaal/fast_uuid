@@ -19,7 +19,6 @@ $node = (new RandomNodeProvider())->getNode();
 var_dump(strlen($node) === 6);
 var_dump((ord($node[0]) & 0x01) === 1);
 
-// DefaultTimeGenerator: valid v1 bytes.
 $b = (new DefaultTimeGenerator())->generate();
 var_dump(strlen($b) === 16);
 var_dump((ord($b[6]) >> 4) === 1);
@@ -45,7 +44,6 @@ var_dump($u6 instanceof UuidV6);
 var_dump($u6->toString() === '60704050-0010-6203-8809-0a0b0c0d0e0f');
 var_dump($u6->getFields()->getTimestamp()->toString() === $u1->getFields()->getTimestamp()->toString());
 
-// Wrong-length generator output is rejected, not indexed out of range.
 $bad = new UuidFactory();
 $bad->setTimeGenerator(new class implements TimeGeneratorInterface {
     public function generate(int|string|null $node = null, ?int $clockSeq = null): string
