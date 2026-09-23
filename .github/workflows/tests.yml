@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.1', '8.2', '8.3', '8.4', '8.5', '8.6']
+        php: ['8.1', '8.2', '8.3', '8.4', '8.5']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,6 +64,57 @@ jobs:
           # SSSE3 detection uses a direct CPUID probe, not __builtin_cpu_supports;
           # __cpu_model reappearing means the libgcc dependency crept back in and
           # can break -shared under alternative toolchains (zig cc / compiler-rt).
+          if nm modules/fast_uuid.so | grep -qi '__cpu_model\|__cpu_indicator_init'; then
+            echo "unexpected __cpu_model / __cpu_indicator_init linkage"; exit 1
+          fi
+      - name: Test
+        run: |
+          make test TESTS="tests" \
+            TEST_PHP_ARGS="-q" \
+            NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+      - name: Dump diffs on failure
+        if: failure()
+        run: |
+          for f in tests/*.diff tests/*.out tests/*.log; do
+            [ -e "$f" ] || continue
+            echo "===== $f ====="; cat "$f"
+          done
+
+  php86-branch:
+    # setup-php's '8.6' serves a php-src master snapshot, not the PHP-8.6
+    # branch, so this lane builds PHP-8.6 from source (release mode).
+    name: "PHP 8.6 - Linux (PHP-8.6 branch)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PHP_BRANCH: PHP-8.6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install PHP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends autoconf bison re2c pkg-config
+      - name: Build PHP from the PHP-8.6 branch
+        run: |
+          git clone --depth=1 --branch="$PHP_BRANCH" https://github.com/php/php-src.git "$RUNNER_TEMP/php-src"
+          cd "$RUNNER_TEMP/php-src"
+          git log -1 --format='php-src %H (%cd)'
+          ./buildconf --force
+          ./configure --prefix="$RUNNER_TEMP/php" --disable-all --disable-cgi \
+            --disable-phpdbg --enable-cli --enable-pcntl
+          make -j"$(nproc)"
+          make install
+          echo "$RUNNER_TEMP/php/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: |
+          php -v
+          phpize
+          ./configure --with-php-config="$RUNNER_TEMP/php/bin/php-config" --enable-fast-uuid
+          make -j"$(nproc)"
+      - name: Guard against __cpu_model linkage
+        run: |
           if nm modules/fast_uuid.so | grep -qi '__cpu_model\|__cpu_indicator_init'; then
             echo "unexpected __cpu_model / __cpu_indicator_init linkage"; exit 1
           fi
