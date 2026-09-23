@@ -1,5 +1,5 @@
 --TEST--
-Follow-up: codec encode paths accept third-party UuidInterface without getCore
+Codec encode paths accept third-party UuidInterface without getCore
 --EXTENSIONS--
 fast_uuid
 --FILE--
@@ -17,7 +17,7 @@ use FastUuid\Compat\Type\Integer as IntegerObject;
 use FastUuid\Compat\Uuid;
 use FastUuid\Compat\UuidInterface;
 
-// Third-party Ramsey-style implementation: no getCore() by design (CR-005).
+// Third-party Ramsey-style implementation: no getCore().
 final class ForeignUuid implements UuidInterface
 {
     public function __construct(private string $canonical) {}
@@ -60,7 +60,7 @@ var_dump($ord->encodeBinary($f1) === $ord->encodeBinary($w1));
 $g = new \FastUuid\Compat\Guid\Guid($f4);
 var_dump($g->getBytes() === (new \FastUuid\Compat\Guid\Guid($w4))->getBytes());
 var_dump($guid->encodeBinary($g) === $guid->encodeBinary($w4));
-// RV2: non-Stringable object exposing getBytes() never resolves as UUID bytes.
+// A non-Stringable object exposing getBytes() never resolves as UUID bytes.
 $blob = new class($w4->getBytes()) { public function __construct(private string $b) {} public function getBytes(): string { return $this->b; } };
 var_dump($w4->getCore()->equals($blob) === false);
 try {

@@ -29,7 +29,7 @@ foreach ([
     var_dump($threw);
 }
 
-// Parser: right length, bad content — every accepted form rejects a non-hex
+// Parser: right length, bad content. Every accepted form rejects a non-hex
 // digit at a valid position, and an embedded NUL never parses.
 foreach ([
     "6ba7b810-9dad-11d1-80b4-00c04fd430cg",   // canonical, 'g'

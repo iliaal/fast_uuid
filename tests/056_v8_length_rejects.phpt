@@ -1,5 +1,5 @@
 --TEST--
-uuid_v8 and uuid_v8_bin reject 15/17-byte input (CR-022)
+uuid_v8 and uuid_v8_bin reject 15/17-byte input
 --EXTENSIONS--
 fast_uuid
 --FILE--

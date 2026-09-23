@@ -1,5 +1,5 @@
 --TEST--
-Fixed decimal vector for a known v4, both directions (CR-025)
+Fixed decimal vector for a known v4, both directions
 --EXTENSIONS--
 fast_uuid
 --FILE--

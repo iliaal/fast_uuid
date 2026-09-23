@@ -46,8 +46,7 @@ or other extensions.
 - For any change to a parse, format, or generation path, run the suite once more
   against an ASan/UBSan-instrumented build (a `.so` built `-fsanitize=address,undefined`
   loaded by an ASan-instrumented PHP, with `USE_ZEND_ALLOC=0`). A stack overflow
-  or wrong-buffer write can pass a normal build and a passing `.phpt`; only the
-  instrumented run catches it.
+  or wrong-buffer write can pass a normal build and its `.phpt`.
 - Update `CHANGELOG.md` under `[Unreleased]`.
 
 ## Commit and PR style

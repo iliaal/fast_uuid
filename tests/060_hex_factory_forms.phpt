@@ -1,5 +1,5 @@
 --TEST--
-fromHexadecimal malformed-form table (CR-027)
+fromHexadecimal malformed-form table
 --EXTENSIONS--
 fast_uuid
 --FILE--

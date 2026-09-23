@@ -16,7 +16,7 @@ use FastUuid\Compat\Type\Integer as IntegerObject;
  * UuidInterface and \FastUuid\Uuid and throws InvalidArgumentException
  * otherwise (ramsey would TypeError; the C core throws InvalidArgumentException).
  *
- * There is deliberately no getCore(): requiring it breaks third-party Ramsey
+ * There is no getCore(): requiring it would break third-party Ramsey
  * implementations and doubles. AbstractUuid and Guid expose getCore(), and
  * internals resolve any other implementation via its string form.
  */

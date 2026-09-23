@@ -13,9 +13,9 @@ use FastUuid\Exception\InvalidArgumentException;
  * time_hi while leaving clock_seq and node intact. The swap is its own inverse.
  * Mirrors Ramsey\Uuid\Codec\GuidStringCodec.
  *
- * Only the byte array is mixed-endian. A GUID's *string* form is the same text
- * as the RFC one -- .NET's Guid.ToString() and Guid.ToByteArray() disagree on
- * purpose -- so encode()/decode() stay canonical and are inherited.
+ * Only the byte array is mixed-endian. A GUID's string form is the RFC text
+ * (.NET's Guid.ToString() and Guid.ToByteArray() disagree on purpose), so
+ * encode()/decode() stay canonical and are inherited.
  */
 final class GuidStringCodec extends StringCodec
 {

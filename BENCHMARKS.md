@@ -86,10 +86,10 @@ format-then-reparse round trip when the caller wants bytes.
 
 ## Timestamp and DateTime APIs
 
-Generating a v7 from an explicit time, and reading a UUID's timestamp back, used
-to route through `call_user_function` (`getTimestamp()` + `format("u")`, or
-`DateTimeImmutable::createFromFormat`). These now read and write ext/date's
-internal `timelib_time` directly, which is roughly 3x faster, and a new
+Generating a v7 from an explicit time and reading a UUID's timestamp back both
+read and write ext/date's internal `timelib_time` directly, roughly 3x faster
+than calling `getTimestamp()` + `format("u")` or
+`DateTimeImmutable::createFromFormat` through `call_user_function`. The
 integer-millisecond API skips DateTime objects entirely. Same machine and method
 as above; ramsey/uuid 4.9.2 for comparison.
 

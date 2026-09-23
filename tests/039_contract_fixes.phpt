@@ -1,5 +1,5 @@
 --TEST--
-Codex review fixes: exception parent, DateTime micros guard, strict fromHexadecimal, validator length cap, value-object parity, v1<->v6
+Exception parent, DateTime micros guard, strict fromHexadecimal, validator length cap, value-object parity, v1<->v6
 --EXTENSIONS--
 fast_uuid
 --FILE--
@@ -26,7 +26,7 @@ function throws(callable $fn, string $class): bool {
 var_dump(is_a(UnsupportedOperationException::class, LogicException::class, true));
 var_dump(throws(fn() => CoreUuid::uuid4()->getDateTime(), LogicException::class));
 
-// CR-001: a DateTime subclass lying in format('u') is rejected, not silently shifted.
+// A DateTime subclass lying in format('u') is rejected, not silently shifted.
 $lie = new class('@1700000000') extends DateTimeImmutable {
     public function format(string $f): string { return $f === 'u' ? '1000000' : parent::format($f); }
 };

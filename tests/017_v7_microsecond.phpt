@@ -30,7 +30,7 @@ var_dump(ms_of($c) - ms_of($a) === 1);
 
 // Batch path: one clock read for the whole batch, then the monotonic
 // (key, rand_b) counter advances in pure C. Order, uniqueness and the exact
-// +1 counter step are structural — no wall-clock statistics involved.
+// +1 counter step are structural; no wall-clock statistics involved.
 $n = 256;
 $batch = uuid_v7_batch($n);
 var_dump(count($batch) === $n);

@@ -1,5 +1,5 @@
 --TEST--
-equals/compareTo scalar contract on core and compat layers (CR-024; CR-008/CR-015 end state)
+equals/compareTo scalar contract on core and compat layers
 --EXTENSIONS--
 fast_uuid
 --FILE--

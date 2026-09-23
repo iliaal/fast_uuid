@@ -409,8 +409,8 @@ static zend_result fu_lay_clockseq_node(unsigned char *b, const unsigned char *n
     return SUCCESS;
 }
 
-/* lay out a v1 UUID from a Gregorian 100ns timestamp; node (6 bytes) and
-   clockseq (0..0x3fff) optional — pass NULL / -1 to randomize them. */
+/* Lay out a v1 UUID from a Gregorian 100ns timestamp. Pass node = NULL or
+   clockseq = -1 to randomize that field. */
 static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
     uint32_t tl = (uint32_t)(g & 0xffffffffULL);
     uint16_t tm = (uint16_t)((g >> 32) & 0xffff);
@@ -486,8 +486,8 @@ static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int
 
 static zend_result fu_gen_v1(unsigned char *b) { return fu_gen_v1_ex(b, NULL, -1); }
 
-/* lay out a v6 UUID directly: the 60-bit Gregorian timestamp is stored
-   most-significant-first across bytes 0..7, no v1 temp / re-extraction. */
+/* v6 stores the 60-bit Gregorian timestamp most-significant-first across
+   bytes 0..7. */
 static zend_result fu_lay_v6(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
     uint64_t t60 = g & ((1ULL << 60) - 1);
     b[0]=(t60>>52)&0xff; b[1]=(t60>>44)&0xff; b[2]=(t60>>36)&0xff; b[3]=(t60>>28)&0xff;
@@ -1074,7 +1074,6 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
 #if PHP_VERSION_ID >= 80300
                                  zend_zval_value_name(when));
 #else
-                                 /* zend_zval_value_name is 8.3+; 8.1/8.2 use the type-name form */
                                  zend_zval_type_name(when));
 #endif
         RETURN_THROWS();
@@ -1302,8 +1301,8 @@ PHP_METHOD(FastUuid_Uuid, getTimestampMillis) {
 }
 
 PHP_METHOD(FastUuid_Uuid, getFields) {
-    /* ramsey returns a FieldsInterface object; this returns a hex array by
-       design — the compat layer supplies the FieldsInterface shape. */
+    /* ramsey returns a FieldsInterface object; the compat layer supplies
+       that shape, so the core returns a hex array. */
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     array_init(return_value);
@@ -1517,9 +1516,8 @@ PHP_FUNCTION(uuid_v4_bin_batch) {
     if (fu_gen_v4_batch_n(return_value, n, 1) == FAILURE) RETURN_THROWS();
 }
 
-/* v7 batch: one clock_gettime for the whole batch, then advance the
-   monotonic (key, rand_b) counter in pure C — same semantics as n×fu_gen_v7
-   within a single tick, without n syscalls. */
+/* One clock read per batch, then advance the monotonic (key, rand_b)
+   counter: the same output as n fu_gen_v7 calls within one tick. */
 static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
     uint64_t ns;
     if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
@@ -1639,20 +1637,14 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     }
 
 #ifndef PHP_WIN32
-    /* Fork-safety for the batched CSPRNG buffer. Registered once per process;
-       the handler pointer lives as long as the .so, which for an
-       extension=-loaded (persistent) module is the whole process lifetime.
-       Guard against a second MINIT (e.g. dl() after a static load) so we don't
-       stack duplicate handlers. There is no unregister API: glibc drops a
-       DSO's atfork handlers at dlclose, musl does NOT — on musl, unloading
-       this .so (dl() teardown) leaves a dangling handler and the next fork()
-       crashes. Load via extension=, not dl(), on musl/Alpine. */
+    /* Register once per process; a second MINIT (dl() after a static load)
+       must not stack duplicate handlers. There is no unregister API: glibc
+       drops a DSO's atfork handlers at dlclose, musl does not, so unloading a
+       dl()-loaded copy on musl leaves a dangling handler. */
     static int atfork_registered = 0;
     if (!atfork_registered) {
-        /* Only latch on success so a subsequent MINIT can retry. A failed
-           registration (ENOMEM at startup) leaves forked children sharing
-           generator state, so fork()+generate is unsafe afterwards; signal
-           it loudly at load rather than duplicating UUIDs silently. */
+        /* Latch only on success so a later MINIT can retry. Without the
+           handler, forked children share generator state; warn at load. */
         if (pthread_atfork(NULL, NULL, fu_atfork_child) == 0) {
             atfork_registered = 1;
         } else {
@@ -1660,9 +1652,8 @@ PHP_MINIT_FUNCTION(fast_uuid) {
                 "fast_uuid: pthread_atfork registration failed; forked children may duplicate UUID output");
         }
 #if defined(__linux__) && !defined(__GLIBC__)
-        /* musl keeps a DSO's atfork handlers across dlclose: a dl()-loaded
-           (MODULE_TEMPORARY) copy leaves a dangling handler after teardown
-           and the next fork() crashes. Loud at load, not at fork. */
+        /* musl keeps atfork handlers across dlclose, so a dl()-loaded copy
+           crashes the next fork() after unload. Warn at load. */
         if (fast_uuid_module_entry.type == MODULE_TEMPORARY) {
             php_error_docref(NULL, E_WARNING,
                 "fast_uuid: dl() loading is unsupported on this libc (dangling atfork handler after unload); use extension= instead");

@@ -34,7 +34,7 @@ final class Guid implements UuidInterface
 
     /**
      * Core handle for the inner UUID. Resolves via bytes so foreign
-     * implementations without getCore() (CR-005) work as inners.
+     * implementations without getCore() work as inners.
      */
     public function getCore(): \FastUuid\Uuid
     {

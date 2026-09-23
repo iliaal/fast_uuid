@@ -1,5 +1,5 @@
 --TEST--
-Review fixes: presentation codec survives a serialize round trip (CR-021), procedural name cap (CR-023)
+Presentation codec survives a serialize round trip; procedural name cap
 --EXTENSIONS--
 fast_uuid
 --INI--

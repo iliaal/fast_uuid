@@ -1,5 +1,5 @@
 --TEST--
-Core fromString/isValid on composed wrapper forms (CR-026)
+Core fromString/isValid on composed wrapper forms
 --EXTENSIONS--
 fast_uuid
 --FILE--

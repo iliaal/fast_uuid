@@ -1,5 +1,5 @@
 --TEST--
-Direct wrapper construction always validates its core (CR-003)
+Direct wrapper construction always validates its core
 --EXTENSIONS--
 fast_uuid
 --FILE--

@@ -1,5 +1,5 @@
 --TEST--
-C-vs-compat decode-vector mirror incl. version nibbles (CR-020)
+C-vs-compat decode-vector mirror incl. version nibbles
 --EXTENSIONS--
 fast_uuid
 --FILE--

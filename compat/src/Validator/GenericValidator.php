@@ -17,9 +17,8 @@ namespace FastUuid\Compat\Validator;
  * NonstandardValidator. For the more permissive core parser (additionally
  * bare 32-hex, no nibble constraints) see \FastUuid\Uuid::isValid().
  *
- * getPattern() returns the INNER canonical grammar only: validate()
- * additionally strips wrappers before matching, so wrapper input validates
- * while matching the pattern only after unwrapping.
+ * getPattern() returns the inner canonical grammar only; validate() strips
+ * wrappers before matching against it.
  */
 class GenericValidator implements ValidatorInterface
 {

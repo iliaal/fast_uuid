@@ -17,7 +17,7 @@ function throws(callable $fn, string $class = IAE::class): bool {
     try { $fn(); return false; } catch (\Throwable $e) { return $e instanceof $class; }
 }
 
-// --- CR-007: inspecting a provider must NOT register it as custom -----------
+// --- inspecting a provider must NOT register it as custom ---
 $f = new UuidFactory();
 $f->getNodeProvider();   // inspect only
 $f->getTimeGenerator();
@@ -35,7 +35,7 @@ $f2->setNodeProvider(new class implements NodeProviderInterface {
 });
 var_dump(substr(bin2hex($f2->uuid1()->getBytes()), 20) === 'aabbccddeeff');
 
-// --- CR-008: unserialize validates wrapper class against the bytes ----------
+// --- unserialize validates wrapper class against the bytes ---
 $factory = new UuidFactory();
 $v4 = $factory->uuid4();
 $ser = serialize($v4);

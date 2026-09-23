@@ -1,5 +1,5 @@
 --TEST--
-Compat contract regressions from review findings
+Compat contract: Guid codec round trips, name-based vectors, validator wrapper grammar
 --EXTENSIONS--
 fast_uuid
 --FILE--

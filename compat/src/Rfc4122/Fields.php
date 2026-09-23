@@ -87,7 +87,7 @@ final class Fields implements FieldsInterface
         // Hex strings preserve all 60 bits on 32-bit PHP; hexdec()+shifts do not.
         if ($v === 6) {
             // v6: most-significant first across bytes 0..7, version nibble at
-            // hex offset 12 — concat the 48 high bits with the 12 low bits.
+            // hex offset 12; concat the 48 high bits with the 12 low bits.
             $hex = bin2hex(substr($b, 0, 8));
             return new Hexadecimal(substr($hex, 0, 12) . substr($hex, 13, 3));
         }

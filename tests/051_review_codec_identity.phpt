@@ -1,5 +1,5 @@
 --TEST--
-Review fixes: codec identity, serialize bytes, custom v7 RNG, ConstructionToken, name cap
+Codec identity, serialize bytes, custom v7 RNG, ConstructionToken, name cap
 --EXTENSIONS--
 fast_uuid
 --FILE--
@@ -43,7 +43,7 @@ $back = unserialize($ser);
 var_dump($back->equals($fixed));
 var_dump(strlen($fixed->serialize()) === 16);
 
-// --- ConstructionToken::Trusted no longer skips assert (CR-003) ---
+// --- ConstructionToken::Trusted does not skip the wrapper check ---
 $v1 = Uuid::uuid1();
 $threw = false;
 try {

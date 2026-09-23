@@ -16,7 +16,7 @@ $upper = strtoupper($s);
 $urn = 'urn:uuid:' . $s;
 $urnBraced = 'urn:uuid:{' . $s . '}';
 $badUrn = 'urn:' . $s;
-$badWrappedUrn = '{urn:uuid:' . $s . '}'; // composed wrapper of a VALID uuid: accepted (fu-cus)
+$badWrappedUrn = '{urn:uuid:' . $s . '}'; // composed wrapper of a VALID uuid: accepted
 $badComposed = '{urn:uuid:nope}';         // composed wrapper of garbage: rejected
 $braced = '{' . $s . '}';
 $futureVariant = 'a1b2c3d4-e5f6-4718-f93a-4b5c6d7e8f90';
@@ -30,11 +30,11 @@ var_dump((new GenericValidator())->validate(Uuid::NIL));
 var_dump((new GenericValidator())->validate('nope') === false);
 var_dump((new GenericValidator())->validate($bare) === false);
 var_dump((new GenericValidator())->validate($badUrn) === false);
-// composed wrapper forms mirror the C parser (fu-cus)
+// composed wrapper forms mirror the C parser
 var_dump((new GenericValidator())->validate($badWrappedUrn));
 var_dump((new GenericValidator())->validate($badComposed) === false);
 var_dump((new GenericValidator())->validate('a1b2c3d4-e5f6-4718-893a-4b5c6d7e8fg0') === false);
-// CR-011 distinction: Generic enforces RFC variant nibbles (8/9/a/b), so a
+// Generic enforces RFC variant nibbles (8/9/a/b), so a
 // future-variant UUID is rejected here but accepted by Nonstandard below.
 var_dump((new GenericValidator())->validate($futureVariant) === false);
 
@@ -44,7 +44,7 @@ var_dump((new NonstandardValidator())->validate($urn));
 var_dump((new NonstandardValidator())->validate($urnBraced));
 var_dump((new NonstandardValidator())->validate($bare) === false);
 var_dump((new NonstandardValidator())->validate($badUrn) === false);
-// NonstandardValidator shares GenericValidator's wrapper grammar (fu-cus)
+// NonstandardValidator shares GenericValidator's wrapper grammar
 var_dump((new NonstandardValidator())->validate($badWrappedUrn));
 var_dump((new NonstandardValidator())->validate($badComposed) === false);
 var_dump((new NonstandardValidator())->validate($futureVariant));

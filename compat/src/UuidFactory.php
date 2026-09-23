@@ -31,14 +31,13 @@ use FastUuid\Compat\Validator\ValidatorInterface;
  * Generates and parses UUIDs by delegating to the fast_uuid C core, then wraps
  * each handle in the ramsey-shaped subclass matching its version and variant.
  *
- * The fast path is pure C. Swapping in a RandomGeneratorInterface,
- * TimeGeneratorInterface or NodeProviderInterface intentionally routes off the
- * C fast path where needed (ramsey-compat behaviour) so application-supplied
- * generators win for uuid1/uuid4/uuid6 and node providers also feed uuid2.
+ * The fast path is pure C. Setting a custom RandomGeneratorInterface,
+ * TimeGeneratorInterface or NodeProviderInterface routes the affected
+ * factories off it (ramsey behaviour): generators feed uuid1/uuid4/uuid6, and
+ * node providers also feed uuid2.
  *
- * Entropy ownership: once a custom provider is swapped in, the UUID bits it
- * feeds rest entirely on that provider's entropy — the C CSPRNG is bypassed
- * for those paths. Do not swap in a non-cryptographic generator for
+ * A custom provider owns the entropy of the bits it feeds; the C CSPRNG is
+ * bypassed on those paths. Do not use a non-cryptographic generator for
  * secrecy-sensitive IDs.
  */
 class UuidFactory implements UuidFactoryInterface

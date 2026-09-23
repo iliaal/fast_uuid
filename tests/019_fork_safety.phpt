@@ -1,5 +1,5 @@
 --TEST--
-CSPRNG buffer and xoshiro state are not shared across fork() (CR-001)
+CSPRNG buffer and xoshiro state are not shared across fork()
 --EXTENSIONS--
 fast_uuid
 --SKIPIF--

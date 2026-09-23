@@ -1,5 +1,5 @@
 --TEST--
-Core contract regressions from review findings
+Core contract: non-RFC variants, fromInteger and uuid2 range checks, parser rejections
 --EXTENSIONS--
 fast_uuid
 --FILE--

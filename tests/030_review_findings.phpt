@@ -1,5 +1,5 @@
 --TEST--
-Review finding regressions: non-RFC version and 32-bit timestamp handling
+Non-RFC version and 32-bit timestamp handling
 --EXTENSIONS--
 fast_uuid
 --FILE--

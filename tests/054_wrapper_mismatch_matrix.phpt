@@ -1,5 +1,5 @@
 --TEST--
-Wrapper version-binding guard over every wrapper class (CR-014)
+Wrapper version-binding guard over every wrapper class
 --EXTENSIONS--
 fast_uuid
 --FILE--
