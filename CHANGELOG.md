@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- UUID object resolution now ignores incompatible optional `getCore()` / `getBytes()` signatures, honors compatible supertypes and nested DNF declarations, and resolves foreign compatibility namespaces independently of the active presentation codec.
+- Custom time and random-generator paths now validate node / clock-sequence inputs and preserve native UUIDv7 `DateTimeInterface` timestamp semantics without 32-bit millisecond overflow.
+
 ## [0.7.0] - 2026-09-03
 
 ### Fixed

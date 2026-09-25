@@ -654,6 +654,73 @@ static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
    Returns 0 on a non-match or unparseable value; on a throwing accessor it
    leaves EG(exception) set, which the caller must honor rather than
    overwrite. */
+#if PHP_VERSION_ID >= 80300
+# define FU_TYPE_HAS_LITERAL_NAME(t) ZEND_TYPE_HAS_LITERAL_NAME(t)
+#else
+# define FU_TYPE_HAS_LITERAL_NAME(t) 0
+#endif
+
+static int fu_type_may_return(
+    zend_type type, zend_class_entry *scope, uint32_t allowed_types, zend_class_entry *required_class) {
+    if (ZEND_TYPE_HAS_LIST(type)) {
+        zend_type *part;
+        ZEND_TYPE_FOREACH(type, part) {
+            int compatible = fu_type_may_return(*part, scope, allowed_types, required_class);
+            if (ZEND_TYPE_IS_INTERSECTION(type)) {
+                if (!compatible) return 0;
+            } else if (compatible) {
+                return 1;
+            }
+        } ZEND_TYPE_FOREACH_END();
+        return ZEND_TYPE_IS_INTERSECTION(type);
+    }
+    if (!ZEND_TYPE_HAS_NAME(type) && !FU_TYPE_HAS_LITERAL_NAME(type)) {
+        return (ZEND_TYPE_PURE_MASK(type) & allowed_types) != 0;
+    }
+    if (!required_class) return 0;
+
+    zend_string *name = ZEND_TYPE_HAS_NAME(type) ? ZEND_TYPE_NAME(type) : NULL;
+    const char *name_str = name ? ZSTR_VAL(name) : ZEND_TYPE_LITERAL_NAME(type);
+    size_t name_len = name ? ZSTR_LEN(name) : strlen(name_str);
+    if (name_len == ZSTR_LEN(required_class->name)
+        && zend_binary_strcasecmp(
+            name_str, name_len, ZSTR_VAL(required_class->name), ZSTR_LEN(required_class->name)) == 0) {
+        return 1;
+    }
+    zend_class_entry *candidate = NULL;
+    if (name && (zend_string_equals_literal(name, "self") || zend_string_equals_literal(name, "static"))) {
+        candidate = scope;
+    } else if (name && zend_string_equals_literal(name, "parent")) {
+        candidate = scope ? scope->parent : NULL;
+    } else {
+        zend_string *key;
+        ZEND_HASH_FOREACH_STR_KEY_PTR(EG(class_table), key, candidate) {
+            if (zend_binary_strcasecmp(ZSTR_VAL(key), ZSTR_LEN(key), name_str, name_len) == 0) break;
+            candidate = NULL;
+        } ZEND_HASH_FOREACH_END();
+    }
+    return candidate && (instanceof_function(required_class, candidate)
+        || instanceof_function(candidate, required_class));
+}
+#undef FU_TYPE_HAS_LITERAL_NAME
+
+static int fu_method_may_return(
+    const zend_function *method, uint32_t allowed_types, zend_class_entry *required_class) {
+    if (!(method->common.fn_flags & ZEND_ACC_HAS_RETURN_TYPE)) return 1;
+    return fu_type_may_return(
+        method->common.arg_info[-1].type, method->common.scope, allowed_types, required_class);
+}
+
+static int fu_has_zero_arg_method(
+    zend_class_entry *ce, const char *name, size_t name_len, uint32_t allowed_return_types,
+    zend_class_entry *required_class) {
+    const zend_function *method = zend_hash_str_find_ptr(&ce->function_table, name, name_len);
+    return method != NULL
+        && method->common.required_num_args == 0
+        && (method->common.fn_flags & (ZEND_ACC_PUBLIC | ZEND_ACC_ABSTRACT | ZEND_ACC_STATIC)) == ZEND_ACC_PUBLIC
+        && fu_method_may_return(method, allowed_return_types, required_class);
+}
+
 static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
     if (Z_TYPE_P(z) == IS_OBJECT) {
         zend_class_entry *ce = Z_OBJCE_P(z);
@@ -661,7 +728,9 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
             memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
             return 1;
         }
-        if (zend_hash_str_exists(&ce->function_table, "getcore", sizeof("getcore") - 1)) {
+        if (fu_has_zero_arg_method(
+                ce, "getcore", sizeof("getcore") - 1,
+                MAY_BE_OBJECT | MAY_BE_STATIC, fast_uuid_ce)) {
             zval zv, fn, ret;
             ZVAL_OBJ(&zv, Z_OBJ_P(z));
             ZVAL_STRING(&fn, "getCore");
@@ -682,7 +751,9 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
            Gated on Stringable so arbitrary objects exposing getBytes()
            (blobs, buffers) never resolve as UUIDs. */
         if (instanceof_function(ce, zend_ce_stringable)
-            && zend_hash_str_exists(&ce->function_table, "getbytes", sizeof("getbytes") - 1)) {
+            && fu_has_zero_arg_method(
+                ce, "getbytes", sizeof("getbytes") - 1,
+                MAY_BE_STRING, NULL)) {
             zval zv, fn, ret;
             ZVAL_OBJ(&zv, Z_OBJ_P(z));
             ZVAL_STRING(&fn, "getBytes");
