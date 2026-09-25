@@ -113,14 +113,8 @@ abstract class AbstractUuid implements UuidInterface
 
     private static function coreOf(UuidInterface $other): \FastUuid\Uuid
     {
-        if (\method_exists($other, 'getCore')) {
-            $core = $other->getCore();
-            if ($core instanceof \FastUuid\Uuid) {
-                return $core;
-            }
-        }
         try {
-            return \FastUuid\Uuid::fromString($other->toString());
+            return WrapperClass::coreFrom($other);
         } catch (\FastUuid\Exception\InvalidArgumentException $e) {
             throw new \FastUuid\Exception\InvalidArgumentException(
                 'Not comparable: UUID string form is unparseable',

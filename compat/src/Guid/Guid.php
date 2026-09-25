@@ -38,7 +38,7 @@ final class Guid implements UuidInterface
      */
     public function getCore(): \FastUuid\Uuid
     {
-        return \FastUuid\Uuid::fromBytes(WrapperClass::coreBytes($this->uuid));
+        return WrapperClass::coreFrom($this->uuid);
     }
 
     /** Mixed-endian (GUID-ordered) raw bytes. */
