@@ -1,0 +1,56 @@
+name: Build PHP for macOS 14
+description: Build pinned NTS release PHP without Homebrew PHP bottles.
+inputs:
+  php-version:
+    description: PHP release series (8.4 or 8.5).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install build tools
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+      run: brew install autoconf pkgconf
+    - name: Build PHP
+      shell: bash
+      env:
+        PHP_SERIES: ${{ inputs.php-version }}
+        MACOSX_DEPLOYMENT_TARGET: '14.0'
+      run: |
+        set -euo pipefail
+        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_PATH:?}" "${GITHUB_ENV:?}"
+        case "${PHP_SERIES}" in
+          8.4)
+            version=8.4.26
+            sha256=c248abaebc4bb777b80968f0760da0da8e989836e896c9ff637b6775d7d37662
+            ;;
+          8.5)
+            version=8.5.11
+            sha256=338630ba9450f0b938bef8d740162c61c33bf64a1b421c6333c01df8a9fdb0ab
+            ;;
+          *)
+            printf 'Unsupported PHP series: %s\n' "${PHP_SERIES}" >&2
+            exit 1
+            ;;
+        esac
+        build_dir=$(mktemp -d "${RUNNER_TEMP}/php-build.XXXXXX")
+        prefix="${RUNNER_TEMP}/php-${version}"
+        cd "${build_dir}"
+        curl --fail --silent --show-error --location --retry 3 \
+          --output php.tar.gz "https://www.php.net/distributions/php-${version}.tar.gz"
+        printf '%s  php.tar.gz\n' "${sha256}" | shasum -a 256 --check
+        tar -xzf php.tar.gz
+        cd "php-${version}"
+        ./configure --prefix="${prefix}" --disable-all --disable-cgi \
+          --disable-phpdbg --enable-cli --enable-pcntl
+        jobs=$(getconf _NPROCESSORS_ONLN)
+        make -j"${jobs}"
+        make install
+        "${prefix}/bin/php" -v
+        "${prefix}/bin/php" -r 'exit(PHP_DEBUG || PHP_ZTS ? 1 : 0);'
+        "${prefix}/bin/phpize" --version
+        installed_version=$("${prefix}/bin/php-config" --version)
+        test "${installed_version}" = "${version}"
+        printf '%s/bin\n' "${prefix}" >>"${GITHUB_PATH}"
+        printf 'MACOSX_DEPLOYMENT_TARGET=14.0\n' >>"${GITHUB_ENV}"
