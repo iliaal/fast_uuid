@@ -58,3 +58,4 @@ _inspect/
 # local build/test artifacts
 /php_test_results_*.txt
 config.h.in~
+.worktrees
