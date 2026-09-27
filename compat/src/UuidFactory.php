@@ -452,6 +452,11 @@ class UuidFactory implements UuidFactoryInterface
             }
         } else {
             $seconds = $dateTime->getTimestamp();
+            if (!\is_int($seconds)) {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'DateTime getTimestamp() must return an int'
+                );
+            }
             if ($seconds < 0) {
                 throw new \FastUuid\Exception\InvalidArgumentException(
                     'uuid7 does not support dates before 1970-01-01'

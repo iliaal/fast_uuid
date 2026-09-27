@@ -19,13 +19,15 @@ final class FixedTenBytes implements RandomGeneratorInterface
     }
 }
 
-function rejectsV7(callable $call): bool
+function rejectsV7(callable $call, ?string $message = null): bool
 {
     try {
         $call();
         return false;
-    } catch (InvalidArgumentException) {
-        return true;
+    } catch (InvalidArgumentException $exception) {
+        return $message === null || $exception->getMessage() === $message;
+    } catch (Throwable) {
+        return false;
     }
 }
 
@@ -49,6 +51,21 @@ foreach ([$badMicroseconds, $badTimestamp] as $dateTime) {
     var_dump(rejectsV7(fn() => $default->uuid7($dateTime)));
     var_dump(rejectsV7(fn() => $factory->uuid7($dateTime)));
     var_dump(rejectsV7(fn() => CompatUuid::uuid7($dateTime)));
+}
+
+$nonIntegerTimestamp = new class('@1700000000.123456') extends DateTimeImmutable {
+    public mixed $timestamp;
+
+    #[ReturnTypeWillChange]
+    public function getTimestamp() { return $this->timestamp; }
+};
+foreach (['1700000000', 1700000000.5, true, null] as $timestamp) {
+    $nonIntegerTimestamp->timestamp = $timestamp;
+    $message = 'DateTime getTimestamp() must return an int';
+    var_dump(rejectsV7(fn() => FastUuid\Uuid::uuid7($nonIntegerTimestamp), $message));
+    var_dump(rejectsV7(fn() => $default->uuid7($nonIntegerTimestamp), $message));
+    var_dump(rejectsV7(fn() => $factory->uuid7($nonIntegerTimestamp), $message));
+    var_dump(rejectsV7(fn() => CompatUuid::uuid7($nonIntegerTimestamp), $message));
 }
 
 $valid = new DateTimeImmutable('@1700000000.123456');
@@ -86,6 +103,22 @@ else {
 }
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

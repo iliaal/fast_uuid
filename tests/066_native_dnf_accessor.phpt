@@ -66,8 +66,25 @@ var_dump((new StringCodec())->encodeBinary($foreign) === $coreBytes);
 var_dump((new Guid($foreign))->getBytes() === (string) hex2bin('10b8a76bad9dd11180b400c04fd430c8'));
 var_dump($factory->uuid3($foreign, $name)->getCore()->toString() === $expected3);
 var_dump($factory->uuid5($foreign, $name)->getCore()->toString() === $expected5);
+
+$scalarArm = new class implements \FastUuid\UuidInterface {
+    public function getBytes(): (Stringable&JsonSerializable)|string
+    {
+        return (string) hex2bin('6ba7b8109dad11d180b400c04fd430c8');
+    }
+    public function __toString(): string { return '00112233-4455-4677-8899-aabbccddeeff'; }
+    public function jsonSerialize(): string { return $this->__toString(); }
+};
+var_dump($core->equals($scalarArm));
+var_dump($core->compareTo($scalarArm) === 0);
+var_dump(\FastUuid\Uuid::uuid3($scalarArm, $name)->toString() === $expected3);
+var_dump(\FastUuid\Uuid::uuid5($scalarArm, $name)->toString() === $expected5);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

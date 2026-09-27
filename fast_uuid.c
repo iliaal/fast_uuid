@@ -662,6 +662,7 @@ static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
 
 static int fu_type_may_return(
     zend_type type, zend_class_entry *scope, uint32_t allowed_types, zend_class_entry *required_class) {
+    if (ZEND_TYPE_PURE_MASK(type) & allowed_types) return 1;
     if (ZEND_TYPE_HAS_LIST(type)) {
         zend_type *part;
         ZEND_TYPE_FOREACH(type, part) {
@@ -675,7 +676,7 @@ static int fu_type_may_return(
         return ZEND_TYPE_IS_INTERSECTION(type);
     }
     if (!ZEND_TYPE_HAS_NAME(type) && !FU_TYPE_HAS_LITERAL_NAME(type)) {
-        return (ZEND_TYPE_PURE_MASK(type) & allowed_types) != 0;
+        return 0;
     }
     if (!required_class) return 0;
 
@@ -730,7 +731,7 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
         }
         if (fu_has_zero_arg_method(
                 ce, "getcore", sizeof("getcore") - 1,
-                MAY_BE_OBJECT | MAY_BE_STATIC, fast_uuid_ce)) {
+                MAY_BE_OBJECT, fast_uuid_ce)) {
             zval zv, fn, ret;
             ZVAL_OBJ(&zv, Z_OBJ_P(z));
             ZVAL_STRING(&fn, "getCore");
