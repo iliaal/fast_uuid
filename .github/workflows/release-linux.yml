@@ -48,6 +48,10 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
 
+      - name: Select built PHP
+        if: runner.os == 'macOS'
+        run: echo "$RUNNER_TEMP/fastuuid-php/bin" >> "$GITHUB_PATH"
+
       - name: Build and upload prebuilt binary
         if: github.event_name == 'release'
         uses: php/pie-ext-binary-builder@cbe134360897f23793f23c2edc7602261d205a25 # 0.0.4

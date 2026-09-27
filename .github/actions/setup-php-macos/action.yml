@@ -19,7 +19,7 @@ runs:
         MACOSX_DEPLOYMENT_TARGET: '14.0'
       run: |
         set -euo pipefail
-        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_PATH:?}" "${GITHUB_ENV:?}"
+        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}"
         case "${PHP_SERIES}" in
           8.4)
             version=8.4.26
@@ -35,7 +35,7 @@ runs:
             ;;
         esac
         build_dir=$(mktemp -d "${RUNNER_TEMP}/php-build.XXXXXX")
-        prefix="${RUNNER_TEMP}/php-${version}"
+        prefix="${RUNNER_TEMP}/fastuuid-php"
         cd "${build_dir}"
         curl --fail --silent --show-error --location --retry 3 \
           --output php.tar.gz "https://www.php.net/distributions/php-${version}.tar.gz"
@@ -52,5 +52,4 @@ runs:
         "${prefix}/bin/phpize" --version
         installed_version=$("${prefix}/bin/php-config" --version)
         test "${installed_version}" = "${version}"
-        printf '%s/bin\n' "${prefix}" >>"${GITHUB_PATH}"
         printf 'MACOSX_DEPLOYMENT_TARGET=14.0\n' >>"${GITHUB_ENV}"

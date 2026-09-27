@@ -225,6 +225,8 @@ jobs:
         uses: ./.github/actions/setup-php-macos
         with:
           php-version: ${{ matrix.php }}
+      - name: Select built PHP
+        run: echo "$RUNNER_TEMP/fastuuid-php/bin" >> "$GITHUB_PATH"
       - name: Build and test
         run: |
           phpize
