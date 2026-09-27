@@ -65,18 +65,79 @@ final class WrapperClass
         return new $class($core, $codec, ConstructionToken::Trusted);
     }
 
-    /**
-     * Without getCore(), the string form must be canonical RFC text;
-     * codec-shaped text requires its owning codec's decode().
-     */
+    private static function returnTypeMayBeCore(
+        \ReflectionType $type,
+        string $declaringClass,
+    ): bool {
+        if ($type instanceof \ReflectionUnionType) {
+            foreach ($type->getTypes() as $part) {
+                if (self::returnTypeMayBeCore($part, $declaringClass)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if ($type instanceof \ReflectionIntersectionType) {
+            foreach ($type->getTypes() as $part) {
+                if (!$part instanceof \ReflectionNamedType
+                    || !self::namedTypeMayBeCore($part->getName(), $declaringClass)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (!$type instanceof \ReflectionNamedType) {
+            return true;
+        }
+        if ($type->isBuiltin()) {
+            return $type->getName() === 'mixed' || $type->getName() === 'object';
+        }
+        return self::namedTypeMayBeCore($type->getName(), $declaringClass);
+    }
+
+    private static function namedTypeMayBeCore(string $name, string $declaringClass): bool
+    {
+        if ($name === 'self' || $name === 'static') {
+            $name = $declaringClass;
+        } elseif ($name === 'parent') {
+            $name = \get_parent_class($declaringClass) ?: '';
+        }
+
+        if ($name === '' || $name === \FastUuid\Uuid::class) return $name !== '';
+        if (!\class_exists($name, false) && !\interface_exists($name, false)) return false;
+
+        return \is_a($name, \FastUuid\Uuid::class, true)
+            || \is_a(\FastUuid\Uuid::class, $name, true);
+    }
+
     public static function coreBytes(UuidInterface $uuid): string
     {
+        return self::coreFrom($uuid)->getBytes();
+    }
+
+    /** Resolve a UUID's network-order core without treating an incompatible
+        optional getCore() name collision as the accessor protocol. */
+    public static function coreFrom(UuidInterface $uuid): \FastUuid\Uuid
+    {
         if (\method_exists($uuid, 'getCore')) {
-            $core = $uuid->getCore();
-            if ($core instanceof \FastUuid\Uuid) {
-                return $core->getBytes();
+            $method = new \ReflectionMethod($uuid, 'getCore');
+            if ($method->isPublic()
+                && !$method->isStatic()
+                && $method->getNumberOfRequiredParameters() === 0) {
+                $returnType = $method->getReturnType();
+                if ($returnType !== null && !self::returnTypeMayBeCore(
+                    $returnType,
+                    $method->getDeclaringClass()->getName(),
+                )) {
+                    return \FastUuid\Uuid::fromString($uuid->toString());
+                }
+                $core = $uuid->getCore();
+                if ($core instanceof \FastUuid\Uuid) {
+                    return $core;
+                }
             }
         }
-        return \FastUuid\Uuid::fromString($uuid->toString())->getBytes();
+
+        return \FastUuid\Uuid::fromString($uuid->toString());
     }
 }
