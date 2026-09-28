@@ -640,9 +640,9 @@ static int fu_from_decimal(const char *s, size_t len, unsigned char out[16]) {
 
 static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
     if (UNEXPECTED(EG(exception))) return; /* CSPRNG failure during generation */
-    object_init_ex(rv, fast_uuid_ce);
-    fu_obj *u = fu_from_zobj(Z_OBJ_P(rv));
-    memcpy(u->b, b, 16);
+    zend_object *o = fu_create(fast_uuid_ce);
+    memcpy(fu_from_zobj(o)->b, b, 16);
+    ZVAL_OBJ(rv, o);
 }
 
 /* Resolve a UUID-valued argument (namespace, equals, compareTo) to 16 bytes.
@@ -694,11 +694,10 @@ static int fu_type_may_return(
     } else if (name && zend_string_equals_literal(name, "parent")) {
         candidate = scope ? scope->parent : NULL;
     } else {
-        zend_string *key;
-        ZEND_HASH_FOREACH_STR_KEY_PTR(EG(class_table), key, candidate) {
-            if (zend_binary_strcasecmp(ZSTR_VAL(key), ZSTR_LEN(key), name_str, name_len) == 0) break;
-            candidate = NULL;
-        } ZEND_HASH_FOREACH_END();
+        /* NO_AUTOLOAD: a type name must never trigger the autoloader from here */
+        zend_string *lookup = name ? zend_string_copy(name) : zend_string_init(name_str, name_len, 0);
+        candidate = zend_lookup_class_ex(lookup, NULL, ZEND_FETCH_CLASS_NO_AUTOLOAD);
+        zend_string_release(lookup);
     }
     return candidate && (instanceof_function(required_class, candidate)
         || instanceof_function(candidate, required_class));
@@ -712,14 +711,17 @@ static int fu_method_may_return(
         method->common.arg_info[-1].type, method->common.scope, allowed_types, required_class);
 }
 
-static int fu_has_zero_arg_method(
+static zend_function *fu_find_zero_arg_method(
     zend_class_entry *ce, const char *name, size_t name_len, uint32_t allowed_return_types,
     zend_class_entry *required_class) {
-    const zend_function *method = zend_hash_str_find_ptr(&ce->function_table, name, name_len);
-    return method != NULL
+    zend_function *method = zend_hash_str_find_ptr(&ce->function_table, name, name_len);
+    if (method != NULL
         && method->common.required_num_args == 0
         && (method->common.fn_flags & (ZEND_ACC_PUBLIC | ZEND_ACC_ABSTRACT | ZEND_ACC_STATIC)) == ZEND_ACC_PUBLIC
-        && fu_method_may_return(method, allowed_return_types, required_class);
+        && fu_method_may_return(method, allowed_return_types, required_class)) {
+        return method;
+    }
+    return NULL;
 }
 
 static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
@@ -729,21 +731,18 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
             memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
             return 1;
         }
-        if (fu_has_zero_arg_method(
-                ce, "getcore", sizeof("getcore") - 1,
-                MAY_BE_OBJECT, fast_uuid_ce)) {
-            zval zv, fn, ret;
-            ZVAL_OBJ(&zv, Z_OBJ_P(z));
-            ZVAL_STRING(&fn, "getCore");
+        zend_function *fn = fu_find_zero_arg_method(
+            ce, "getcore", sizeof("getcore") - 1, MAY_BE_OBJECT, fast_uuid_ce);
+        if (fn) {
+            zval ret;
             ZVAL_UNDEF(&ret);
-            if (call_user_function(NULL, &zv, &fn, &ret, 0, NULL) == SUCCESS && !EG(exception)
+            zend_call_known_instance_method(fn, Z_OBJ_P(z), &ret, 0, NULL);
+            if (!EG(exception)
                 && Z_TYPE(ret) == IS_OBJECT && instanceof_function(Z_OBJCE(ret), fast_uuid_ce)) {
-                memcpy(ns, fu_from_zobj(Z_OBJ_P(&ret))->b, 16);
-                zval_ptr_dtor(&fn);
+                memcpy(ns, fu_from_zobj(Z_OBJ(ret))->b, 16);
                 zval_ptr_dtor(&ret);
                 return 1;
             }
-            zval_ptr_dtor(&fn);
             if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
             if (EG(exception)) return 0;
         }
@@ -751,22 +750,19 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
            network-order bytes; take them directly, never via toString().
            Gated on Stringable so arbitrary objects exposing getBytes()
            (blobs, buffers) never resolve as UUIDs. */
-        if (instanceof_function(ce, zend_ce_stringable)
-            && fu_has_zero_arg_method(
-                ce, "getbytes", sizeof("getbytes") - 1,
-                MAY_BE_STRING, NULL)) {
-            zval zv, fn, ret;
-            ZVAL_OBJ(&zv, Z_OBJ_P(z));
-            ZVAL_STRING(&fn, "getBytes");
+        fn = instanceof_function(ce, zend_ce_stringable)
+            ? fu_find_zero_arg_method(ce, "getbytes", sizeof("getbytes") - 1, MAY_BE_STRING, NULL)
+            : NULL;
+        if (fn) {
+            zval ret;
             ZVAL_UNDEF(&ret);
-            if (call_user_function(NULL, &zv, &fn, &ret, 0, NULL) == SUCCESS && !EG(exception)
+            zend_call_known_instance_method(fn, Z_OBJ_P(z), &ret, 0, NULL);
+            if (!EG(exception)
                 && Z_TYPE(ret) == IS_STRING && Z_STRLEN(ret) == 16) {
                 memcpy(ns, Z_STRVAL(ret), 16);
-                zval_ptr_dtor(&fn);
                 zval_ptr_dtor(&ret);
                 return 1;
             }
-            zval_ptr_dtor(&fn);
             if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
             if (EG(exception)) return 0;
         }
@@ -1481,15 +1477,14 @@ static zend_result fu_batch_count_arg(zend_long count, uint32_t *out) {
     return SUCCESS;
 }
 
-static void fu_add_next_formatted(zval *array, const unsigned char b[16]) {
+static zend_always_inline zend_string *fu_uuid_zstr(const unsigned char b[16], int as_bytes) {
+    if (as_bytes) {
+        return zend_string_init((const char *)b, 16, 0);
+    }
     zend_string *s = zend_string_alloc(36, 0);
     fu_format36(b, ZSTR_VAL(s));
     ZSTR_VAL(s)[36] = '\0';
-    add_next_index_str(array, s);
-}
-
-static void fu_add_next_bytes(zval *array, const unsigned char b[16]) {
-    add_next_index_stringl(array, (const char *)b, 16);
+    return s;
 }
 
 PHP_FUNCTION(uuid_v1) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v1(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
@@ -1555,21 +1550,29 @@ PHP_FUNCTION(uuid_v8_bin) {
 static zend_result fu_gen_v4_batch_n(zval *arr, uint32_t n, int as_bytes) {
     unsigned char chunk[FU_V4_CHUNK * 16];
     uint32_t done = 0;
-    while (done < n) {
-        uint32_t take = (n - done > FU_V4_CHUNK) ? FU_V4_CHUNK : (n - done);
-        if (fu_rand(chunk, (size_t)take * 16) == FAILURE) return FAILURE;
-        for (uint32_t i = 0; i < take; i++) {
-            unsigned char *b = chunk + i * 16;
-            fu_set_ver_var(b, 0x40);
-            if (as_bytes) {
-                fu_add_next_bytes(arr, b);
-            } else {
-                fu_add_next_formatted(arr, b);
+    zend_result rc = SUCCESS;
+    zend_hash_real_init_packed(Z_ARRVAL_P(arr));
+    ZEND_ASSERT(Z_ARRVAL_P(arr)->nTableSize >= n);
+    /* arr was sized for n slots, so the fill never needs to grow. A CSPRNG
+       failure breaks out and still runs FILL_END, so the array the caller
+       discards holds exactly the elements added so far. */
+    ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(arr)) {
+        while (done < n) {
+            uint32_t take = (n - done > FU_V4_CHUNK) ? FU_V4_CHUNK : (n - done);
+            if (fu_rand(chunk, (size_t)take * 16) == FAILURE) {
+                rc = FAILURE;
+                break;
             }
+            for (uint32_t i = 0; i < take; i++) {
+                unsigned char *b = chunk + i * 16;
+                fu_set_ver_var(b, 0x40);
+                ZEND_HASH_FILL_SET_STR(fu_uuid_zstr(b, as_bytes));
+                ZEND_HASH_FILL_NEXT();
+            }
+            done += take;
         }
-        done += take;
-    }
-    return SUCCESS;
+    } ZEND_HASH_FILL_END();
+    return rc;
 }
 
 PHP_FUNCTION(uuid_v4_batch) {
@@ -1607,19 +1610,20 @@ static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
         if (randb > FU_RANDB_MASK) { key++; randb = 0; }
     }
 
-    for (uint32_t i = 0; i < n; i++) {
-        unsigned char b[16];
-        if (i > 0) {
-            randb++;
-            if (randb > FU_RANDB_MASK) { key++; randb = 0; }
+    zend_hash_real_init_packed(Z_ARRVAL_P(arr));
+    ZEND_ASSERT(Z_ARRVAL_P(arr)->nTableSize >= n);
+    ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(arr)) {
+        for (uint32_t i = 0; i < n; i++) {
+            unsigned char b[16];
+            if (i > 0) {
+                randb++;
+                if (randb > FU_RANDB_MASK) { key++; randb = 0; }
+            }
+            fu_lay_v7(b, key >> 12, key & 0xfff, randb);
+            ZEND_HASH_FILL_SET_STR(fu_uuid_zstr(b, as_bytes));
+            ZEND_HASH_FILL_NEXT();
         }
-        fu_lay_v7(b, key >> 12, key & 0xfff, randb);
-        if (as_bytes) {
-            fu_add_next_bytes(arr, b);
-        } else {
-            fu_add_next_formatted(arr, b);
-        }
-    }
+    } ZEND_HASH_FILL_END();
     FAST_UUID_G(v7_key) = key;
     FAST_UUID_G(v7_randb) = randb;
     FAST_UUID_G(v7_initialized) = 1;
