@@ -17,7 +17,7 @@ final class Hexadecimal implements TypeInterface
         if (\strlen($v) >= 2 && $v[0] === '0' && ($v[1] === 'x' || $v[1] === 'X')) {
             $v = \substr($v, 2);
         }
-        if (!\preg_match('/^[0-9a-fA-F]+$/D', $v)) {
+        if ($v === '' || \strspn($v, '0123456789abcdefABCDEF') !== \strlen($v)) {
             throw new InvalidArgumentException('Value must be a hexadecimal number');
         }
         $this->hex = strtolower($v);

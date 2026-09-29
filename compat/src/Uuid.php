@@ -53,6 +53,8 @@ final class Uuid
 
     public const VALID_PATTERN = '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$';
 
+    // The hot factory methods below inline `self::$factory ??= new UuidFactory()`
+    // instead of calling getFactory(); keep the lazy default identical in both.
     private static ?UuidFactoryInterface $factory = null;
 
     public static function getFactory(): UuidFactoryInterface
@@ -67,7 +69,7 @@ final class Uuid
 
     public static function uuid1(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        return self::getFactory()->uuid1($node, $clockSeq);
+        return (self::$factory ??= new UuidFactory())->uuid1($node, $clockSeq);
     }
 
     public static function uuid2(
@@ -81,28 +83,28 @@ final class Uuid
 
     public static function uuid3(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return self::getFactory()->uuid3($ns, $name);
+        return (self::$factory ??= new UuidFactory())->uuid3($ns, $name);
     }
 
     public static function uuid4(): UuidInterface
     {
-        return self::getFactory()->uuid4();
+        return (self::$factory ??= new UuidFactory())->uuid4();
     }
 
     public static function uuid5(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return self::getFactory()->uuid5($ns, $name);
+        return (self::$factory ??= new UuidFactory())->uuid5($ns, $name);
     }
 
     public static function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        return self::getFactory()->uuid6($node, $clockSeq);
+        return (self::$factory ??= new UuidFactory())->uuid6($node, $clockSeq);
     }
 
     public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
-        $factory = self::getFactory();
-        if (\method_exists($factory, 'uuid7')) {
+        $factory = self::$factory ??= new UuidFactory();
+        if ($factory instanceof UuidFactory || \method_exists($factory, 'uuid7')) {
             return $factory->uuid7($dateTime);
         }
         throw new UnsupportedOperationException('The provided factory does not support the uuid7() method');
@@ -119,12 +121,12 @@ final class Uuid
 
     public static function fromString(string $uuid): UuidInterface
     {
-        return self::getFactory()->fromString($uuid);
+        return (self::$factory ??= new UuidFactory())->fromString($uuid);
     }
 
     public static function fromBytes(string $bytes): UuidInterface
     {
-        return self::getFactory()->fromBytes($bytes);
+        return (self::$factory ??= new UuidFactory())->fromBytes($bytes);
     }
 
     public static function fromInteger(string $integer): UuidInterface
@@ -158,6 +160,6 @@ final class Uuid
      */
     public static function isValid(string $uuid): bool
     {
-        return self::getFactory()->getValidator()->validate($uuid);
+        return (self::$factory ??= new UuidFactory())->getValidator()->validate($uuid);
     }
 }

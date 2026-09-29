@@ -24,7 +24,6 @@ abstract class AbstractUuid implements UuidInterface
 {
     protected \FastUuid\Uuid $core;
     protected ?CodecInterface $codec = null;
-    private ?string $canonical = null;
 
     public function __construct(
         \FastUuid\Uuid $core,
@@ -34,7 +33,12 @@ abstract class AbstractUuid implements UuidInterface
     {
         // The public token remains for call-site compatibility, not authorization.
         unset($token);
-        $this->assertCoreMatches($core);
+        // Skips the full re-derivation only for the in-tree class the core's
+        // version maps to, looked up by class name so a user subclass cannot
+        // opt in; nil, max and nonstandard always run it.
+        if ((WrapperClass::CLASS_VERSIONS[static::class] ?? -1) !== $core->getVersion()) {
+            $this->assertCoreMatches($core);
+        }
         $this->core = $core;
         if ($codec !== null && \get_class($codec) !== StringCodec::class) {
             $this->codec = $codec;
@@ -52,7 +56,7 @@ abstract class AbstractUuid implements UuidInterface
     public function toString(): string
     {
         return $this->codec === null
-            ? ($this->canonical ??= $this->core->toString())
+            ? $this->core->toString()
             : $this->codec->encode($this);
     }
     public function __toString(): string { return $this->toString(); }
@@ -74,10 +78,15 @@ abstract class AbstractUuid implements UuidInterface
      */
     public function compareTo(mixed $other): int
     {
-        if ($other instanceof UuidInterface) {
-            if ($other instanceof self && $this->codec === null && $other->codec === null) {
+        if ($other instanceof self) {
+            if (isset(WrapperClass::FINAL_WRAPPERS[$other::class])) {
+                return $this->core->compareTo($other->core);
+            }
+            if ($this->codec === null && $other->codec === null) {
                 return $this->core->compareTo($other->getCore());
             }
+        }
+        if ($other instanceof UuidInterface) {
             return $this->core->compareTo(self::coreOf($other));
         }
         if ($other instanceof \FastUuid\Uuid) {
@@ -95,10 +104,18 @@ abstract class AbstractUuid implements UuidInterface
      */
     public function equals(mixed $other): bool
     {
-        if ($other instanceof UuidInterface) {
-            if ($other instanceof self && $this->codec === null && $other->codec === null) {
+        if ($other instanceof self) {
+            // A final in-tree wrapper cannot override getCore(), so its core is
+            // read directly. An open subclass's getCore() is trusted only when
+            // neither side has a codec; otherwise it resolves like a foreign UUID.
+            if (isset(WrapperClass::FINAL_WRAPPERS[$other::class])) {
+                return $this->core->equals($other->core);
+            }
+            if ($this->codec === null && $other->codec === null) {
                 return $this->core->equals($other->getCore());
             }
+        }
+        if ($other instanceof UuidInterface) {
             try {
                 return $this->core->equals(self::coreOf($other));
             } catch (\FastUuid\Exception\InvalidArgumentException) {
@@ -162,7 +179,6 @@ abstract class AbstractUuid implements UuidInterface
         $this->core = $core;
         // Preserve the active factory's byte and string presentation on restore.
         $this->codec = self::factoryCodec();
-        $this->canonical = null;
     }
 
     public function __serialize(): array { return ['bytes' => $this->serialize()]; }

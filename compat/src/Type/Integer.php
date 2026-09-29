@@ -26,7 +26,7 @@ final class Integer implements NumberInterface
             $neg = $v[0] === '-';
             $v = \substr($v, 1);
         }
-        if (!\preg_match('/^[0-9]+$/D', $v)) {
+        if ($v === '' || \strspn($v, '0123456789') !== \strlen($v)) {
             throw new InvalidArgumentException('Value must be a signed integer or a string containing only digits');
         }
         $digits = ltrim($v, '0');

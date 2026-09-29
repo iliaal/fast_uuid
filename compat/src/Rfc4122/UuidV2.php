@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\AbstractUuid;
+use FastUuid\Compat\Internal\InlinedToString;
 use FastUuid\Compat\Type\Integer as IntegerObject;
 use FastUuid\Compat\Uuid;
 
@@ -14,6 +15,8 @@ use FastUuid\Compat\Uuid;
  */
 final class UuidV2 extends AbstractUuid
 {
+    use InlinedToString;
+
     public function getLocalDomain(): int
     {
         return \ord($this->core->getBytes()[9]);

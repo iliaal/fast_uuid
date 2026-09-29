@@ -33,7 +33,13 @@ class GenericValidator implements ValidatorInterface
 
     public function validate(string $uuid): bool
     {
-        $inner = static::stripWrappers($uuid);
+        // Unwrapping can only shorten a 36-byte candidate, and this class's
+        // shape check accepts nothing shorter, so skipping stripWrappers()
+        // cannot change the verdict. A subclass may override either method,
+        // so only the exact class skips it.
+        $inner = \strlen($uuid) === 36 && static::class === self::class
+            ? $uuid
+            : static::stripWrappers($uuid);
         if ($inner === null || !static::isCanonicalShape($inner)) {
             return false;
         }
