@@ -49,7 +49,9 @@ fl_show('uuid_v3(DNS, www.example.com)', fn() => uuid_v3(FastUuid\Uuid::NAMESPAC
 fl_show('uuid_v8_bin(16 bytes)', fn() => uuid_v8_bin(str_repeat("\xff", 16)));
 fl_show('uuid_v7_at(3.0)', fn() => uuid_v7_at(3.0));
 fl_show('uuid_v7_at("3")', fn() => uuid_v7_at('3'));
-fl_show('uuid_v7_at(PHP_INT_MAX)', fn() => uuid_v7_at(PHP_INT_MAX));
+// PHP_INT_MAX only exceeds the 48-bit field on 64-bit builds.
+$outOfRange = PHP_INT_SIZE === 8 ? PHP_INT_MAX : -1;
+fl_show('uuid_v7_at(out of range)', fn() => uuid_v7_at($outOfRange));
 fl_show('uuid_v4_bin_batch([])', fn() => uuid_v4_bin_batch([]));
 fl_show('uuid_v7_batch(3)', fn() => uuid_v7_batch(3), false);
 fl_show('fast_uuid_random_bytes(0)', fn() => fast_uuid_random_bytes(0));
@@ -121,7 +123,7 @@ uuid_v3(DNS, www.example.com) => string "5df41881-3aed-3515-88a7-2f4a814cf09e"
 uuid_v8_bin(16 bytes) => string 0xffffffffffff8fffbfffffffffffffff
 uuid_v7_at(3.0) => TypeError: uuid_v7_at(): Argument #1 ($unixMillis) must be of type int, float given
 uuid_v7_at("3") => TypeError: uuid_v7_at(): Argument #1 ($unixMillis) must be of type int, string given
-uuid_v7_at(PHP_INT_MAX) => FastUuid\Exception\InvalidArgumentException: v7 millisecond timestamp out of range (0 .. 281474976710655)
+uuid_v7_at(out of range) => FastUuid\Exception\InvalidArgumentException: v7 millisecond timestamp out of range (0 .. 281474976710655)
 uuid_v4_bin_batch([]) => TypeError: uuid_v4_bin_batch(): Argument #1 ($count) must be of type int, array given
 uuid_v7_batch(3) => array(3) of string(36)
 fast_uuid_random_bytes(0) => FastUuid\Exception\InvalidArgumentException: length must be > 0

@@ -117,7 +117,8 @@ foreach ([Uuid::uuid1(), Uuid::uuid6()] as $uuid) {
 // An explicit node beats the provider; Hexadecimal and int forms both convert.
 var_dump(Uuid::uuid1(new Hexadecimal('0a0b0c0d0e0f'))->getFields()->getNode()->toString() === '0a0b0c0d0e0f');
 var_dump(Uuid::uuid1('0a0b0c0d0e0f')->getFields()->getNode()->toString() === '0a0b0c0d0e0f');
-var_dump(Uuid::uuid1(0x0a0b0c0d0e0f)->getFields()->getNode()->toString() === '0a0b0c0d0e0f');
+// 0x0a0b0c0d0e0f is a float on 32-bit builds, so the int form only applies on 64-bit.
+var_dump(PHP_INT_SIZE === 4 || Uuid::uuid1(0x0a0b0c0d0e0f)->getFields()->getNode()->toString() === '0a0b0c0d0e0f');
 var_dump(Uuid::uuid6(new Hexadecimal('0a0b0c0d0e0f'))->getFields()->getNode()->toString() === '0a0b0c0d0e0f');
 
 // With no provider set, no-argument generation still draws a random node (the
