@@ -19,16 +19,18 @@ final class Fields implements FieldsInterface
                 'Fields expects exactly 16 bytes, got ' . \strlen($bytes),
             );
         }
-        if (!$this->isNil() && !$this->isMax() && $this->getVariant() !== 2) {
-            throw new \FastUuid\Exception\InvalidArgumentException(
-                'The byte string does not conform to the RFC 9562 variant',
-            );
-        }
-        $version = $this->getVersion();
-        if (!$this->isNil() && !$this->isMax() && ($version === null || $version < 1 || $version > 8)) {
-            throw new \FastUuid\Exception\InvalidArgumentException(
-                'The byte string does not contain a valid RFC 9562 version',
-            );
+        if ($bytes !== self::NIL_BYTES && $bytes !== self::MAX_BYTES) {
+            if ((\ord($bytes[8]) & 0xc0) !== 0x80) {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'The byte string does not conform to the RFC 9562 variant',
+                );
+            }
+            $version = \ord($bytes[6]) >> 4;
+            if ($version < 1 || $version > 8) {
+                throw new \FastUuid\Exception\InvalidArgumentException(
+                    'The byte string does not contain a valid RFC 9562 version',
+                );
+            }
         }
     }
 
@@ -60,15 +62,15 @@ final class Fields implements FieldsInterface
 
     public function getVersion(): ?int
     {
-        if ($this->isNil() || $this->isMax()) {
+        if ($this->bytes === self::NIL_BYTES || $this->bytes === self::MAX_BYTES) {
             return null;
         }
         // Non-RFC variants carry no version field. Keep in sync with the C
         // getVersion (fast_uuid.c, variant guard on byte 8).
-        if ($this->getVariant() !== 2) {
+        if ((\ord($this->bytes[8]) & 0xc0) !== 0x80) {
             return null;
         }
-        return (\ord($this->bytes[6]) >> 4) & 0x0f;
+        return \ord($this->bytes[6]) >> 4;
     }
 
     public function getVariant(): int

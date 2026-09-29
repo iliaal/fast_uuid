@@ -24,12 +24,12 @@ class StringCodec implements CodecInterface
 
     public function decode(string $encoded): UuidInterface
     {
-        return $this->uuidFromString($encoded);
+        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromString($encoded), $this);
     }
 
     public function decodeBytes(string $bytes): UuidInterface
     {
-        return $this->uuidFromBytes($bytes);
+        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromBytes($bytes), $this);
     }
 
     final protected function uuidFromBytes(string $bytes): UuidInterface

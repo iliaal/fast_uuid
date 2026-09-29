@@ -120,7 +120,9 @@ class UuidFactory implements UuidFactoryInterface
 
     public function uuid1(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        $node = $this->resolveNode($node);
+        if ($node !== null || $this->customNodeProvider) {
+            $node = $this->resolveNode($node);
+        }
         if ($this->customTimeGenerator) {
             $this->assertTimeArguments($node, $clockSeq);
             $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
@@ -217,7 +219,9 @@ class UuidFactory implements UuidFactoryInterface
 
     public function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
-        $node = $this->resolveNode($node);
+        if ($node !== null || $this->customNodeProvider) {
+            $node = $this->resolveNode($node);
+        }
         if ($this->customTimeGenerator) {
             $this->assertTimeArguments($node, $clockSeq);
             // ramsey parity: v6 is built from the time generator's v1 bytes
@@ -331,6 +335,15 @@ class UuidFactory implements UuidFactoryInterface
             return WrapperClass::coreFrom($ns);
         }
         try {
+            // The default codec's decode() is Uuid::fromString() plus a wrapper
+            // the caller discards. getCodec() materialises a StringCodec into
+            // $codec on first use, so both forms count as the default. A
+            // subclass may override fromString() or getCodec(), so only the
+            // exact class takes the shortcut.
+            $codec = $this->codec;
+            if (($codec === null || $codec::class === StringCodec::class) && static::class === self::class) {
+                return \FastUuid\Uuid::fromString((string) $ns);
+            }
             return $this->fromString((string) $ns)->getCore();
         } catch (\FastUuid\Exception\InvalidUuidStringException $e) {
             throw $e;

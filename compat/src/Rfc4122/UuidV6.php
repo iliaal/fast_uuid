@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Rfc4122;
 
 use FastUuid\Compat\AbstractUuid;
+use FastUuid\Compat\Internal\InlinedToString;
 
 final class UuidV6 extends AbstractUuid
 {
+    use InlinedToString;
+
     /**
      * Convert this v6 UUID to its equivalent v1 (gregorian-ordered) form by
      * restoring the v1 timestamp field order. Mirrors ramsey's UuidV6::toUuidV1.
