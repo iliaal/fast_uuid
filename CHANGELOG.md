@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-28
+
 ### Changed
 - On CPUs with AES instructions (x86/x86-64 AES-NI, ARMv8 Crypto Extensions), the per-thread CSPRNG buffer is refilled by a userspace AES-256-CTR generator with fast key erasure (a new key after every 8 KiB) that mixes in fresh OS CSPRNG output every 64 KiB, instead of a `getrandom()` call per 8 KiB. `fast_uuid_random_bytes()` requests larger than the buffer stream from the same generator. The implementation must pass a FIPS-197 known-answer test at startup; otherwise, and on CPUs without AES, the previous OS-refill path stays in use. On a Neoverse-N1, `uuid_v4()` drops from 76 to 42 ns and `uuid_v4_bin_batch(100)` from 61 to 27 ns per UUID. phpinfo's `CSPRNG` row reports the active backend or the fallback reason. `-DFU_DISABLE_AES` forces the OS-refill path, as do `-DFU_DISABLE_SSSE3` and `-DFU_DISABLE_NEON`. Clones of one VM snapshot can now repeat up to 64 KiB of generator output per thread, up from 8 KiB; the next reseed separates them only if the guest kernel reseeds its own CSPRNG on restore.
 - On PHP 8.4 and later, every procedural function (`uuid_v1()` through `uuid_v8()`, the `_bin` and `_batch` forms, `uuid_v7_at()`, `uuid_to_bin()`, `uuid_from_bin()`, `uuid_is_valid()`, `fast_uuid_random_bytes()`) compiles as a frameless internal call, which skips the call-frame setup. On a Neoverse-N1 that saves 3–20% per call, for example `uuid_is_valid()` 36.8 → 30.8 ns and `uuid_to_bin()` 46.4 → 40.0 ns. Argument coercion, `strict_types`, deprecations, and error messages match the regular call path. A `dl()`-loaded copy runs without frameless calls, because PHP never unregisters them; load the extension with `extension=` to get the speedup. With opcache's file cache, the system id now includes the extension's frameless handler slots, so a cache written with a different extension set is not reused.
@@ -223,7 +225,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/iliaal/fast_uuid/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/iliaal/fast_uuid/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/iliaal/fast_uuid/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/iliaal/fast_uuid/compare/0.4.0...0.5.0

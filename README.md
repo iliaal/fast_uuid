@@ -35,7 +35,7 @@ binary for your platform (Windows `x86`/`x64` `NTS`/`TS`, Linux glibc
 pie install iliaal/fast_uuid
 ```
 
-Then enable it with `extension=fast_uuid` in your `php.ini`.
+Then enable it with `extension=fast_uuid` in your `php.ini`. Load it with `extension=` rather than `dl()`: a `dl()`-loaded copy runs without frameless calls (PHP never unregisters them), and on musl an unloaded copy leaves a dangling fork handler.
 
 ## 🛠️ Build from source
 
