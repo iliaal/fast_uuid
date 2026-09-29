@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- On CPUs with AES instructions (x86/x86-64 AES-NI, ARMv8 Crypto Extensions), the per-thread CSPRNG buffer is refilled by a userspace AES-256-CTR generator with fast key erasure (a new key after every 8 KiB) that mixes in fresh OS CSPRNG output every 64 KiB, instead of a `getrandom()` call per 8 KiB. `fast_uuid_random_bytes()` requests larger than the buffer stream from the same generator. The implementation must pass a FIPS-197 known-answer test at startup; otherwise, and on CPUs without AES, the previous OS-refill path stays in use. On a Neoverse-N1, `uuid_v4()` drops from 76 to 42 ns and `uuid_v4_bin_batch(100)` from 61 to 27 ns per UUID. phpinfo's `CSPRNG` row reports the active backend or the fallback reason. `-DFU_DISABLE_AES` forces the OS-refill path, as do `-DFU_DISABLE_SSSE3` and `-DFU_DISABLE_NEON`. Clones of one VM snapshot can now repeat up to 64 KiB of generator output per thread, up from 8 KiB; the next reseed separates them only if the guest kernel reseeds its own CSPRNG on restore.
 ### Fixed
 - UUID object resolution now ignores incompatible optional `getCore()` / `getBytes()` signatures, honors compatible supertypes and nested DNF declarations, and resolves foreign compatibility namespaces independently of the active presentation codec.
 - Custom time and random-generator paths now validate node / clock-sequence inputs and preserve native UUIDv7 `DateTimeInterface` timestamp semantics without 32-bit millisecond overflow.

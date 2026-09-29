@@ -332,7 +332,7 @@ factory uuid4 ver   4</pre>
       <tr><td>parse</td><td>7.2x</td><td class="win">11.3x</td></tr>
     </tbody>
   </table>
-  <p>The batched CSPRNG drives the v4 gap: <code>getrandom()</code> is amortized across many UUIDs instead of one syscall each. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.47M.</p>
+  <p>The batched CSPRNG drives the v4 gap: one syscall covers many UUIDs instead of one each, and on CPUs with AES instructions an AES-256-CTR generator produces the buffer, reseeding from <code>getrandom()</code> every 64 KiB. PECL <code>uuid</code> keeps pace on v1 but its v4 draws fresh entropy per call, so it falls to 0.47M.</p>
 
   <h3>Bulk generation</h3>
   <p>The <code>uuid_v4_batch($n)</code> / <code>uuid_v7_batch($n)</code> functions build <code>$n</code> UUIDs in one call and return them as an array, amortizing the per-call setup. The <code>_bin_batch</code> forms return raw 16-byte strings and skip canonical formatting. Per-UUID throughput at a batch size of 100 (single-call shown for reference):</p>

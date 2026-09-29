@@ -161,8 +161,10 @@ change does not touch that path.
 ## Notes
 
 - The batched CSPRNG is why v4 generation is an order of magnitude faster than
-  ramsey: `getrandom()` is amortized across many UUIDs instead of one syscall
-  each.
+  ramsey: one syscall covers many UUIDs instead of one each. The tables above
+  predate the AES-256-CTR buffer refill (see [AES-256-CTR refill](#aes-256-ctr-refill)),
+  which draws from `getrandom()` once per 64 KiB instead of once per 8 KiB and
+  moves the rest of the keystream onto the CPU's AES instructions.
 - Against PECL `uuid`, the procedural path is ~2x faster on v1 and ~41x faster
   on v4. PECL `uuid`'s v4 is much slower than its v1 because libuuid's random
   type draws fresh entropy per call rather than batching.
@@ -215,3 +217,27 @@ pure-PHP work runs on the same slower core.
 
 Reproduce: `bench/run_neon.sh <neon.so> <scalar.so>` drives the A/B and the
 ramsey comparison.
+
+## AES-256-CTR refill
+
+On CPUs with AES instructions the CSPRNG buffer is refilled by an AES-256-CTR
+generator, reseeded from `getrandom()` every 64 KiB, instead of a `getrandom()`
+call per 8 KiB. A/B against the previous release on a 2-core Neoverse-N1,
+PHP 8.4.25 NTS release (`-O2`), one core pinned with `taskset`; each figure is the
+best of 25 runs of 300,000 iterations, and the median of five rounds that
+alternate which build runs first. Nanoseconds per UUID, lower is better:
+
+| Operation                   | OS refill | AES-256-CTR | change |
+|-----------------------------|----------:|------------:|-------:|
+| `uuid_v4()`                 | 76.3      | **41.8**    | -45%   |
+| `uuid_v4_bin_batch(100)`    | 61.4      | **26.6**    | -57%   |
+| `Uuid::uuid4()->toString()` | 137.1     | **103.4**   | -25%   |
+| `uuid_v1()`                 | 100.0     | **83.2**    | -17%   |
+| `uuid_v7_bin_batch(100)`    | 25.9      | 25.8        | 0%     |
+| `uuid_to_bin()`             | 46.3      | 45.8        | -1%    |
+
+`uuid_v7_bin_batch` draws at most 8 random bytes per call and `uuid_to_bin` none, so
+those two rows are the controls. `uuid_v1()` gains about half as much as
+`uuid_v4()` because it draws 8 random bytes per UUID instead of 16. On x86-64
+(i9-13950HX under WSL2, too loaded for exact figures) the direction is the same:
+`uuid_v4()` went from 84-134 to 38-51 ns across four rounds.

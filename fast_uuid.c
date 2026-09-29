@@ -299,16 +299,372 @@ static zend_array *fu_get_properties_for(zend_object *o, zend_prop_purpose purpo
 /* randomness                                                         */
 /* ------------------------------------------------------------------ */
 
+/* Userspace CSPRNG: AES-256-CTR with fast key erasure (Bernstein, 2017).
+   Every generate call emits at most FU_DRBG_CHUNK bytes, then overwrites the
+   key with the next two keystream blocks, so the key cannot regenerate output
+   of earlier refills. fu_rand() does not zero bytes as it serves them (that
+   cost ~3.5% on uuid_v4): a read of the module state recovers the
+   already-served part of the current refill (up to 8 KiB), the unserved rest,
+   and everything the key yields until the next reseed. Fresh OS entropy is
+   XORed into key and counter every FU_DRBG_RESEED_BYTES of output, which also
+   bounds how much output two clones of one VM snapshot can share. Only
+   hardware AES is used: a table-driven software AES leaks key bits through
+   cache timing, so CPUs without AES instructions keep refilling from
+   the OS CSPRNG. */
+#define FU_DRBG_CHUNK        sizeof(FAST_UUID_G(rbuf))
+#define FU_DRBG_RESEED_BYTES (64U * 1024U)
+
+enum {
+    /* No backend for this architecture/compiler, or built with -DFU_DISABLE_AES,
+       -DFU_DISABLE_SSSE3 (x86) or -DFU_DISABLE_NEON (AArch64): the AES backends
+       sit behind the same FU_X86 / FU_AARCH64 gates as the hex formatters. */
+    FU_AES_NOT_BUILT = 0,
+    FU_AES_NO_CPU,         /* backend built, CPU lacks the AES instructions */
+    FU_AES_NO_DETECT,      /* backend built, no runtime AES probe on this OS */
+    FU_AES_SELFTEST_FAILED,
+    FU_AES_ACTIVE
+};
+static int fu_aes_state = FU_AES_NOT_BUILT;  /* set once in MINIT */
+
+#if defined(FU_X86) && !defined(FU_DISABLE_AES)
+# define FU_AES_X86 1
+# define FU_AES_NAME "AES-NI"
+# if defined(_MSC_VER)
+#  define FU_TARGET_AES
+# else
+#  define FU_TARGET_AES __attribute__((target("aes,sse2")))
+# endif
+#elif defined(FU_AARCH64) && defined(__AARCH64EL__) && !defined(FU_DISABLE_AES)
+/* Clang's arm_neon.h hides the crypto intrinsics unless AES is part of the
+   compile-time baseline (Apple arm64 always is); GCC exposes them to a
+   target("+crypto") function. */
+# if defined(__ARM_FEATURE_AES) || defined(__ARM_FEATURE_CRYPTO)
+#  define FU_AES_ARM 1
+#  define FU_TARGET_AES
+# elif defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 8
+#  define FU_AES_ARM 1
+#  define FU_TARGET_AES __attribute__((target("+crypto")))
+# endif
+# ifdef FU_AES_ARM
+#  define FU_AES_NAME "ARMv8 Crypto Extensions"
+#  if defined(__linux__)
+#   include <sys/auxv.h>
+#   ifndef HWCAP_AES
+#    define HWCAP_AES (1UL << 3)
+#   endif
+#  endif
+# endif
+#endif
+
+#ifdef FU_AES_X86
+static int fu_detect_aes(void) {
+# if defined(_MSC_VER)
+    int regs[4];
+    __cpuid(regs, 1);
+    return (regs[2] >> 25) & 1;
+# else
+    unsigned int eax, ebx, ecx, edx;
+    if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return 0;
+    return (ecx >> 25) & 1;
+# endif
+}
+
+/* AES-256 key schedule steps. Macros, not functions: aeskeygenassist takes its
+   round constant as an immediate, which an -O0 build does not propagate
+   through a function parameter. */
+# define FU_AESNI_EXPAND_EVEN(t1, t3, rcon) do { \
+    __m128i a_ = _mm_shuffle_epi32(_mm_aeskeygenassist_si128((t3), (rcon)), 0xff); \
+    (t1) = _mm_xor_si128((t1), _mm_slli_si128((t1), 4)); \
+    (t1) = _mm_xor_si128((t1), _mm_slli_si128((t1), 8)); \
+    (t1) = _mm_xor_si128((t1), a_); \
+} while (0)
+# define FU_AESNI_EXPAND_ODD(t3, t1) do { \
+    __m128i a_ = _mm_shuffle_epi32(_mm_aeskeygenassist_si128((t1), 0x00), 0xaa); \
+    (t3) = _mm_xor_si128((t3), _mm_slli_si128((t3), 4)); \
+    (t3) = _mm_xor_si128((t3), _mm_slli_si128((t3), 8)); \
+    (t3) = _mm_xor_si128((t3), a_); \
+} while (0)
+
+FU_TARGET_AES static void fu_aes_expand(const unsigned char *key, __m128i *rk) {
+    __m128i t1 = _mm_loadu_si128((const __m128i *)key);
+    __m128i t3 = _mm_loadu_si128((const __m128i *)(key + 16));
+    rk[0] = t1; rk[1] = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x01); rk[2]  = t1; FU_AESNI_EXPAND_ODD(t3, t1); rk[3]  = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x02); rk[4]  = t1; FU_AESNI_EXPAND_ODD(t3, t1); rk[5]  = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x04); rk[6]  = t1; FU_AESNI_EXPAND_ODD(t3, t1); rk[7]  = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x08); rk[8]  = t1; FU_AESNI_EXPAND_ODD(t3, t1); rk[9]  = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x10); rk[10] = t1; FU_AESNI_EXPAND_ODD(t3, t1); rk[11] = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x20); rk[12] = t1; FU_AESNI_EXPAND_ODD(t3, t1); rk[13] = t3;
+    FU_AESNI_EXPAND_EVEN(t1, t3, 0x40); rk[14] = t1;
+}
+#endif /* FU_AES_X86 */
+
+#if defined(FU_AES_X86) || defined(FU_AES_ARM)
+/* One round step on the eight in-flight CTR blocks b0..b7. */
+# define FU_AES_ROUNDS8(op, k) do { \
+    b0 = op(b0, (k)); b1 = op(b1, (k)); b2 = op(b2, (k)); b3 = op(b3, (k)); \
+    b4 = op(b4, (k)); b5 = op(b5, (k)); b6 = op(b6, (k)); b7 = op(b7, (k)); \
+} while (0)
+#endif
+
+#ifdef FU_AES_X86
+/* Writes len bytes of keystream under key to out, then replaces key with the
+   next two keystream blocks. The counter advances in its low 64-bit lane
+   only: uniqueness matters per key, and one key never covers more than
+   FU_DRBG_CHUNK / 16 + 2 blocks. */
+FU_TARGET_AES static void fu_aes_ctr(unsigned char *key, unsigned char *ctr, unsigned char *out, size_t len) {
+    __m128i rk[15];
+    const __m128i one = _mm_set_epi32(0, 0, 0, 1);
+    __m128i c = _mm_loadu_si128((const __m128i *)ctr);
+    fu_aes_expand(key, rk);
+
+    for (; len >= 128; len -= 128, out += 128) {
+        __m128i b0, b1, b2, b3, b4, b5, b6, b7;
+        b0 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b1 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b2 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b3 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b4 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b5 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b6 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        b7 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        for (int r = 1; r < 14; r++) FU_AES_ROUNDS8(_mm_aesenc_si128, rk[r]);
+        FU_AES_ROUNDS8(_mm_aesenclast_si128, rk[14]);
+        _mm_storeu_si128((__m128i *)(out),       b0);
+        _mm_storeu_si128((__m128i *)(out + 16),  b1);
+        _mm_storeu_si128((__m128i *)(out + 32),  b2);
+        _mm_storeu_si128((__m128i *)(out + 48),  b3);
+        _mm_storeu_si128((__m128i *)(out + 64),  b4);
+        _mm_storeu_si128((__m128i *)(out + 80),  b5);
+        _mm_storeu_si128((__m128i *)(out + 96),  b6);
+        _mm_storeu_si128((__m128i *)(out + 112), b7);
+    }
+    /* Remaining whole blocks, an optional partial block, then the two
+       new-key blocks, two at a time. */
+    while (1) {
+        size_t take = len < 32 ? len : 32;
+        int rekey = take == 0;
+        unsigned char tmp[32];
+        __m128i x0 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
+        __m128i x1 = _mm_xor_si128(c, rk[0]);
+        if (rekey || take > 16) c = _mm_add_epi64(c, one);
+        for (int r = 1; r < 14; r++) { x0 = _mm_aesenc_si128(x0, rk[r]); x1 = _mm_aesenc_si128(x1, rk[r]); }
+        x0 = _mm_aesenclast_si128(x0, rk[14]);
+        x1 = _mm_aesenclast_si128(x1, rk[14]);
+        if (rekey) {
+            _mm_storeu_si128((__m128i *)key,        x0);
+            _mm_storeu_si128((__m128i *)(key + 16), x1);
+            break;
+        }
+        _mm_storeu_si128((__m128i *)tmp,        x0);
+        _mm_storeu_si128((__m128i *)(tmp + 16), x1);
+        memcpy(out, tmp, take);
+        ZEND_SECURE_ZERO(tmp, sizeof(tmp));
+        out += take; len -= take;
+    }
+    _mm_storeu_si128((__m128i *)ctr, c);
+    ZEND_SECURE_ZERO(rk, sizeof(rk));
+}
+#endif /* FU_AES_X86 */
+
+#ifdef FU_AES_ARM
+/* 1 = present, 0 = absent, -1 = this OS has no probe wired up. */
+static int fu_detect_aes(void) {
+# if defined(__linux__)
+    return (getauxval(AT_HWCAP) & HWCAP_AES) != 0;
+# elif defined(__APPLE__)
+    return 1;  /* every Apple arm64 core implements the crypto extensions */
+# else
+    return -1;
+# endif
+}
+
+/* SubWord through AESE with a zero round key: with all four columns equal,
+   ShiftRows is the identity, leaving SubBytes on each byte. No S-box table. */
+FU_TARGET_AES static uint32_t fu_aes_subword(uint32_t w) {
+    uint8x16_t v = vaeseq_u8(vreinterpretq_u8_u32(vdupq_n_u32(w)), vdupq_n_u8(0));
+    return vgetq_lane_u32(vreinterpretq_u32_u8(v), 0);
+}
+
+/* FIPS-197 5.2 key expansion, Nk = 8, on little-endian words. */
+FU_TARGET_AES static void fu_aes_expand(const unsigned char *key, uint8x16_t *rk) {
+    static const uint8_t rcon[7] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40 };
+    uint32_t w[60];
+    memcpy(w, key, 32);
+    for (int i = 8; i < 60; i++) {
+        uint32_t t = w[i - 1];
+        if (i % 8 == 0) {
+            t = fu_aes_subword((t >> 8) | (t << 24)) ^ rcon[i / 8 - 1];
+        } else if (i % 8 == 4) {
+            t = fu_aes_subword(t);
+        }
+        w[i] = w[i - 8] ^ t;
+    }
+    for (int r = 0; r < 15; r++) rk[r] = vld1q_u8((const uint8_t *)(w + 4 * r));
+    ZEND_SECURE_ZERO(w, sizeof(w));
+}
+
+# define FU_AESE_MC(s, k) vaesmcq_u8(vaeseq_u8((s), (k)))
+# define FU_AESE_LAST(s, k) vaeseq_u8((s), (k))
+
+/* Same contract as the AES-NI fu_aes_ctr. */
+FU_TARGET_AES static void fu_aes_ctr(unsigned char *key, unsigned char *ctr, unsigned char *out, size_t len) {
+    uint8x16_t rk[15];
+    const uint64x2_t one = vcombine_u64(vcreate_u64(1), vcreate_u64(0));
+    uint64x2_t c = vreinterpretq_u64_u8(vld1q_u8(ctr));
+    fu_aes_expand(key, rk);
+
+    for (; len >= 128; len -= 128, out += 128) {
+        uint8x16_t b0, b1, b2, b3, b4, b5, b6, b7;
+        b0 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b1 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b2 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b3 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b4 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b5 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b6 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        b7 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        for (int r = 0; r < 13; r++) FU_AES_ROUNDS8(FU_AESE_MC, rk[r]);
+        FU_AES_ROUNDS8(FU_AESE_LAST, rk[13]);
+        FU_AES_ROUNDS8(veorq_u8, rk[14]);
+        vst1q_u8(out,       b0);
+        vst1q_u8(out + 16,  b1);
+        vst1q_u8(out + 32,  b2);
+        vst1q_u8(out + 48,  b3);
+        vst1q_u8(out + 64,  b4);
+        vst1q_u8(out + 80,  b5);
+        vst1q_u8(out + 96,  b6);
+        vst1q_u8(out + 112, b7);
+    }
+    while (1) {
+        size_t take = len < 32 ? len : 32;
+        int rekey = take == 0;
+        unsigned char tmp[32];
+        uint8x16_t x0 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
+        uint8x16_t x1 = vreinterpretq_u8_u64(c);
+        if (rekey || take > 16) c = vaddq_u64(c, one);
+        for (int r = 0; r < 13; r++) { x0 = FU_AESE_MC(x0, rk[r]); x1 = FU_AESE_MC(x1, rk[r]); }
+        x0 = veorq_u8(vaeseq_u8(x0, rk[13]), rk[14]);
+        x1 = veorq_u8(vaeseq_u8(x1, rk[13]), rk[14]);
+        if (rekey) {
+            vst1q_u8(key,      x0);
+            vst1q_u8(key + 16, x1);
+            break;
+        }
+        vst1q_u8(tmp,      x0);
+        vst1q_u8(tmp + 16, x1);
+        memcpy(out, tmp, take);
+        ZEND_SECURE_ZERO(tmp, sizeof(tmp));
+        out += take; len -= take;
+    }
+    vst1q_u8(ctr, vreinterpretq_u8_u64(c));
+    ZEND_SECURE_ZERO(rk, sizeof(rk));
+}
+#endif /* FU_AES_ARM */
+
+#if defined(FU_AES_X86) || defined(FU_AES_ARM)
+# define FU_HAVE_AES 1
+
+/* Known-answer test through the production CTR path. The counter is started
+   `blk` blocks before the FIPS-197 C.3 plaintext so that block `blk` of the
+   keystream must equal the C.3 ciphertext; the cases cover 8-way lanes, the
+   two-block tail, a partial block, both new-key blocks, and counter advance. */
+static int fu_aes_selftest(void) {
+    static const unsigned char fips_key[32] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
+        0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f };
+    static const unsigned char fips_pt[16] = {
+        0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff };
+    static const unsigned char fips_ct[16] = {
+        0x8e,0xa2,0xb7,0xca,0x51,0x67,0x45,0xbf,0xea,0xfc,0x49,0x90,0x4b,0x49,0x60,0x89 };
+    /* NIST SP 800-38A F.5.5 (CTR-AES256), block #1 input -> output block */
+    static const unsigned char sp_key[32] = {
+        0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
+        0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4 };
+    static const unsigned char sp_in[16] = {
+        0xf0,0xf1,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,0xf9,0xfa,0xfb,0xfc,0xfd,0xfe,0xff };
+    static const unsigned char sp_out[16] = {
+        0x0b,0xdf,0x7d,0xf1,0x59,0x17,0x16,0x33,0x5e,0x9a,0x8b,0x15,0xc8,0x60,0xc5,0x02 };
+    /* {len, blk}: blk == ceil(len / 16) or +1 selects a new-key block */
+    static const struct { uint16_t len, blk; } cases[] = {
+        /* every lane of the 8-way loop, plus lanes 0 and 7 of its second
+           iteration (the counter carries across passes) */
+        { 128, 0 }, { 128, 1 }, { 128, 2 }, { 128, 3 },
+        { 128, 4 }, { 128, 5 }, { 128, 6 }, { 128, 7 }, { 256, 8 }, { 256, 15 },
+        /* two-block tail: x0 and x1, a partial x1, and the no-8-way path */
+        { 16, 0 }, { 144, 8 }, { 160, 9 }, { 183, 10 }, { 183, 11 },
+        /* the two new-key blocks after 3 (tail only) and 12 (8-way + tail) blocks */
+        { 48, 3 }, { 48, 4 }, { 183, 12 }, { 183, 13 },
+    };
+    unsigned char out[272], key[32], ctr[16];
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        size_t len = cases[i].len, blk = cases[i].blk, nblk = (len + 15) / 16;
+        uint64_t lo, lo_after, hi, hi_after;
+        memcpy(key, fips_key, 32);
+        memcpy(ctr, fips_pt, 16);
+        memcpy(&lo, ctr, 8); memcpy(&hi, ctr + 8, 8);
+        lo -= blk;
+        memcpy(ctr, &lo, 8);
+        memset(out, 0xa5, sizeof(out));
+        fu_aes_ctr(key, ctr, out, len);
+        if (blk < nblk) {
+            size_t cmp = len - blk * 16 < 16 ? len - blk * 16 : 16;
+            if (memcmp(out + blk * 16, fips_ct, cmp) != 0) return 0;
+        } else if (memcmp(key + (blk - nblk) * 16, fips_ct, 16) != 0) {
+            return 0;
+        }
+        if (out[len] != 0xa5) return 0;  /* wrote past len */
+        memcpy(&lo_after, ctr, 8); memcpy(&hi_after, ctr + 8, 8);
+        if (lo_after != lo + nblk + 2 || hi_after != hi) return 0;
+    }
+    memcpy(key, sp_key, 32);
+    memcpy(ctr, sp_in, 16);
+    fu_aes_ctr(key, ctr, out, 16);
+    return memcmp(out, sp_out, 16) == 0;
+}
+
+/* Fills dst from the DRBG, FU_DRBG_CHUNK bytes per key. FAILURE only when an
+   OS reseed fails (exception thrown by php_random_bytes_throw). */
+static zend_result fu_drbg_fill(unsigned char *dst, size_t n) {
+    while (n > 0) {
+        if (UNEXPECTED(!FAST_UUID_G(drbg_seeded) || FAST_UUID_G(drbg_since_seed) >= FU_DRBG_RESEED_BYTES)) {
+            unsigned char seed[48];
+            if (php_random_bytes_throw(seed, sizeof(seed)) == FAILURE) return FAILURE;
+            for (int i = 0; i < 32; i++) FAST_UUID_G(drbg_key)[i] ^= seed[i];
+            for (int i = 0; i < 16; i++) FAST_UUID_G(drbg_ctr)[i] ^= seed[32 + i];
+            ZEND_SECURE_ZERO(seed, sizeof(seed));
+            FAST_UUID_G(drbg_seeded) = 1;
+            FAST_UUID_G(drbg_since_seed) = 0;
+        }
+        size_t take = n < FU_DRBG_CHUNK ? n : FU_DRBG_CHUNK;
+        fu_aes_ctr(FAST_UUID_G(drbg_key), FAST_UUID_G(drbg_ctr), dst, take);
+        FAST_UUID_G(drbg_since_seed) += take;
+        dst += take; n -= take;
+    }
+    return SUCCESS;
+}
+#endif /* FU_AES_X86 || FU_AES_ARM */
+
+/* Unbuffered CSPRNG fill. Requests larger than the buffer stream from the
+   DRBG as well: same per-chunk key erasure and reseed accounting, and several
+   times the OS CSPRNG's throughput. */
+static zend_result fu_rand_fill(unsigned char *dst, size_t n) {
+#ifdef FU_HAVE_AES
+    if (EXPECTED(fu_aes_state == FU_AES_ACTIVE)) return fu_drbg_fill(dst, n);
+#endif
+    return php_random_bytes_throw(dst, n);
+}
+
 /* crypto-secure, batched. Returns FAILURE (with an exception thrown by
    php_random_bytes_throw) if the CSPRNG fails; dst is zeroed on failure so
    callers never read uninitialized bytes. */
 static zend_result fu_rand(unsigned char *dst, size_t n) {
     if (UNEXPECTED(n > sizeof(FAST_UUID_G(rbuf)))) {
-        if (php_random_bytes_throw(dst, n) == FAILURE) { memset(dst, 0, n); return FAILURE; }
+        if (fu_rand_fill(dst, n) == FAILURE) { memset(dst, 0, n); return FAILURE; }
         return SUCCESS;
     }
     if (FAST_UUID_G(rpos) + n > sizeof(FAST_UUID_G(rbuf))) {
-        if (php_random_bytes_throw(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
+        if (fu_rand_fill(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
             memset(dst, 0, n);
             return FAILURE;
         }
@@ -355,9 +711,14 @@ static void fu_atfork_child(void) {
     if (!tsrm_get_ls_cache()) return;
 #endif
     /* Wipe residual entropy so a memory disclosure in the child cannot
-       recover the parent's remaining CSPRNG buffer or xoshiro seed. */
+       recover the parent's remaining CSPRNG buffer, DRBG key, or xoshiro
+       seed. The zeroed DRBG key is re-keyed from the OS before its next use. */
     memset(FAST_UUID_G(rbuf), 0, sizeof(FAST_UUID_G(rbuf)));
     memset(FAST_UUID_G(prng_s), 0, sizeof(FAST_UUID_G(prng_s)));
+    memset(FAST_UUID_G(drbg_key), 0, sizeof(FAST_UUID_G(drbg_key)));
+    memset(FAST_UUID_G(drbg_ctr), 0, sizeof(FAST_UUID_G(drbg_ctr)));
+    FAST_UUID_G(drbg_seeded) = 0;                  /* force OS reseed */
+    FAST_UUID_G(drbg_since_seed) = 0;
     FAST_UUID_G(rpos) = sizeof(FAST_UUID_G(rbuf)); /* force refill on next fu_rand */
     FAST_UUID_G(prng_seeded) = 0;                  /* force xoshiro reseed */
     FAST_UUID_G(v7_key) = 0;                        /* force v7 reseed (new key > 0) */
@@ -1901,6 +2262,15 @@ static PHP_GINIT_FUNCTION(fast_uuid) {
     fast_uuid_globals->rpos = sizeof(fast_uuid_globals->rbuf); /* force first-use refill */
 }
 
+/* The buffer still holds bytes already handed out as UUIDs; under ZTS this
+   memory goes back to the allocator when the thread exits. */
+static PHP_GSHUTDOWN_FUNCTION(fast_uuid) {
+    ZEND_SECURE_ZERO(fast_uuid_globals->rbuf, sizeof(fast_uuid_globals->rbuf));
+    ZEND_SECURE_ZERO(fast_uuid_globals->drbg_key, sizeof(fast_uuid_globals->drbg_key));
+    ZEND_SECURE_ZERO(fast_uuid_globals->drbg_ctr, sizeof(fast_uuid_globals->drbg_ctr));
+    ZEND_SECURE_ZERO(fast_uuid_globals->prng_s, sizeof(fast_uuid_globals->prng_s));
+}
+
 PHP_MINIT_FUNCTION(fast_uuid) {
 #if PHP_VERSION_ID >= 80400
     if (type == MODULE_TEMPORARY) {
@@ -1957,6 +2327,21 @@ PHP_MINIT_FUNCTION(fast_uuid) {
 
 #ifdef FU_X86
     fu_has_ssse3 = fu_detect_ssse3();
+#endif
+
+#ifdef FU_HAVE_AES
+    /* A backend that fails its known-answer test is never used: the OS
+       CSPRNG refill path stays in force instead of emitting bad output. */
+    int has_aes = fu_detect_aes();
+    if (has_aes < 0) {
+        fu_aes_state = FU_AES_NO_DETECT;
+    } else if (has_aes == 0) {
+        fu_aes_state = FU_AES_NO_CPU;
+    } else if (!fu_aes_selftest()) {
+        fu_aes_state = FU_AES_SELFTEST_FAILED;
+    } else {
+        fu_aes_state = FU_AES_ACTIVE;
+    }
 #endif
 
     zend_class_entry *marker_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
@@ -2034,6 +2419,29 @@ PHP_MINFO_FUNCTION(fast_uuid) {
 #else
     php_info_print_table_row(2, "SIMD hex formatter", "scalar");
 #endif
+    {
+        char rng[160];
+        const char *why = "";
+        switch (fu_aes_state) {
+            case FU_AES_ACTIVE: break;
+            case FU_AES_NO_CPU: why = " (CPU lacks AES instructions)"; break;
+            case FU_AES_NO_DETECT: why = " (AES detection unsupported on this OS)"; break;
+            case FU_AES_SELFTEST_FAILED: why = " (AES known-answer self-test failed)"; break;
+            default: why = " (no hardware AES backend in this build)"; break;
+        }
+#ifdef FU_HAVE_AES
+        if (fu_aes_state == FU_AES_ACTIVE) {
+            snprintf(rng, sizeof(rng),
+                "AES-256-CTR DRBG (" FU_AES_NAME "), fast key erasure every %u KiB, OS reseed every %u KiB",
+                (unsigned)(FU_DRBG_CHUNK / 1024), (unsigned)(FU_DRBG_RESEED_BYTES / 1024));
+        } else
+#endif
+        {
+            snprintf(rng, sizeof(rng), "OS CSPRNG (php_random_bytes), %u KiB batched%s",
+                (unsigned)(sizeof(FAST_UUID_G(rbuf)) / 1024), why);
+        }
+        php_info_print_table_row(2, "CSPRNG", rng);
+    }
     php_info_print_table_end();
 }
 
@@ -2049,7 +2457,7 @@ zend_module_entry fast_uuid_module_entry = {
     PHP_FAST_UUID_VERSION,
     PHP_MODULE_GLOBALS(fast_uuid),
     PHP_GINIT(fast_uuid),
-    NULL,
+    PHP_GSHUTDOWN(fast_uuid),
     NULL,
     STANDARD_MODULE_PROPERTIES_EX
 };
