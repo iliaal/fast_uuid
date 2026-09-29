@@ -241,3 +241,31 @@ those two rows are the controls. `uuid_v1()` gains about half as much as
 `uuid_v4()` because it draws 8 random bytes per UUID instead of 16. On x86-64
 (i9-13950HX under WSL2, too loaded for exact figures) the direction is the same:
 `uuid_v4()` went from 84-134 to 38-51 ns across four rounds.
+
+## 0.8.0 vs 0.7.0 (ARM64)
+
+Every change in 0.8.0 combined (userspace AES-256-CTR refill, frameless
+procedural calls, packed batch fill, direct object allocation), measured
+against 0.7.0 on the same idle Neoverse-N1 host: PHP 8.4.25 NTS release,
+`taskset -c 1`, best of 15 runs of 300,000 iterations, three interleaved
+0.7.0/0.8.0 rounds. The spread across rounds is under 1% for every row.
+Nanoseconds per operation (per UUID for the batches), lower is better:
+
+| Operation                | 0.7.0  | 0.8.0 | Change |
+|--------------------------|-------:|------:|-------:|
+| `uuid_v4()`              | 75.9   | 36.9  | −51%   |
+| `uuid_v4_fast()`         | 38.6   | 32.7  | −15%   |
+| `uuid_v1()`              | 100.5  | 79.1  | −21%   |
+| `uuid_v7()`              | 83.9   | 71.8  | −14%   |
+| `uuid_to_bin()`          | 46.5   | 39.9  | −14%   |
+| `uuid_is_valid()`        | 36.7   | 30.9  | −16%   |
+| `Uuid::uuid4()->toString()` | 137.3 | 100.0 | −27% |
+| `Uuid::uuid7()->toString()` | 158.9 | 142.7 | −10% |
+| `Uuid::fromString()`     | 83.2   | 78.5  | −6%    |
+| `uuid_v4_batch(100)`     | 64.5   | 24.8  | −62%   |
+| `uuid_v4_bin_batch(100)` | 61.6   | 18.2  | −70%   |
+| `uuid_v7_batch(100)`     | 28.4   | 23.0  | −19%   |
+| `uuid_v7_bin_batch(100)` | 26.0   | 16.5  | −37%   |
+| `fast_uuid_random_bytes(6000)` | 15,085 | 2,284 | −85% |
+
+The compat layer's gains are listed in `CHANGELOG.md` under 0.8.0.
