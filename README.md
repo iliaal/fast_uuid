@@ -14,7 +14,7 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 
 ## ⚡ Why it's fast
 
-- **Batched CSPRNG**: `getrandom()` is amortized across ~500 v4s via an 8 KB per-thread buffer instead of one syscall per UUID. ramsey's per-call `random_bytes()` is the usual bottleneck.
+- **Userspace CSPRNG**: an 8 KB per-thread buffer is refilled by an AES-256-CTR generator with fast key erasure, running on the CPU's AES instructions (x86/x86-64 AES-NI, ARMv8 Crypto Extensions) and reseeded from the OS CSPRNG every 64 KiB, so one syscall covers ~4,000 v4s. CPUs without AES instructions refill the buffer from the OS CSPRNG (`getrandom()` on Linux) directly, one syscall per ~500 v4s. ramsey's per-call `random_bytes()` is the usual bottleneck.
 - **No property table**: the object is 16 inline bytes plus a lazily-cached canonical string. No `HashTable`, no declared properties, custom create/free/clone/compare/cast handlers.
 - **SIMD hex formatter**: x86-64 uses a runtime-dispatched SSSE3 `pshufb`-LUT path, and ARM64 uses a NEON table-lookup path. Both turn 16 bytes into 32 hex in a handful of vector ops, with a scalar LUT fallback for other architectures.
 - **Procedural path**: `uuid_v4()` and friends return a `zend_string` with no object allocation, for ORM inserts and cache keys.
@@ -46,6 +46,13 @@ make
 make test
 php -d extension="$(pwd)/modules/fast_uuid.so" -r 'echo \FastUuid\Uuid::uuid4(), "\n"; echo uuid_v7(), "\n";'
 ```
+
+The SIMD hex formatter and the AES-256-CTR CSPRNG backend are chosen at runtime from the CPU's feature flags. To build without them, add a define to `CFLAGS` before running `./configure`:
+
+- `-DFU_DISABLE_AES` removes only the AES backend; the buffer is refilled from the OS CSPRNG.
+- `-DFU_DISABLE_SSSE3` (x86) or `-DFU_DISABLE_NEON` (ARM64) removes the SIMD formatter and, with it, the AES backend for that architecture.
+
+`php --ri fast_uuid` shows the active CSPRNG backend and, after a fallback, the reason.
 
 The arginfo header is generated from `fast_uuid.stub.php`. To regenerate after editing the stub:
 

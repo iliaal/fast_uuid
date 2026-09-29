@@ -25,9 +25,16 @@ extern zend_module_entry fast_uuid_module_entry;
 #endif
 
 ZEND_BEGIN_MODULE_GLOBALS(fast_uuid)
-    /* batched CSPRNG buffer: amortizes getrandom() across many UUIDs */
+    /* batched CSPRNG buffer: refilled by the AES-256-CTR DRBG when the CPU has
+       AES instructions, otherwise by the OS CSPRNG (php_random_bytes) */
     unsigned char rbuf[8192];
     size_t        rpos;
+    /* AES-256-CTR DRBG: drbg_key is overwritten after every generate call
+       (fast key erasure); round keys only ever live on the stack */
+    unsigned char drbg_key[32];
+    unsigned char drbg_ctr[16];
+    size_t        drbg_since_seed; /* output bytes since the last OS reseed */
+    zend_bool     drbg_seeded;
     /* v7 monotonic state (per-process scope, per-thread under ZTS) */
     uint64_t      v7_key;       /* last (unix_ms << 12 | sub_ms), 60-bit time key */
     uint64_t      v7_randb;     /* 62-bit rand_b counter */
