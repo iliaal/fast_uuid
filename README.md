@@ -17,7 +17,7 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 - **Batched CSPRNG**: `getrandom()` is amortized across ~500 v4s via an 8 KB per-thread buffer instead of one syscall per UUID. ramsey's per-call `random_bytes()` is the usual bottleneck.
 - **No property table**: the object is 16 inline bytes plus a lazily-cached canonical string. No `HashTable`, no declared properties, custom create/free/clone/compare/cast handlers.
 - **SIMD hex formatter**: x86-64 uses a runtime-dispatched SSSE3 `pshufb`-LUT path, and ARM64 uses a NEON table-lookup path. Both turn 16 bytes into 32 hex in a handful of vector ops, with a scalar LUT fallback for other architectures.
-- **Procedural path**: `uuid_v4()` and friends return a `zend_string` with no object allocation, for ORM inserts and cache keys.
+- **Procedural path**: `uuid_v4()` and friends return a `zend_string` with no object allocation, for ORM inserts and cache keys. On PHP 8.4+ direct calls compile to frameless calls that skip the call frame and argument parser (up to ~20% faster per call; see [BENCHMARKS.md](BENCHMARKS.md#frameless-calls-php-84)).
 
 ## Requirements
 

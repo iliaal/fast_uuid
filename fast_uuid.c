@@ -1452,17 +1452,24 @@ PHP_METHOD(FastUuid_Uuid, __set_state) {
 /* procedural fast-path (zend_string return, no object alloc)         */
 /* ------------------------------------------------------------------ */
 
-#define FU_RETURN_FORMATTED(b) do { \
-    const unsigned char *_fu_src = (b); \
-    if (UNEXPECTED(EG(exception))) { RETURN_THROWS(); } \
-    zend_string *_fu_s = zend_string_alloc(36, 0); \
-    fu_format36(_fu_src, ZSTR_VAL(_fu_s)); ZSTR_VAL(_fu_s)[36] = '\0'; \
-    RETURN_STR(_fu_s); } while (0)
+/* Each procedural function has one zend_always_inline body (fu_fn_*) shared
+   by its ZPP entry point (zif_*) and, on PHP 8.4+, its frameless handler
+   (zflf_*), which the compiler binds to direct calls. Z_FLF_PARAM_* applies the
+   calling frame's strict_types, so both entry points accept, coerce, and reject
+   the same arguments. No parameter here is optional, so the compiler binds a
+   frameless handler only when the argument count equals its arity; any other
+   count takes the zif_* path and its ArgumentCountError. */
 
-#define FU_RETURN_BYTES(b) do { \
-    const unsigned char *_fu_src = (b); \
-    if (UNEXPECTED(EG(exception))) { RETURN_THROWS(); } \
-    RETURN_STRINGL((const char *)_fu_src, 16); } while (0)
+static zend_always_inline void fu_retval_uuid(zval *return_value, const unsigned char b[16], bool as_bytes) {
+    if (as_bytes) {
+        RETVAL_STRINGL((const char *)b, 16);
+    } else {
+        zend_string *s = zend_string_alloc(36, 0);
+        fu_format36(b, ZSTR_VAL(s));
+        ZSTR_VAL(s)[36] = '\0';
+        RETVAL_STR(s);
+    }
+}
 
 static zend_result fu_batch_count_arg(zend_long count, uint32_t *out) {
     if (count <= 0) {
@@ -1487,62 +1494,145 @@ static zend_always_inline zend_string *fu_uuid_zstr(const unsigned char b[16], i
     return s;
 }
 
-PHP_FUNCTION(uuid_v1) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v1(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v1_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v1(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
-PHP_FUNCTION(uuid_v4) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v4_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
-PHP_FUNCTION(uuid_v4_fast) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4_fast(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v4_fast_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v4_fast(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
-PHP_FUNCTION(uuid_v6) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v6(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v6_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v6(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
-PHP_FUNCTION(uuid_v7) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v7(b) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b); }
-PHP_FUNCTION(uuid_v7_bin) { ZEND_PARSE_PARAMETERS_NONE(); unsigned char b[16]; if (fu_gen_v7(b) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b); }
-PHP_FUNCTION(uuid_v7_at) {
-    zend_long ms;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(ms) ZEND_PARSE_PARAMETERS_END();
-    unsigned char b[16]; if (fu_v7_at_ms(b, ms) == FAILURE) RETURN_THROWS(); FU_RETURN_FORMATTED(b);
-}
-PHP_FUNCTION(uuid_v7_at_bin) {
-    zend_long ms;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(ms) ZEND_PARSE_PARAMETERS_END();
-    unsigned char b[16]; if (fu_v7_at_ms(b, ms) == FAILURE) RETURN_THROWS(); FU_RETURN_BYTES(b);
-}
-
-#define FU_NAME_BASED_FN(fname, gen, ret) \
+/* Emit zif_fname and, on 8.4+, its frameless twin; both run `call`, which
+   reads the parsed arguments as lval, str, or str1/str2. */
+#define FU_FN_ARG0(fname, call) \
 PHP_FUNCTION(fname) { \
-    zend_string *zns, *nm; \
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(zns) Z_PARAM_STR(nm) ZEND_PARSE_PARAMETERS_END(); \
-    unsigned char ns[16], b[16]; \
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) { \
-        zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); \
+    ZEND_PARSE_PARAMETERS_NONE(); \
+    call; \
+} \
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 0) { \
+    call; \
+})
+
+#define FU_FN_LONG1(fname, call) \
+PHP_FUNCTION(fname) { \
+    zend_long lval; \
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(lval) ZEND_PARSE_PARAMETERS_END(); \
+    call; \
+} \
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 1) { \
+    zend_long lval; \
+    Z_FLF_PARAM_LONG(1, lval); \
+    call; \
+flf_clean: ; \
+})
+
+#define FU_FN_STR1(fname, call) \
+PHP_FUNCTION(fname) { \
+    zend_string *str; \
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(str) ZEND_PARSE_PARAMETERS_END(); \
+    call; \
+} \
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 1) { \
+    zval str_tmp; \
+    zend_string *str; \
+    Z_FLF_PARAM_STR(1, str, str_tmp); \
+    call; \
+flf_clean: \
+    Z_FLF_PARAM_FREE_STR(1, str_tmp); \
+})
+
+/* A frameless handler receives compiled variables by pointer, not by copy as
+   ZPP does. Coercing either argument can run userland (__toString, an error
+   handler on the null-argument deprecation) that reassigns the other argument's
+   variable and frees a string already borrowed from it. Unless both arguments
+   are already strings, pin both values in owned temporaries before coercing
+   either, so the call sees exactly the values it was given. */
+#if PHP_VERSION_ID >= 80400
+static zend_always_inline bool fu_flf_str_owned(zval *arg, zend_string **dest, uint32_t arg_num) {
+    if (EXPECTED(Z_TYPE_P(arg) == IS_STRING)) {
+        *dest = Z_STR_P(arg);
+        return true;
+    }
+    if (!zend_parse_arg_str_ex(arg, dest, /* null_check */ false, arg_num, /* frameless */ true)) {
+        zend_wrong_parameter_type_error(arg_num, Z_EXPECTED_STRING, arg);
+        return false;
+    }
+    return true;
+}
+#endif
+
+#define FU_FN_STR2(fname, call) \
+PHP_FUNCTION(fname) { \
+    zend_string *str1, *str2; \
+    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(str1) Z_PARAM_STR(str2) ZEND_PARSE_PARAMETERS_END(); \
+    call; \
+} \
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 2) { \
+    zend_string *str1, *str2; \
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING && Z_TYPE_P(arg2) == IS_STRING)) { \
+        str1 = Z_STR_P(arg1); \
+        str2 = Z_STR_P(arg2); \
+        call; \
+        return; \
     } \
-    gen(b, ns, ZSTR_VAL(nm), ZSTR_LEN(nm)); \
-    if (UNEXPECTED(EG(exception))) RETURN_THROWS(); /* name cap: b is unwritten */ \
-    ret(b); \
-}
-FU_NAME_BASED_FN(uuid_v3, fu_gen_v3, FU_RETURN_FORMATTED)
-FU_NAME_BASED_FN(uuid_v3_bin, fu_gen_v3, FU_RETURN_BYTES)
-FU_NAME_BASED_FN(uuid_v5, fu_gen_v5, FU_RETURN_FORMATTED)
-FU_NAME_BASED_FN(uuid_v5_bin, fu_gen_v5, FU_RETURN_BYTES)
-#undef FU_NAME_BASED_FN
+    zval str1_tmp, str2_tmp; \
+    ZVAL_COPY(&str1_tmp, arg1); \
+    ZVAL_COPY(&str2_tmp, arg2); \
+    if (fu_flf_str_owned(&str1_tmp, &str1, 1) && fu_flf_str_owned(&str2_tmp, &str2, 2)) { \
+        call; \
+    } \
+    zval_ptr_dtor(&str1_tmp); \
+    zval_ptr_dtor(&str2_tmp); \
+})
 
-PHP_FUNCTION(uuid_v8) {
-    zend_string *data;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
+/* gen always inlines to a direct call: every caller passes a constant. */
+static zend_always_inline void fu_fn_generate(zval *return_value, zend_result (*gen)(unsigned char *), bool as_bytes) {
     unsigned char b[16];
-    fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
-    FU_RETURN_FORMATTED(b);
+    if (gen(b) == FAILURE) return;
+    fu_retval_uuid(return_value, b, as_bytes);
 }
 
-PHP_FUNCTION(uuid_v8_bin) {
-    zend_string *data;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
+FU_FN_ARG0(uuid_v1,          fu_fn_generate(return_value, fu_gen_v1, 0))
+FU_FN_ARG0(uuid_v1_bin,      fu_fn_generate(return_value, fu_gen_v1, 1))
+FU_FN_ARG0(uuid_v4,          fu_fn_generate(return_value, fu_gen_v4, 0))
+FU_FN_ARG0(uuid_v4_bin,      fu_fn_generate(return_value, fu_gen_v4, 1))
+FU_FN_ARG0(uuid_v4_fast,     fu_fn_generate(return_value, fu_gen_v4_fast, 0))
+FU_FN_ARG0(uuid_v4_fast_bin, fu_fn_generate(return_value, fu_gen_v4_fast, 1))
+FU_FN_ARG0(uuid_v6,          fu_fn_generate(return_value, fu_gen_v6, 0))
+FU_FN_ARG0(uuid_v6_bin,      fu_fn_generate(return_value, fu_gen_v6, 1))
+FU_FN_ARG0(uuid_v7,          fu_fn_generate(return_value, fu_gen_v7, 0))
+FU_FN_ARG0(uuid_v7_bin,      fu_fn_generate(return_value, fu_gen_v7, 1))
+
+static zend_always_inline void fu_fn_v7_at(zval *return_value, zend_long ms, bool as_bytes) {
+    unsigned char b[16];
+    if (fu_v7_at_ms(b, ms) == FAILURE) return;
+    fu_retval_uuid(return_value, b, as_bytes);
+}
+
+FU_FN_LONG1(uuid_v7_at,     fu_fn_v7_at(return_value, lval, 0))
+FU_FN_LONG1(uuid_v7_at_bin, fu_fn_v7_at(return_value, lval, 1))
+
+static zend_always_inline void fu_fn_name_based(zval *return_value, zend_string *zns, zend_string *nm,
+        void (*gen)(unsigned char *, const unsigned char *, const char *, size_t), bool as_bytes) {
+    unsigned char ns[16], b[16];
+    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) {
+        zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0);
+        return;
+    }
+    gen(b, ns, ZSTR_VAL(nm), ZSTR_LEN(nm));
+    if (UNEXPECTED(EG(exception))) return; /* name cap: b is unwritten */
+    fu_retval_uuid(return_value, b, as_bytes);
+}
+
+FU_FN_STR2(uuid_v3,     fu_fn_name_based(return_value, str1, str2, fu_gen_v3, 0))
+FU_FN_STR2(uuid_v3_bin, fu_fn_name_based(return_value, str1, str2, fu_gen_v3, 1))
+FU_FN_STR2(uuid_v5,     fu_fn_name_based(return_value, str1, str2, fu_gen_v5, 0))
+FU_FN_STR2(uuid_v5_bin, fu_fn_name_based(return_value, str1, str2, fu_gen_v5, 1))
+
+static zend_always_inline void fu_fn_v8(zval *return_value, zend_string *data, bool as_bytes) {
+    if (ZSTR_LEN(data) != 16) {
+        zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0);
+        return;
+    }
     unsigned char b[16];
     fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
-    FU_RETURN_BYTES(b);
+    fu_retval_uuid(return_value, b, as_bytes);
 }
+
+FU_FN_STR1(uuid_v8,     fu_fn_v8(return_value, str, 0))
+FU_FN_STR1(uuid_v8_bin, fu_fn_v8(return_value, str, 1))
 
 /* v4 batch: draw the CSPRNG bytes for FU_V4_CHUNK UUIDs at a time instead of
    16 bytes per UUID (~8% per UUID on aarch64), then stamp version/variant. */
@@ -1575,21 +1665,18 @@ static zend_result fu_gen_v4_batch_n(zval *arr, uint32_t n, int as_bytes) {
     return rc;
 }
 
-PHP_FUNCTION(uuid_v4_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
+/* On failure return_value holds a partial array; the engine destroys the
+   result of a throwing call. */
+static zend_always_inline void fu_fn_batch(zval *return_value, zend_long count,
+        zend_result (*gen)(zval *, uint32_t, int), int as_bytes) {
+    uint32_t n;
+    if (fu_batch_count_arg(count, &n) == FAILURE) return;
     array_init_size(return_value, n);
-    if (fu_gen_v4_batch_n(return_value, n, 0) == FAILURE) RETURN_THROWS();
+    gen(return_value, n, as_bytes);
 }
 
-PHP_FUNCTION(uuid_v4_bin_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    if (fu_gen_v4_batch_n(return_value, n, 1) == FAILURE) RETURN_THROWS();
-}
+FU_FN_LONG1(uuid_v4_batch,     fu_fn_batch(return_value, lval, fu_gen_v4_batch_n, 0))
+FU_FN_LONG1(uuid_v4_bin_batch, fu_fn_batch(return_value, lval, fu_gen_v4_batch_n, 1))
 
 /* One clock read per batch, then advance the monotonic (key, rand_b)
    counter: the same output as n fu_gen_v7 calls within one tick. */
@@ -1630,49 +1717,38 @@ static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
     return SUCCESS;
 }
 
-PHP_FUNCTION(uuid_v7_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    if (fu_gen_v7_batch_n(return_value, n, 0) == FAILURE) RETURN_THROWS();
-}
+FU_FN_LONG1(uuid_v7_batch,     fu_fn_batch(return_value, lval, fu_gen_v7_batch_n, 0))
+FU_FN_LONG1(uuid_v7_bin_batch, fu_fn_batch(return_value, lval, fu_gen_v7_batch_n, 1))
 
-PHP_FUNCTION(uuid_v7_bin_batch) {
-    zend_long count;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(count) ZEND_PARSE_PARAMETERS_END();
-    uint32_t n; if (fu_batch_count_arg(count, &n) == FAILURE) RETURN_THROWS();
-    array_init_size(return_value, n);
-    if (fu_gen_v7_batch_n(return_value, n, 1) == FAILURE) RETURN_THROWS();
-}
-
-PHP_FUNCTION(uuid_to_bin) {
-    zend_string *s;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
+static zend_always_inline void fu_fn_to_bin(zval *return_value, zend_string *s) {
     unsigned char b[16];
-    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) { zend_throw_exception(fu_ex_invalid_str, "Invalid UUID", 0); RETURN_THROWS(); }
-    RETURN_STRINGL((char *)b, 16);
+    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) {
+        zend_throw_exception(fu_ex_invalid_str, "Invalid UUID", 0);
+        return;
+    }
+    RETVAL_STRINGL((const char *)b, 16);
 }
 
-PHP_FUNCTION(uuid_from_bin) {
-    zend_string *s;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(s) != 16) { zend_throw_exception(fu_ex_invalid_arg, "Expected 16 bytes", 0); RETURN_THROWS(); }
-    FU_RETURN_FORMATTED((const unsigned char *)ZSTR_VAL(s));
+static zend_always_inline void fu_fn_from_bin(zval *return_value, zend_string *s) {
+    if (ZSTR_LEN(s) != 16) {
+        zend_throw_exception(fu_ex_invalid_arg, "Expected 16 bytes", 0);
+        return;
+    }
+    fu_retval_uuid(return_value, (const unsigned char *)ZSTR_VAL(s), 0);
 }
 
-PHP_FUNCTION(uuid_is_valid) {
-    zend_string *s;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
+static zend_always_inline void fu_fn_is_valid(zval *return_value, zend_string *s) {
     unsigned char b[16];
-    RETURN_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
+    RETVAL_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
 }
 
-PHP_FUNCTION(fast_uuid_random_bytes) {
-    zend_long n;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(n) ZEND_PARSE_PARAMETERS_END();
-    if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); RETURN_THROWS(); }
-    if ((zend_ulong)n > FU_MAX_RANDOM_BYTES) { zend_throw_exception_ex(fu_ex_invalid_arg, 0, "length is too large (max %u)", FU_MAX_RANDOM_BYTES); RETURN_THROWS(); }
+FU_FN_STR1(uuid_to_bin,   fu_fn_to_bin(return_value, str))
+FU_FN_STR1(uuid_from_bin, fu_fn_from_bin(return_value, str))
+FU_FN_STR1(uuid_is_valid, fu_fn_is_valid(return_value, str))
+
+static zend_always_inline void fu_fn_random_bytes(zval *return_value, zend_long n) {
+    if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); return; }
+    if ((zend_ulong)n > FU_MAX_RANDOM_BYTES) { zend_throw_exception_ex(fu_ex_invalid_arg, 0, "length is too large (max %u)", FU_MAX_RANDOM_BYTES); return; }
     zend_string *s = zend_string_alloc((size_t)n, 0);
     zend_result result;
     if (UNEXPECTED((size_t)n > sizeof(FAST_UUID_G(rbuf)) / 2 && (size_t)n < sizeof(FAST_UUID_G(rbuf)))) {
@@ -1681,10 +1757,137 @@ PHP_FUNCTION(fast_uuid_random_bytes) {
     } else {
         result = fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n);
     }
-    if (result == FAILURE) { zend_string_release(s); RETURN_THROWS(); }
+    if (result == FAILURE) { zend_string_release(s); return; }
     ZSTR_VAL(s)[n] = '\0';
-    RETURN_STR(s);
+    RETVAL_STR(s);
 }
+
+FU_FN_LONG1(fast_uuid_random_bytes, fu_fn_random_bytes(return_value, lval))
+
+#undef FU_FN_ARG0
+#undef FU_FN_LONG1
+#undef FU_FN_STR1
+#undef FU_FN_STR2
+
+#if PHP_VERSION_ID >= 80400
+#include "Zend/zend_system_id.h"
+
+#define FU_FLF_MAX 64 /* >= the stub's frameless handler count */
+
+/* This module's frameless handlers in registration order: zend_register_functions()
+   appends them to zend_flf_handlers as one contiguous run. */
+static uint32_t fu_flf_handlers(void *out[], uint32_t cap) {
+    uint32_t n = 0;
+    for (const zend_function_entry *fe = ext_functions; fe->fname; fe++) {
+        if (!fe->frameless_function_infos) {
+            continue;
+        }
+        for (const zend_frameless_function_info *info = fe->frameless_function_infos; info->handler; info++) {
+            if (n < cap) {
+                out[n] = info->handler;
+            }
+            n++;
+        }
+    }
+    ZEND_ASSERT(n <= cap);
+    return n;
+}
+
+static bool fu_flf_run_at(size_t base, void *const handlers[], uint32_t n) {
+    for (uint32_t i = 0; i < n; i++) {
+        if (zend_flf_handlers[base + i] != handlers[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Index of this module's run of slots in zend_flf_handlers, or UINT32_MAX.
+   Under dl() registration immediately precedes MINIT, so the run is the tail
+   and is checked first; persistent loads register every extension before any
+   MINIT, so later extensions' slots may follow ours. */
+static uint32_t fu_flf_first_slot(void *const handlers[], uint32_t n) {
+    size_t end = 0;
+    while (zend_flf_handlers && zend_flf_handlers[end]) {
+        end++;
+    }
+    if (n == 0 || end < n || end - n >= UINT32_MAX) {
+        return UINT32_MAX;
+    }
+    if (fu_flf_run_at(end - n, handlers, n)) {
+        return (uint32_t)(end - n);
+    }
+    for (size_t base = 0; base + n <= end; base++) {
+        if (fu_flf_run_at(base, handlers, n)) {
+            return (uint32_t)base;
+        }
+    }
+    return UINT32_MAX;
+}
+
+/* opcache's file cache persists FRAMELESS_ICALL opcodes with raw
+   zend_flf_handlers indices, and zend_system_id does not cover the loaded
+   extension set. A cache written by a process that registered these handlers
+   at other indices (or not at all) would otherwise dispatch through the wrong
+   slot. Key the system id to this module's slot range and version. Only a
+   persistent load can do this: the id is finalized after startup MINITs. */
+static void fu_flf_key_system_id(void) {
+    void *handlers[FU_FLF_MAX];
+    uint32_t n = fu_flf_handlers(handlers, FU_FLF_MAX);
+    uint32_t key[2] = { n <= FU_FLF_MAX ? fu_flf_first_slot(handlers, n) : UINT32_MAX, n };
+    zend_add_system_entropy("fast_uuid", "zend_flf_handlers", key, sizeof(key));
+    zend_add_system_entropy("fast_uuid", "version", PHP_FAST_UUID_VERSION, sizeof(PHP_FAST_UUID_VERSION) - 1);
+}
+
+/* A dl()-loaded (MODULE_TEMPORARY) copy must never be bound as a frameless
+   call. zend_register_functions() appends every frameless handler to the
+   process-global zend_flf_handlers/zend_flf_functions tables for temporary
+   modules too, and nothing removes them at unload. The next request's dl()
+   usually maps the .so at the same address, so the compiler would match a
+   handler pointer to the stale entry and ZEND_FLF_FUNC() would read the freed
+   zend_internal_function (argument errors, backtraces, observers).
+   Runs from MINIT, which dl() calls right after registration with no
+   compilation in between: clearing frameless_function_infos keeps the compiler
+   on the regular call path, and overwriting this load's handler slots with an
+   engine data address (never a function address, never unmapped) means no
+   later-mapped handler can resolve to them. The slots are overwritten, not
+   removed: the table is NULL-terminated and indices already in use must hold.
+   Core still appends this load's slots on every dl(); they are never reclaimed. */
+static void fu_flf_disable_for_dl(void) {
+    for (const zend_function_entry *fe = ext_functions; fe->fname; fe++) {
+        if (!fe->frameless_function_infos) {
+            continue;
+        }
+        zend_function *fn = zend_hash_str_find_ptr_lc(CG(function_table), fe->fname, strlen(fe->fname));
+        if (fn && fn->type == ZEND_INTERNAL_FUNCTION
+                && fn->internal_function.frameless_function_infos == fe->frameless_function_infos) {
+            fn->internal_function.frameless_function_infos = NULL;
+        }
+    }
+    void *handlers[FU_FLF_MAX];
+    uint32_t n = fu_flf_handlers(handlers, FU_FLF_MAX);
+    uint32_t base = n <= FU_FLF_MAX ? fu_flf_first_slot(handlers, n) : UINT32_MAX;
+    if (base != UINT32_MAX) {
+        for (uint32_t i = 0; i < n; i++) {
+            zend_flf_handlers[base + i] = (void *)&zend_flf_handlers;
+        }
+        return;
+    }
+    /* Run not found (a table this code does not expect): overwrite every match. */
+    for (const zend_function_entry *fe = ext_functions; fe->fname; fe++) {
+        if (!fe->frameless_function_infos) {
+            continue;
+        }
+        for (const zend_frameless_function_info *info = fe->frameless_function_infos; info->handler; info++) {
+            for (void **slot = zend_flf_handlers; slot && *slot; slot++) {
+                if (*slot == info->handler) {
+                    *slot = (void *)&zend_flf_handlers;
+                }
+            }
+        }
+    }
+}
+#endif
 
 /* ------------------------------------------------------------------ */
 /* module lifecycle                                                   */
@@ -1699,6 +1902,13 @@ static PHP_GINIT_FUNCTION(fast_uuid) {
 }
 
 PHP_MINIT_FUNCTION(fast_uuid) {
+#if PHP_VERSION_ID >= 80400
+    if (type == MODULE_TEMPORARY) {
+        fu_flf_disable_for_dl();
+    } else {
+        fu_flf_key_system_id();
+    }
+#endif
     for (int i = 0; i < 256; i++) {
         fu_lut[i*2] = fu_hexd[i >> 4];
         fu_lut[i*2+1] = fu_hexd[i & 0x0f];
