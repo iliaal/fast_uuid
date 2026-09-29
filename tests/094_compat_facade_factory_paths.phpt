@@ -158,12 +158,12 @@ var_dump(Uuid::isValid('ffffffff-ffff-ffff-ffff-ffffffffffff'));
 $withV7 = new class extends UuidFactory {
     public function uuid7(int|\DateTimeInterface|null $dateTime = null): \FastUuid\Compat\UuidInterface
     {
-        return parent::uuid7(1700000000000);
+        return parent::uuid7(1700000000);
     }
 };
 Uuid::setFactory($withV7);
 var_dump(Uuid::uuid7() instanceof UuidV7);
-var_dump(Uuid::uuid7()->getCore()->getTimestampMillis() === 1700000000000);
+var_dump(Uuid::uuid7()->getCore()->getTimestampMillis() === 1700000000);
 
 Uuid::setFactory($default);
 var_dump(Uuid::isValid('ffffffff-ffff-ffff-ffff-ffffffffffff') === false);
