@@ -2113,8 +2113,7 @@ static zend_always_inline void fu_fn_random_bytes(zval *return_value, zend_long 
     zend_string *s = zend_string_alloc((size_t)n, 0);
     zend_result result;
     if (UNEXPECTED((size_t)n > sizeof(FAST_UUID_G(rbuf)) / 2 && (size_t)n < sizeof(FAST_UUID_G(rbuf)))) {
-        result = php_random_bytes_throw(ZSTR_VAL(s), (size_t)n);
-        if (result == FAILURE) memset(ZSTR_VAL(s), 0, (size_t)n);
+        result = fu_rand_fill((unsigned char *)ZSTR_VAL(s), (size_t)n);
     } else {
         result = fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n);
     }
