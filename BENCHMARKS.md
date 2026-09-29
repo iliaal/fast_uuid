@@ -109,6 +109,55 @@ as above; ramsey/uuid 4.9.2 for comparison.
   `DateTimeImmutable`, ~5x faster than `getDateTime()`. ramsey has no integer
   equivalent for either.
 
+## Frameless calls (PHP 8.4+)
+
+On PHP 8.4 and later, every procedural function is registered with a frameless
+handler, so a direct call such as `uuid_v4()` or `uuid_to_bin($s)` compiles to
+a `FRAMELESS_ICALL` opcode instead of `INIT_FCALL` + `DO_ICALL`. It skips
+pushing a call frame and the ZPP argument parser. Dynamic calls (`$f()`,
+`call_user_func()`), argument unpacking, and named arguments still take the
+regular path. PHP 8.1 to 8.3 have no frameless calls and are unaffected. The
+tables above predate this change, so their procedural columns understate 8.4+.
+
+The saving is a fixed 23 to 49 instructions per call (44 for most functions), so
+it matters most for the cheapest calls and fades into the noise on batches. Callgrind, PHP 8.4 release
+build, x86-64, instructions per call net of an empty loop:
+
+| Call                          | before | after | delta |
+|-------------------------------|-------:|------:|------:|
+| `uuid_v4()`                   | 239    | 195   | -18%  |
+| `uuid_v7()`                   | 371    | 327   | -12%  |
+| `uuid_to_bin($s)`             | 397    | 361   | -9%   |
+| `uuid_from_bin($b)`           | 229    | 185   | -19%  |
+| `uuid_is_valid($s)`           | 316    | 271   | -14%  |
+| `fast_uuid_random_bytes(16)`  | 247    | 198   | -20%  |
+| `uuid_v7_bin_batch(100)`, per UUID | 190.0 | 189.5 | -0.3% |
+
+Wall clock, aarch64 (2-core idle host), PHP 8.4.25 NTS release, `taskset`-pinned,
+best of 15 runs of 300,000 calls, median of 4 interleaved before/after rounds,
+ns per call:
+
+| Call                           | before | after | delta  |
+|--------------------------------|-------:|------:|-------:|
+| `uuid_v4()`                    | 75.9   | 70.5  | -7.2%  |
+| `uuid_v4_fast()`               | 38.6   | 32.5  | -15.8% |
+| `uuid_v1()`                    | 99.5   | 96.7  | -2.9%  |
+| `uuid_v7()`                    | 83.5   | 77.0  | -7.7%  |
+| `uuid_v7_at($ms)`              | 68.0   | 61.4  | -9.8%  |
+| `uuid_v3($ns, $name)`          | 223.7  | 217.1 | -2.9%  |
+| `uuid_v8($bytes)`              | 34.5   | 27.4  | -20.3% |
+| `uuid_to_bin($s)`              | 46.4   | 40.0  | -13.8% |
+| `uuid_from_bin($b)`            | 34.0   | 27.8  | -18.4% |
+| `uuid_is_valid($s)`            | 36.8   | 30.8  | -16.2% |
+| `fast_uuid_random_bytes(16)`   | 73.7   | 68.4  | -7.2%  |
+| `uuid_v7_bin_batch(100)`, per UUID | 26.1 | 26.1 | 0.0% |
+| `Uuid::uuid4()->toString()` (object API, control) | 138.1 | 138.0 | 0.0% |
+| `Uuid::fromString($s)` (object API, control) | 83.1 | 84.5 | +1.6% |
+
+The object-API controls run unchanged code. The +1.6% on `fromString` held in
+all four rounds; it is most likely code layout in the larger `.so`, since the
+change does not touch that path.
+
 ## Notes
 
 - The batched CSPRNG is why v4 generation is an order of magnitude faster than

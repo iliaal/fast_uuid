@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: be4bdc7dc6bed47a48c0db304c3bfc0f91009d66 */
+ * Stub hash: 0d01042c934b59b63d2a543f9aba02b27daab608 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -220,6 +220,163 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_FastUuid_Uuid___set_state,
 	ZEND_ARG_TYPE_INFO(0, an_array, IS_ARRAY, 0)
 ZEND_END_ARG_INFO()
 
+
+ZEND_FRAMELESS_FUNCTION(uuid_v1, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v1[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v1, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v1_bin, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v1_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v1_bin, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v3, 2);
+static const zend_frameless_function_info frameless_function_infos_uuid_v3[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v3, 2), 2 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v3_bin, 2);
+static const zend_frameless_function_info frameless_function_infos_uuid_v3_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v3_bin, 2), 2 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v4, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v4[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v4, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v4_bin, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v4_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v4_bin, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v4_fast, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v4_fast[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v4_fast, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v4_fast_bin, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v4_fast_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v4_fast_bin, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v5, 2);
+static const zend_frameless_function_info frameless_function_infos_uuid_v5[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v5, 2), 2 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v5_bin, 2);
+static const zend_frameless_function_info frameless_function_infos_uuid_v5_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v5_bin, 2), 2 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v6, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v6[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v6, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v6_bin, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v6_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v6_bin, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v7, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v7[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v7, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v7_bin, 0);
+static const zend_frameless_function_info frameless_function_infos_uuid_v7_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v7_bin, 0), 0 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v7_at, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v7_at[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v7_at, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v7_at_bin, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v7_at_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v7_at_bin, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v8, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v8[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v8, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v8_bin, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v8_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v8_bin, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v4_batch, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v4_batch[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v4_batch, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v7_batch, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v7_batch[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v7_batch, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v4_bin_batch, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v4_bin_batch[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v4_bin_batch, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_v7_bin_batch, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_v7_bin_batch[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_v7_bin_batch, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_to_bin, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_to_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_to_bin, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_from_bin, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_from_bin[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_from_bin, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 1);
+static const zend_frameless_function_info frameless_function_infos_uuid_is_valid[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_is_valid, 1), 1 },
+	{ 0 },
+};
+
+ZEND_FRAMELESS_FUNCTION(fast_uuid_random_bytes, 1);
+static const zend_frameless_function_info frameless_function_infos_fast_uuid_random_bytes[] = {
+	{ ZEND_FRAMELESS_FUNCTION_NAME(fast_uuid_random_bytes, 1), 1 },
+	{ 0 },
+};
+
 ZEND_FUNCTION(uuid_v1);
 ZEND_FUNCTION(uuid_v1_bin);
 ZEND_FUNCTION(uuid_v3);
@@ -279,32 +436,32 @@ ZEND_METHOD(FastUuid_Uuid, __unserialize);
 ZEND_METHOD(FastUuid_Uuid, __set_state);
 
 static const zend_function_entry ext_functions[] = {
-	ZEND_FE(uuid_v1, arginfo_uuid_v1)
-	ZEND_FE(uuid_v1_bin, arginfo_uuid_v1_bin)
-	ZEND_FE(uuid_v3, arginfo_uuid_v3)
-	ZEND_FE(uuid_v3_bin, arginfo_uuid_v3_bin)
-	ZEND_FE(uuid_v4, arginfo_uuid_v4)
-	ZEND_FE(uuid_v4_bin, arginfo_uuid_v4_bin)
-	ZEND_FE(uuid_v4_fast, arginfo_uuid_v4_fast)
-	ZEND_FE(uuid_v4_fast_bin, arginfo_uuid_v4_fast_bin)
-	ZEND_FE(uuid_v5, arginfo_uuid_v5)
-	ZEND_FE(uuid_v5_bin, arginfo_uuid_v5_bin)
-	ZEND_FE(uuid_v6, arginfo_uuid_v6)
-	ZEND_FE(uuid_v6_bin, arginfo_uuid_v6_bin)
-	ZEND_FE(uuid_v7, arginfo_uuid_v7)
-	ZEND_FE(uuid_v7_bin, arginfo_uuid_v7_bin)
-	ZEND_FE(uuid_v7_at, arginfo_uuid_v7_at)
-	ZEND_FE(uuid_v7_at_bin, arginfo_uuid_v7_at_bin)
-	ZEND_FE(uuid_v8, arginfo_uuid_v8)
-	ZEND_FE(uuid_v8_bin, arginfo_uuid_v8_bin)
-	ZEND_FE(uuid_v4_batch, arginfo_uuid_v4_batch)
-	ZEND_FE(uuid_v7_batch, arginfo_uuid_v7_batch)
-	ZEND_FE(uuid_v4_bin_batch, arginfo_uuid_v4_bin_batch)
-	ZEND_FE(uuid_v7_bin_batch, arginfo_uuid_v7_bin_batch)
-	ZEND_FE(uuid_to_bin, arginfo_uuid_to_bin)
-	ZEND_FE(uuid_from_bin, arginfo_uuid_from_bin)
-	ZEND_FE(uuid_is_valid, arginfo_uuid_is_valid)
-	ZEND_FE(fast_uuid_random_bytes, arginfo_fast_uuid_random_bytes)
+	ZEND_RAW_FENTRY("uuid_v1", zif_uuid_v1, arginfo_uuid_v1, 0, frameless_function_infos_uuid_v1, NULL)
+	ZEND_RAW_FENTRY("uuid_v1_bin", zif_uuid_v1_bin, arginfo_uuid_v1_bin, 0, frameless_function_infos_uuid_v1_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v3", zif_uuid_v3, arginfo_uuid_v3, 0, frameless_function_infos_uuid_v3, NULL)
+	ZEND_RAW_FENTRY("uuid_v3_bin", zif_uuid_v3_bin, arginfo_uuid_v3_bin, 0, frameless_function_infos_uuid_v3_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v4", zif_uuid_v4, arginfo_uuid_v4, 0, frameless_function_infos_uuid_v4, NULL)
+	ZEND_RAW_FENTRY("uuid_v4_bin", zif_uuid_v4_bin, arginfo_uuid_v4_bin, 0, frameless_function_infos_uuid_v4_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v4_fast", zif_uuid_v4_fast, arginfo_uuid_v4_fast, 0, frameless_function_infos_uuid_v4_fast, NULL)
+	ZEND_RAW_FENTRY("uuid_v4_fast_bin", zif_uuid_v4_fast_bin, arginfo_uuid_v4_fast_bin, 0, frameless_function_infos_uuid_v4_fast_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v5", zif_uuid_v5, arginfo_uuid_v5, 0, frameless_function_infos_uuid_v5, NULL)
+	ZEND_RAW_FENTRY("uuid_v5_bin", zif_uuid_v5_bin, arginfo_uuid_v5_bin, 0, frameless_function_infos_uuid_v5_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v6", zif_uuid_v6, arginfo_uuid_v6, 0, frameless_function_infos_uuid_v6, NULL)
+	ZEND_RAW_FENTRY("uuid_v6_bin", zif_uuid_v6_bin, arginfo_uuid_v6_bin, 0, frameless_function_infos_uuid_v6_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v7", zif_uuid_v7, arginfo_uuid_v7, 0, frameless_function_infos_uuid_v7, NULL)
+	ZEND_RAW_FENTRY("uuid_v7_bin", zif_uuid_v7_bin, arginfo_uuid_v7_bin, 0, frameless_function_infos_uuid_v7_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v7_at", zif_uuid_v7_at, arginfo_uuid_v7_at, 0, frameless_function_infos_uuid_v7_at, NULL)
+	ZEND_RAW_FENTRY("uuid_v7_at_bin", zif_uuid_v7_at_bin, arginfo_uuid_v7_at_bin, 0, frameless_function_infos_uuid_v7_at_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v8", zif_uuid_v8, arginfo_uuid_v8, 0, frameless_function_infos_uuid_v8, NULL)
+	ZEND_RAW_FENTRY("uuid_v8_bin", zif_uuid_v8_bin, arginfo_uuid_v8_bin, 0, frameless_function_infos_uuid_v8_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_v4_batch", zif_uuid_v4_batch, arginfo_uuid_v4_batch, 0, frameless_function_infos_uuid_v4_batch, NULL)
+	ZEND_RAW_FENTRY("uuid_v7_batch", zif_uuid_v7_batch, arginfo_uuid_v7_batch, 0, frameless_function_infos_uuid_v7_batch, NULL)
+	ZEND_RAW_FENTRY("uuid_v4_bin_batch", zif_uuid_v4_bin_batch, arginfo_uuid_v4_bin_batch, 0, frameless_function_infos_uuid_v4_bin_batch, NULL)
+	ZEND_RAW_FENTRY("uuid_v7_bin_batch", zif_uuid_v7_bin_batch, arginfo_uuid_v7_bin_batch, 0, frameless_function_infos_uuid_v7_bin_batch, NULL)
+	ZEND_RAW_FENTRY("uuid_to_bin", zif_uuid_to_bin, arginfo_uuid_to_bin, 0, frameless_function_infos_uuid_to_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_from_bin", zif_uuid_from_bin, arginfo_uuid_from_bin, 0, frameless_function_infos_uuid_from_bin, NULL)
+	ZEND_RAW_FENTRY("uuid_is_valid", zif_uuid_is_valid, arginfo_uuid_is_valid, 0, frameless_function_infos_uuid_is_valid, NULL)
+	ZEND_RAW_FENTRY("fast_uuid_random_bytes", zif_fast_uuid_random_bytes, arginfo_fast_uuid_random_bytes, 0, frameless_function_infos_fast_uuid_random_bytes, NULL)
 	ZEND_FE_END
 };
 

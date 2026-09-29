@@ -111,37 +111,77 @@ namespace FastUuid\Exception {
 }
 
 namespace {
+    /** @frameless-function {"arity": 0} */
     function uuid_v1(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v1_bin(): string {}
-    /** $name over 16 MiB raises InvalidArgumentException. */
+    /**
+     * $name over 16 MiB raises InvalidArgumentException.
+     * @frameless-function {"arity": 2}
+     */
     function uuid_v3(string $ns, string $name): string {}
-    /** $name over 16 MiB raises InvalidArgumentException. */
+    /**
+     * $name over 16 MiB raises InvalidArgumentException.
+     * @frameless-function {"arity": 2}
+     */
     function uuid_v3_bin(string $ns, string $name): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v4(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v4_bin(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v4_fast(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v4_fast_bin(): string {}
-    /** $name over 16 MiB raises InvalidArgumentException. */
+    /**
+     * $name over 16 MiB raises InvalidArgumentException.
+     * @frameless-function {"arity": 2}
+     */
     function uuid_v5(string $ns, string $name): string {}
-    /** $name over 16 MiB raises InvalidArgumentException. */
+    /**
+     * $name over 16 MiB raises InvalidArgumentException.
+     * @frameless-function {"arity": 2}
+     */
     function uuid_v5_bin(string $ns, string $name): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v6(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v6_bin(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v7(): string {}
+    /** @frameless-function {"arity": 0} */
     function uuid_v7_bin(): string {}
-    /** $unixMillis 0..2^48-1; out-of-range raises InvalidArgumentException. */
+    /**
+     * $unixMillis 0..2^48-1; out-of-range raises InvalidArgumentException.
+     * @frameless-function {"arity": 1}
+     */
     function uuid_v7_at(int $unixMillis): string {}
-    /** $unixMillis 0..2^48-1; out-of-range raises InvalidArgumentException. */
+    /**
+     * $unixMillis 0..2^48-1; out-of-range raises InvalidArgumentException.
+     * @frameless-function {"arity": 1}
+     */
     function uuid_v7_at_bin(int $unixMillis): string {}
+    /** @frameless-function {"arity": 1} */
     function uuid_v8(string $bytes): string {}
+    /** @frameless-function {"arity": 1} */
     function uuid_v8_bin(string $bytes): string {}
+    /** @frameless-function {"arity": 1} */
     function uuid_v4_batch(int $count): array {}
+    /** @frameless-function {"arity": 1} */
     function uuid_v7_batch(int $count): array {}
+    /** @frameless-function {"arity": 1} */
     function uuid_v4_bin_batch(int $count): array {}
+    /** @frameless-function {"arity": 1} */
     function uuid_v7_bin_batch(int $count): array {}
+    /** @frameless-function {"arity": 1} */
     function uuid_to_bin(string $uuid): string {}
+    /** @frameless-function {"arity": 1} */
     function uuid_from_bin(string $bytes): string {}
-    /** Same tolerant set as FastUuid\Uuid::isValid, without throwing. */
+    /**
+     * Same tolerant set as FastUuid\Uuid::isValid, without throwing.
+     * @frameless-function {"arity": 1}
+     */
     function uuid_is_valid(string $uuid): bool {}
+    /** @frameless-function {"arity": 1} */
     function fast_uuid_random_bytes(int $length): string {}
 }

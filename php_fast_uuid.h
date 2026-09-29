@@ -45,9 +45,18 @@ ZEND_TSRMLS_CACHE_EXTERN()
 #endif
 
 /* gen_stub (PHP master) emits 8.4+ constructs into the generated arginfo:
-   zend_register_internal_class_with_flags(), and the 6-argument ZEND_RAW_FENTRY
-   used for the __toString alias. Polyfill both so the same fast_uuid_arginfo.h
-   compiles on PHP 8.3. Must be defined before fast_uuid_arginfo.h is included. */
+   zend_register_internal_class_with_flags(), the 6-argument ZEND_RAW_FENTRY
+   (the __toString alias and every frameless function), and the frameless
+   declarations plus zend_frameless_function_info tables. Polyfill them so the
+   same fast_uuid_arginfo.h compiles on PHP 8.1-8.3. Must be defined before
+   fast_uuid_arginfo.h is included.
+
+   Pre-8.4 engines have no frameless calls, so the zflf_* handlers are compiled
+   only on 8.4+ (FU_FLF_ONLY). Here ZEND_FRAMELESS_FUNCTION(name, arity);
+   degrades to a file-scope struct forward declaration, handler slots become
+   NULL, and ZEND_RAW_FENTRY drops the info table and doc comment, which the
+   5-field zend_function_entry cannot hold. The then-unused static const tables
+   live in a header, so -Wunused-const-variable stays silent. */
 #if PHP_VERSION_ID < 80400
 static zend_always_inline zend_class_entry *zend_register_internal_class_with_flags(
         zend_class_entry *class_entry, zend_class_entry *parent_ce, uint32_t ce_flags) {
@@ -57,11 +66,22 @@ static zend_always_inline zend_class_entry *zend_register_internal_class_with_fl
     }
     return ce;
 }
+
+typedef struct {
+    void *handler;
+    uint32_t num_args;
+} zend_frameless_function_info;
+# define ZEND_FRAMELESS_FUNCTION(name, arity) struct zflf_##name##_##arity
+# define ZEND_FRAMELESS_FUNCTION_NAME(name, arity) NULL
+# define FU_FLF_ONLY(...)
+
 # undef ZEND_RAW_FENTRY
 # define ZEND_RAW_FENTRY(zend_name, name, arg_info, flags, ...) \
     { zend_name, name, arg_info, \
       (uint32_t) (sizeof(arg_info)/sizeof(struct _zend_internal_arg_info)-1), \
       flags },
+#else
+# define FU_FLF_ONLY(...) __VA_ARGS__
 #endif
 
 #endif /* PHP_FAST_UUID_H */
