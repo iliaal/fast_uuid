@@ -1,4 +1,4 @@
-name: Build PHP for macOS 14
+name: Build PHP for macOS
 description: Build pinned NTS release PHP without Homebrew PHP bottles.
 inputs:
   php-version:

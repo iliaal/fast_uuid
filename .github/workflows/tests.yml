@@ -207,11 +207,11 @@ jobs:
           make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
 
   macos-canary:
-    # release-linux.yml ships prebuilt binaries for macos-14; without this job
+    # release-linux.yml builds prebuilt binaries on macos-15; without this job
     # the clang/BSD-libc lane is first compiled by the release event itself,
     # after the tag is already public.
     name: "PHP ${{ matrix.php }} (macOS arm64 canary)"
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 40
     strategy:
       fail-fast: false
