@@ -10,13 +10,16 @@ use FastUuid\Exception\InvalidArgumentException;
 
 final class Fields implements FieldsInterface
 {
-    public function __construct(private string $bytes)
+    private string $bytes;
+
+    public function __construct(string $bytes)
     {
         if (\strlen($bytes) !== 16) {
             throw new InvalidArgumentException(
                 'Fields expects exactly 16 bytes, got ' . \strlen($bytes),
             );
         }
+        $this->bytes = $bytes;
     }
 
     public function getBytes(): string { return $this->bytes; }
