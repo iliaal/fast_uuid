@@ -11,8 +11,10 @@ final class Fields implements FieldsInterface
     private const NIL_BYTES = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
     private const MAX_BYTES = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
 
+    private string $bytes;
+
     /** @param string $bytes 16 raw bytes */
-    public function __construct(private string $bytes)
+    public function __construct(string $bytes)
     {
         if (\strlen($bytes) !== 16) {
             throw new \FastUuid\Exception\InvalidArgumentException(
@@ -32,6 +34,7 @@ final class Fields implements FieldsInterface
                 );
             }
         }
+        $this->bytes = $bytes;
     }
 
     public function getBytes(): string { return $this->bytes; }
