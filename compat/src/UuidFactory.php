@@ -344,7 +344,7 @@ class UuidFactory implements UuidFactoryInterface
             if (($codec === null || $codec::class === StringCodec::class) && static::class === self::class) {
                 return \FastUuid\Uuid::fromString((string) $ns);
             }
-            return $this->fromString((string) $ns)->getCore();
+            return WrapperClass::coreFrom($this->fromString((string) $ns));
         } catch (\FastUuid\Exception\InvalidUuidStringException $e) {
             throw $e;
         } catch (\FastUuid\Exception\InvalidArgumentException $e) {
