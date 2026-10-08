@@ -145,8 +145,71 @@ foreach ([new ForeignStringableCoreUuid('00112233-4455-4677-8899-aabbccddeeff'),
     var_dump($combFactory->uuid3($namespace, $name)->getCore()->toString() === $expected3);
     var_dump($combFactory->uuid5($namespace, $name)->getCore()->toString() === $expected5);
 }
+
+// String namespaces decoded by custom codecs and factory overrides may also
+// produce foreign implementations, including unrelated getCore() methods.
+final class ForeignNamespaceCodec extends StringCodec
+{
+    public function __construct(private UuidInterface $namespace) {}
+    public function decode(string $encoded): UuidInterface { return $this->namespace; }
+}
+final class ForeignNamespaceFactory extends UuidFactory
+{
+    public function __construct(private UuidInterface $namespace) {}
+    public function fromString(string $uuid): UuidInterface { return $this->namespace; }
+}
+
+foreach ($foreign as $namespace) {
+    $codecFactory = new UuidFactory();
+    $codecFactory->setCodec(new ForeignNamespaceCodec($namespace));
+    foreach ([$codecFactory, new ForeignNamespaceFactory($namespace)] as $factory) {
+        var_dump($factory->uuid3('custom-namespace', $name)->getCore()->toString() === $expected3);
+        var_dump($factory->uuid5('custom-namespace', $name)->getCore()->toString() === $expected5);
+    }
+}
+
+$invalidFactory = new UuidFactory();
+$invalidFactory->setCodec(new ForeignNamespaceCodec(new ForeignCanonicalUuid('invalid')));
+foreach (['uuid3', 'uuid5'] as $method) {
+    try {
+        $invalidFactory->$method('custom-namespace', $name);
+        var_dump(false);
+    } catch (\FastUuid\Exception\InvalidUuidStringException) {
+        var_dump(true);
+    }
+}
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)
