@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Compat string codecs reuse the native UUID formatter instead of allocating hexadecimal substrings and concatenating them in PHP; canonical and COMB string layouts and invalid-length errors are unchanged.
+
 ### Fixed
 - Compat RFC and nonstandard `Fields` objects retain their previous valid bytes when an explicit constructor or unserialization call rejects invalid input, instead of keeping the rejected bytes.
 

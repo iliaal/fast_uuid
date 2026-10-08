@@ -47,9 +47,7 @@ class StringCodec implements CodecInterface
         if (\strlen($b) !== 16) {
             throw new InvalidArgumentException('Expected 16 bytes');
         }
-        $h = \bin2hex($b);
-        return \substr($h, 0, 8) . '-' . \substr($h, 8, 4) . '-' . \substr($h, 12, 4)
-            . '-' . \substr($h, 16, 4) . '-' . \substr($h, 20, 12);
+        return \uuid_from_bin($b);
     }
 
     final protected static function stringToBytes(string $s): string
