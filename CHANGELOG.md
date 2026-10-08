@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compat string codecs reuse the native UUID formatter instead of allocating hexadecimal substrings and concatenating them in PHP; canonical and COMB string layouts and invalid-length errors are unchanged.
 
 ### Fixed
+- Explicitly reconstructing a compat UUID wrapper with the default codec clears its previous custom presentation codec, matching construction of a fresh wrapper.
 - Compat `uuid3()` and `uuid5()` accept string namespaces decoded by custom codecs or factory overrides into third-party `UuidInterface` objects without a compatible `getCore()` method, using the same resolver as object namespaces.
 - Compat RFC and nonstandard `Fields` objects retain their previous valid bytes when an explicit constructor or unserialization call rejects invalid input, instead of keeping the rejected bytes.
 
