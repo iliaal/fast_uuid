@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Compat canonical string codecs reuse the resolved native UUID's cached text, avoiding a bytes copy and redundant formatting on repeated encoding; COMB layouts and foreign UUID resolution are unchanged.
 - Compat string codecs reuse the native UUID formatter instead of allocating hexadecimal substrings and concatenating them in PHP; canonical and COMB string layouts and invalid-length errors are unchanged.
 
 ### Fixed

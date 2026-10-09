@@ -178,8 +178,19 @@ foreach (['uuid3', 'uuid5'] as $method) {
         var_dump(true);
     }
 }
+// Canonical text encoding uses the same resolver as binary encoding, even
+// when a valid accessor exposes an identity different from toString().
+$canonicalEncoding = true;
+foreach (array_merge($foreign, [
+    new ForeignStringableCoreUuid('00112233-4455-4677-8899-aabbccddeeff'),
+    new ForeignInterfaceCoreUuid('00112233-4455-4677-8899-aabbccddeeff'),
+]) as $namespace) {
+    $canonicalEncoding = $canonicalEncoding && (new StringCodec())->encode($namespace) === $dns;
+}
+var_dump($canonicalEncoding);
 ?>
 --EXPECT--
+bool(true)
 bool(true)
 bool(true)
 bool(true)
