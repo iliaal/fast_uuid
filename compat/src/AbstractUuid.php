@@ -40,9 +40,9 @@ abstract class AbstractUuid implements UuidInterface
             $this->assertCoreMatches($core);
         }
         $this->core = $core;
-        if ($codec !== null && \get_class($codec) !== StringCodec::class) {
-            $this->codec = $codec;
-        }
+        $this->codec = $codec !== null && \get_class($codec) !== StringCodec::class
+            ? $codec
+            : null;
     }
 
     public function getCore(): \FastUuid\Uuid { return $this->core; }
