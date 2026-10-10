@@ -87,30 +87,25 @@ final class Fields implements FieldsInterface
 
     public function getTimestamp(): Hexadecimal
     {
-        $b = $this->bytes;
         $v = $this->getVersion();
         // Hex strings preserve all 60 bits on 32-bit PHP; hexdec()+shifts do not.
         if ($v === 6) {
             // v6: most-significant first across bytes 0..7, version nibble at
             // hex offset 12; concat the 48 high bits with the 12 low bits.
-            $hex = bin2hex(substr($b, 0, 8));
+            $hex = bin2hex(substr($this->bytes, 0, 8));
             return new Hexadecimal(substr($hex, 0, 12) . substr($hex, 13, 3));
         }
         if ($v === 7) {
             // v7: 48-bit unix_ts_ms, zero-padded to 15 nibbles (ramsey returns
             // a 60-bit value for consistency across versions).
-            return new Hexadecimal('000' . bin2hex(substr($b, 0, 6)));
+            return new Hexadecimal('000' . bin2hex(substr($this->bytes, 0, 6)));
         }
+        $hex = bin2hex(substr($this->bytes, 0, 8));
         if ($v === 2) {
             // DCE replaces time_low with the local identifier; zero those 32 bits.
-            $timeMid = bin2hex(substr($b, 4, 2));
-            $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
-            return new Hexadecimal($timeHi . $timeMid . '00000000');
+            return new Hexadecimal(substr($hex, 13, 3) . substr($hex, 8, 4) . '00000000');
         }
-        $timeLow = bin2hex(substr($b, 0, 4));
-        $timeMid = bin2hex(substr($b, 4, 2));
-        $timeHi  = substr(bin2hex(substr($b, 6, 2)), 1);
-        return new Hexadecimal($timeHi . $timeMid . $timeLow);
+        return new Hexadecimal(substr($hex, 13, 3) . substr($hex, 8, 4) . substr($hex, 0, 8));
     }
 
     public function isNil(): bool { return $this->bytes === self::NIL_BYTES; }

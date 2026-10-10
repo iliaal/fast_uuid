@@ -44,11 +44,8 @@ final class Fields implements FieldsInterface
 
     public function getTimestamp(): Hexadecimal
     {
-        return new Hexadecimal(
-            \substr(\bin2hex(\substr($this->bytes, 6, 2)), 1)
-            . \bin2hex(\substr($this->bytes, 4, 2))
-            . \bin2hex(\substr($this->bytes, 0, 4)),
-        );
+        $hex = \bin2hex(\substr($this->bytes, 0, 8));
+        return new Hexadecimal(\substr($hex, 13, 3) . \substr($hex, 8, 4) . \substr($hex, 0, 8));
     }
 
     public function getVersion(): ?int { return null; }
