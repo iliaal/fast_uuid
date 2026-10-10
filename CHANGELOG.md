@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Skip redundant wrapper stripping for canonical-length inputs in the compat nonstandard validator; accepted UUID forms and wrapper handling are unchanged.
 - Compat string codecs reuse the native UUID formatter instead of allocating hexadecimal substrings and concatenating them in PHP; canonical and COMB string layouts and invalid-length errors are unchanged.
 
 ### Fixed

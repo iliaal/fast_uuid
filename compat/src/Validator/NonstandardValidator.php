@@ -17,7 +17,9 @@ final class NonstandardValidator extends GenericValidator
 {
     public function validate(string $uuid): bool
     {
-        $inner = static::stripWrappers($uuid);
+        // Stripping wrappers only shortens a 36-byte input, so it cannot
+        // turn a noncanonical input of that length into a canonical one.
+        $inner = \strlen($uuid) === 36 ? $uuid : static::stripWrappers($uuid);
         if ($inner === null) {
             return false;
         }
