@@ -14,7 +14,7 @@ class StringCodec implements CodecInterface
 {
     public function encode(UuidInterface $uuid): string
     {
-        return self::bytesToString(WrapperClass::coreBytes($uuid));
+        return WrapperClass::coreFrom($uuid)->toString();
     }
 
     public function encodeBinary(UuidInterface $uuid): string
