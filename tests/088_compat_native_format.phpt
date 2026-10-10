@@ -55,6 +55,20 @@ foreach ([
     var_dump($comb->decode($comb->encode($uuid))->getCore()->getBytes() === $bytes);
 }
 
+// Canonical codecs must read the resolved core, even when the wrapper's text
+// is COMB-ordered. Repeated calls can reuse the native string cache, but an
+// explicit core restore must invalidate that cache and expose the new value.
+$first = '00112233-4455-1677-8899-aabbccddeeff';
+$second = 'ffeeddcc-bbaa-1987-8654-33221100abcd';
+foreach ([new StringCodec(), new GuidStringCodec(), new OrderedTimeCodec(), new TimestampLastCombCodec()] as $codec) {
+    $core = \FastUuid\Uuid::fromString($first);
+    $wrapper = new \FastUuid\Compat\Rfc4122\UuidV1($core, new TimestampFirstCombCodec());
+    var_dump($wrapper->toString() !== $first);
+    var_dump($codec->encode($wrapper) === $first && $codec->encode($wrapper) === $first);
+    $core->__unserialize([hex2bin(str_replace('-', '', $second))]);
+    var_dump($codec->encode($wrapper) === $second && $codec->encode($wrapper) === $second);
+}
+
 foreach ([0, 1, 15, 17, 32] as $length) {
     try {
         FormatProbe::format(str_repeat("\0", $length));
@@ -65,6 +79,18 @@ foreach ([0, 1, 15, 17, 32] as $length) {
 }
 ?>
 --EXPECT--
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)
