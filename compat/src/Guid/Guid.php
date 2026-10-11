@@ -10,6 +10,7 @@ use FastUuid\Compat\Rfc4122\FieldsInterface;
 use FastUuid\Compat\Type\Hexadecimal;
 use FastUuid\Compat\Type\Integer as IntegerObject;
 use FastUuid\Compat\Uuid;
+use FastUuid\Compat\UuidFactory;
 use FastUuid\Compat\UuidInterface;
 
 /**
@@ -124,9 +125,12 @@ final class Guid implements UuidInterface
     {
         // The factory codec would byte-swap the network-order serialized payload.
         $factory = Uuid::getFactory();
-        $this->uuid = \strlen($data) === 16
-            ? $factory->wrap(\FastUuid\Uuid::fromBytes($data))
-            : $factory->wrap(\FastUuid\Uuid::fromString($data));
+        $core = \strlen($data) === 16
+            ? \FastUuid\Uuid::fromBytes($data)
+            : \FastUuid\Uuid::fromString($data);
+        $this->uuid = $factory instanceof UuidFactory
+            ? $factory->wrap($core)
+            : WrapperClass::instantiateMapped($core);
     }
 
     public function __serialize(): array
