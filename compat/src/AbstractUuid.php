@@ -176,9 +176,11 @@ abstract class AbstractUuid implements UuidInterface
             ? \FastUuid\Uuid::fromBytes($data)
             : \FastUuid\Uuid::fromString($data);
         $this->assertCoreMatches($core);
+        // Resolve the overridable factory codec before committing either field.
+        $codec = self::factoryCodec();
         $this->core = $core;
         // Preserve the active factory's byte and string presentation on restore.
-        $this->codec = self::factoryCodec();
+        $this->codec = $codec;
     }
 
     public function __serialize(): array { return ['bytes' => $this->serialize()]; }
