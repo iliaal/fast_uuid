@@ -117,6 +117,8 @@ uuid4  36fa4138-9c2e-4765-955e-161592900197   <span style="color:#9a9488">(sampl
 uuid7  019e8314-69c9-738a-aea4-8a72d37418eb   <span style="color:#9a9488">(sample)</span></pre>
   </div>
 
+  <p>Live-clock <code>uuid1()</code> and <code>uuid6()</code> share a timestamp high-water mark. When the clock stalls or moves backward, the timestamp advances by 100 ns while supplied node and clock-sequence values stay unchanged. This prevents repeats within one process, or one thread under ZTS. Coordinate fixed node and clock-sequence values across processes, forks, threads, and restarts. Explicit <code>fromDateTime()</code> timestamps do not use this monotonic state.</p>
+
   <div class="ex">
     <pre class="code"><span class="cm">// name-based (deterministic): v3 = MD5, v5 = SHA1</span>
 Uuid::<span class="fn">uuid3</span>(Uuid::NAMESPACE_DNS, <span class="str">'php.net'</span>);
@@ -124,6 +126,7 @@ Uuid::<span class="fn">uuid5</span>(Uuid::NAMESPACE_DNS, <span class="str">'php.
     <pre class="out">11a38b9a-b3da-360f-9353-a5a725514269
 c4a760a8-dbcf-5254-a0d9-6a4474bd1b62</pre>
   </div>
+  <p>The native signatures are <code>uuid3(object|string $ns, string $name)</code> and <code>uuid5(object|string $ns, string $name)</code>. Native UUIDs resolve directly. Other objects resolve through a compatible public, non-static <code>getCore()</code> callable without arguments and returning a native UUID, or through their <code>Stringable</code> string form. Foreign <code>getBytes()</code> methods are not used because their bytes may have GUID or ordered-time storage order. Scalar namespaces follow PHP's ordinary weak string coercion; <code>strict_types=1</code> rejects non-string scalars with <code>TypeError</code>.</p>
 
   <div class="ex">
     <pre class="code"><span class="cm">// DCE Security (v2): local id in bytes 0-3, domain in byte 9</span>
@@ -175,6 +178,7 @@ $u = Uuid::<span class="fn">uuid7</span>(<span class="str">1704067200123</span>)
 bool(true)
 1704067200123</pre>
   </div>
+  <p>Live-clock v7 calls encode the sub-millisecond fraction in <code>rand_a</code>. When the millisecond/sub-millisecond time key repeats or moves backward, the counter in <code>rand_b</code> advances by a fresh CSPRNG-selected value from <code>1..2^24</code> inclusive, carrying into the time key on overflow. Single and batch calls share monotonic state within a process, or within a thread under ZTS; ties across processes or threads carry no order. Explicit <code>uuid7($dateTime)</code> and <code>uuid7($unixMillis)</code> calls do not use that state. <code>getDateTime()</code> decodes v7 at millisecond precision.</p>
 
   <h2 id="inspect">Reading a UUID</h2>
   <div class="ex">
@@ -197,6 +201,7 @@ getFields   {"time_low":"6ba7b810","time_mid":"9dad","time_hi_and_version":"11d1
 compareTo   -1   (00..01 vs 00..02)</pre>
   </div>
   <p><code>toBytes()</code>, <code>toHexadecimal()</code>, <code>toUrn()</code> and <code>toInteger()</code> are aliases of <code>getBytes()</code>, <code>getHex()</code>, <code>getUrn()</code> and <code>getInteger()</code>, following the <code>get*</code>&rarr;<code>to*</code> naming of the newer <code>ramsey/identifier</code> library.</p>
+  <p>Native <code>equals()</code> and <code>compareTo()</code> use the same object resolution as <code>uuid3()</code> and <code>uuid5()</code>: native UUID, compatible <code>getCore()</code> result, then string form. They also accept UUID strings directly.</p>
   <p><code>getDateTime()</code> works for the time-based versions (1, 2, 6, 7) and raises <code>UnsupportedOperationException</code> for the others. The object is <code>JsonSerializable</code> and <code>Stringable</code>, so it drops straight into <code>json_encode</code>:</p>
   <div class="ex">
     <pre class="code"><span class="kw">echo</span> <span class="fn">json_encode</span>([<span class="str">'id'</span> =&gt; $u]);</pre>
@@ -205,6 +210,7 @@ compareTo   -1   (00..01 vs 00..02)</pre>
 
   <h2 id="procedural">Procedural functions</h2>
   <p>These return a string with no object allocation. Use them on the hot path: ORM inserts, cache keys, bulk generation. The <code>_bin</code> forms return the raw 16-byte value with no canonical formatting, and the <code>_batch</code> forms build <code>$n</code> at once and return them as an array. Batch calls are capped at 100,000 UUIDs, and <code>fast_uuid_random_bytes()</code> is capped at 16 MiB.</p>
+  <p>UUIDv7 batches read the clock once per call and advance the same random-increment counter as single calls. A large batch's timestamps can therefore trail the wall clock by the batch duration.</p>
   <div class="ex">
     <pre class="code">uuid_v1(); uuid_v3($ns, $name); uuid_v4(); uuid_v5($ns, $name);
 uuid_v6(); uuid_v7(); uuid_v8($bytes);
@@ -231,6 +237,8 @@ uuid_is_valid   true</pre>
 
   <h2 id="compat">ramsey-compat layer</h2>
   <p>The <code>FastUuid\Compat</code> package puts a <code>ramsey/uuid</code>-shaped API over the C core. Migration is largely a <code>use</code> swap from <code>Ramsey\Uuid\Uuid</code> to <code>FastUuid\Compat\Uuid</code>. Generation stays on the C fast path unless a custom provider or generator is configured, and compat <code>Uuid::uuid7()</code> accepts the same unix-millisecond int path as the core API.</p>
+  <p>Compatibility covers the API shape; generation algorithms and some codec conventions differ. Live-clock v7 uses sub-millisecond time and the random increments described above. GUID text follows the canonical RFC form; only its binary storage order is mixed-endian.</p>
+  <p>Compat <code>uuid3()</code> and <code>uuid5()</code> retain <code>UuidInterface|string</code> namespace parameters. String namespaces identify network-order UUIDs independently of the output codec, including COMB codecs. Subclasses inheriting <code>fromString()</code> behave the same way. Overriding <code>getCodec()</code> does not change namespace identity; an explicit <code>fromString()</code> override retains the subclass parsing path. To use codec-formatted text as a namespace, first decode it with <code>$factory-&gt;fromString($text)</code> and pass the resulting UUID object. Objects resolve through a compatible optional <code>getCore()</code> returning a native UUID, then through their string form.</p>
   <div class="ex">
     <pre class="code"><span class="kw">use</span> FastUuid\Compat\Uuid;
 
@@ -265,12 +273,13 @@ $f-&gt;<span class="fn">setRandomGenerator</span>(<span class="kw">new class</sp
 });
 $f-&gt;<span class="fn">uuid4</span>()-&gt;<span class="fn">getVersion</span>();   <span class="cm">// 4</span></pre>
     <pre class="out">codec round-trip    true
-guid                10b8a76b-ad9d-d111-80b4-00c04fd430c8
+guid                6ba7b810-9dad-11d1-80b4-00c04fd430c8
 factory uuid4 ver   4</pre>
-    <p>Factory decode methods honor the active codec. With <code>GuidStringCodec</code>, <code>fromString()</code>, <code>fromBytes()</code>, <code>fromHexadecimal()</code>, and <code>fromInteger()</code> interpret input as GUID mixed-endian data; use the default <code>StringCodec</code> for network-order integer/hex identity.</p>
+    <p><code>fromString()</code> and <code>fromBytes()</code> honor the active codec. With <code>GuidStringCodec</code>, pass canonical text to <code>fromString()</code> and mixed-endian GUID bytes to <code>fromBytes()</code>. <code>fromHexadecimal()</code> and <code>fromInteger()</code> always read network-order identity and attach the codec for presentation only.</p>
   </div>
 
   <h2 id="bench">Benchmarks</h2>
+  <p>These measurements predate the v1/v6 timestamp guard and the v7 random-increment fix. They are historical results, not measurements of the current generation paths.</p>
   <p>Throughput against <code>ramsey/uuid</code> 4.9.2 and the PECL <code>uuid</code> extension 1.3.0, on PHP 8.4.22 NTS (non-debug, x86-64 with the SSSE3 formatter). Best of 40 runs, 300k iterations each. Each engine ran in its own process. Higher is faster. The <code>fast_uuid</code> operations run in ~50&nbsp;ns, so scheduler noise gives the peak roughly &plusmn;10% run-to-run variance; ramsey and PECL reproduce to ~3%.</p>
 
   <div class="diagram">

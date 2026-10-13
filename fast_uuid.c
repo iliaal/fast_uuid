@@ -1061,7 +1061,7 @@ static int fu_type_may_return(
     zend_type type, zend_class_entry *scope, uint32_t allowed_types, zend_class_entry *required_class) {
     if (ZEND_TYPE_PURE_MASK(type) & allowed_types) return 1;
     if (ZEND_TYPE_HAS_LIST(type)) {
-        zend_type *part;
+        const zend_type *part;
         ZEND_TYPE_FOREACH(type, part) {
             int compatible = fu_type_may_return(*part, scope, allowed_types, required_class);
             if (ZEND_TYPE_IS_INTERSECTION(type)) {

@@ -243,27 +243,33 @@ jobs:
             echo "===== $f ====="; cat "$f"
           done
 
+  windows-matrix:
+    name: Resolve Windows test matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        uses: php/php-windows-builder/extension-matrix@29352c0ef9e8ce65264ea9e287881a6f7758a953 # 1.9.0
+        with:
+          php-version-list: '8.1, 8.2, 8.3, 8.4, 8.5'
+
   windows-canary:
-    name: "PHP ${{ matrix.php }} ${{ matrix.ts }} ${{ matrix.arch }} (Windows canary)"
-    runs-on: windows-2022
+    name: "PHP ${{ matrix.php-version }} ${{ matrix.ts }} ${{ matrix.arch }} (Windows)"
+    needs: windows-matrix
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - php: '8.1'
-            arch: x86
-            ts: nts
-          - php: '8.4'
-            arch: x64
-            ts: ts
+      matrix: ${{ fromJson(needs.windows-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: php/php-windows-builder/extension@29352c0ef9e8ce65264ea9e287881a6f7758a953 # 1.9.0
         with:
-          php-version: ${{ matrix.php }}
+          php-version: ${{ matrix.php-version }}
           arch: ${{ matrix.arch }}
           ts: ${{ matrix.ts }}
           run-tests: 'true'

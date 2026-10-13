@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-13
+
 ### Changed
 - Compat canonical string codecs reuse the resolved native UUID's cached text, avoiding a bytes copy and redundant formatting on repeated encoding; COMB layouts and foreign UUID resolution are unchanged.
 - Compat RFC and nonstandard fields assemble timestamps from a single hexadecimal conversion, avoiding repeated conversions without retaining an additional cache.
@@ -14,10 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compat string codecs reuse the native UUID formatter instead of allocating hexadecimal substrings and concatenating them in PHP; canonical and COMB string layouts and invalid-length errors are unchanged.
 
 ### Fixed
+- Live-clock v1 and v6 generation advances a shared per-process timestamp (per thread under ZTS) when the clock stalls or moves backward, preventing repeated UUIDs with a fixed node and clock sequence. Supplied fields and explicit `fromDateTime()` timestamps are preserved; fixed values still require coordination across processes, threads, forks, and restarts.
+- Native `equals()`, `compareTo()`, `uuid3()`, and `uuid5()` resolve foreign UUID identity from its string form instead of assuming `getBytes()` uses network order. Compatible `getCore()` wrappers retain their native identity regardless of presentation codec.
+- Native `uuid3()` and `uuid5()` declare `object|string` namespaces in the stub and generated arginfo, matching their object resolution protocol. Scalar inputs follow ordinary weak string coercion and strict-mode `TypeError` rules.
+- UUIDv7 same-key and regressed-clock calls use fresh random increments from `1..2^24` inclusive instead of predictable `+1` steps, for both single and batch generation. Process/thread-local monotonic ordering is preserved.
+- Compat `uuid3()` and `uuid5()` parse string namespaces independently of the output codec, so COMB codecs and `getCodec()` overrides no longer change the hashed namespace. Subclasses that inherit `fromString()` get the same behavior; explicit `fromString()` overrides retain their parsing path.
+- Documented the generation-state boundaries, namespace resolution, API types, and compatibility differences; marked earlier generation benchmarks as historical.
 - Compat UUID restoration retains the previous identity and presentation if the active factory's codec lookup throws.
 - Compat GUID unserialization supports third-party `UuidFactoryInterface` implementations without the optional concrete `wrap()` method, preserving the serialized network-order identity.
 - Explicitly reconstructing a compat UUID wrapper with the default codec clears its previous custom presentation codec, matching construction of a fresh wrapper.
-- Compat `uuid3()` and `uuid5()` accept string namespaces decoded by custom codecs or factory overrides into third-party `UuidInterface` objects without a compatible `getCore()` method, using the same resolver as object namespaces.
+- Compat `uuid3()` and `uuid5()` accept string namespaces decoded by explicit factory parsing overrides into third-party `UuidInterface` objects without a compatible `getCore()` method, using the same resolver as object namespaces.
 - Compat RFC and nonstandard `Fields` objects retain their previous valid bytes when an explicit constructor or unserialization call rejects invalid input, instead of keeping the rejected bytes.
 
 ## [0.8.0] - 2026-09-28
@@ -60,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The compat layer now derives every identity form from `toString()`, as `ramsey/uuid` does: `getUrn()` is `'urn:uuid:' . toString()`, `getHex()` is `toString()` without the hyphens, `getInteger()` follows `getHex()`, and `equals()` / `compareTo()` compare `toString()`. Under the default codec `toString()` is the core's own canonical form, so nothing changes for callers who never set a codec. Under `TimestampFirstCombCodec` or `TimestampLastCombCodec`, which reshape the text, these forms now follow the COMB text instead of the network-order core.
 - `GuidStringCodec` reshapes the byte array only. A GUID's string form is the same text as the RFC one (`.NET`'s `Guid.ToString()` and `Guid.ToByteArray()` disagree on purpose), so `encode()` / `decode()` are canonical and `encodeBinary()` / `decodeBytes()` carry the mixed-endian swap. `Guid\Guid::toString()` returns the canonical text and now agrees with its own `getUrn()`. `$factory->fromBytes()` under this codec reads GUID-ordered bytes, matching what `getBytes()` emits; pass canonical text to `fromString()` for network-order input.
 
-  This is the one place the layer deliberately departs from `ramsey/uuid` 4.9.2, whose Guid feature set validates the version nibble at its post-swap position: over 400 `$guidFactory->uuid4()` calls, ramsey threw 190 times ("The byte string received does not contain a valid version") and emitted a wrong version nibble in the text 184 more, leaving 26 clean. The same loop here returns 400 usable v4 GUIDs.
+  This GUID behavior deliberately departs from `ramsey/uuid` 4.9.2, whose Guid feature set validates the version nibble at its post-swap position: over 400 `$guidFactory->uuid4()` calls, ramsey threw 190 times ("The byte string received does not contain a valid version") and emitted a wrong version nibble in the text 184 more, leaving 26 clean. The same loop here returns 400 usable v4 GUIDs.
 
 ## [0.5.0] - 2026-07-26
 
@@ -238,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.8.1...HEAD
+[0.8.1]: https://github.com/iliaal/fast_uuid/releases/tag/0.8.1
 [0.8.0]: https://github.com/iliaal/fast_uuid/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/iliaal/fast_uuid/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/iliaal/fast_uuid/compare/0.5.0...0.6.0

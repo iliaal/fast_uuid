@@ -8,7 +8,7 @@
 
 ![fast_uuid: RFC 9562 UUIDs for PHP in pure C, 11x to 57x faster than ramsey/uuid](images/fast_uuid-hero.jpg)
 
-A PHP C extension for RFC 9562 / RFC 4122 UUID generation, **11x to 57x faster than `ramsey/uuid`** on v1/v4/v7 generation and 7x to 11x faster on parsing. It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API mirrors `ramsey/uuid` under the `FastUuid` namespace, and procedural functions give a zero-allocation fast path for the hottest call sites.
+A PHP C extension for RFC 9562 / RFC 4122 UUID generation. Recorded benchmarks measured **11x to 57x faster than `ramsey/uuid`** on v1/v4/v7 generation and 7x to 11x faster on parsing; see the version caveat in [Benchmarks](#-benchmarks). It produces versions 1, 2 (DCE Security), 3, 4, 5, 6, 7, 8, plus nil and max. The engine is pure C (no C++/libstdc++). The object API follows the shape of `ramsey/uuid` under the `FastUuid` namespace, and procedural functions skip object allocation for the hottest call sites.
 
 Full API reference with runnable examples: [docs/index.html](docs/index.html). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -62,14 +62,14 @@ php /path/to/php-src/build/gen_stub.php fast_uuid.stub.php
 
 ## Object API: `FastUuid\Uuid`
 
-Static factories (all return `FastUuid\UuidInterface`):
+Static factories (all return `FastUuid\UuidValueInterface`, except `isValid()`):
 
 ```
 uuid1(int|string|null $node = null, ?int $clockSeq = null)
 uuid2(int $localDomain, int|string|null $localIdentifier = null, int|string|null $node = null, ?int $clockSeq = null)
-uuid3(UuidInterface|string $ns, string $name)
+uuid3(object|string $ns, string $name)
 uuid4()
-uuid5(UuidInterface|string $ns, string $name)
+uuid5(object|string $ns, string $name)
 uuid6(int|string|null $node = null, ?int $clockSeq = null)
 uuid7(int|DateTimeInterface|null $dateTime = null)   // int = unix milliseconds
 uuid8(string $bytes)                       // 16 raw bytes
@@ -94,11 +94,13 @@ toBytes(): string         toHexadecimal(): string   toUrn(): string           to
 - `toBytes()` / `toHexadecimal()` / `toUrn()` / `toInteger()` are aliases of `getBytes()` / `getHex()` / `getUrn()` / `getInteger()`, matching the `get*`→`to*` naming of the newer `ramsey/identifier` library.
 - `getTimestampMillis()` returns the embedded timestamp as unix milliseconds for RFC time-based versions (v1, v2, v6, v7) and is much cheaper than `getDateTime()` since it builds no object; it throws `UnsupportedOperationException` for non-time-based versions and non-RFC variants.
 - `Uuid::uuid7()` accepts a unix-millisecond `int` as well as a `DateTimeInterface`, which skips the DateTime machinery entirely. The procedural `uuid_v7_at(int $unixMillis)` is the fastest explicit-timestamp form.
-- UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): the sub-ms fraction is encoded in `rand_a` and a monotonic counter lives in `rand_b`, so v7s generated within the same millisecond still sort in time order (the tie-breaking counter is per process, or per thread under ZTS, so ~244 ns ties across threads or processes carry no order). `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
+- Live-clock `uuid1()` and `uuid6()` share a timestamp high-water mark. If the clock stalls or moves backward, the next timestamp advances by 100 ns while preserving any supplied node and clock sequence. This prevents repeats within one process, or one thread under ZTS. You must coordinate node and clock-sequence values across processes, forks, threads, and restarts when you supply fixed values. `fromDateTime()` preserves your explicit timestamp and does not use this monotonic state.
+- Live-clock UUIDv7 carries sub-millisecond precision (RFC 9562 §6.2 Method 3): `rand_a` encodes the sub-ms fraction. When the millisecond/sub-millisecond time key repeats or moves backward, the counter in `rand_b` advances by a fresh CSPRNG-selected value from `1..2^24` inclusive, carrying into the time key on overflow. Single and batch calls share this monotonic state within a process, or within a thread under ZTS; ties across threads or processes carry no order. Explicit `uuid7($dateTime)` and `uuid7($unixMillis)` calls do not use the monotonic state. `getDateTime()` reads back at millisecond precision, matching `ramsey/uuid`.
 - `getVariant()` returns `0` (NCS), `2` (RFC 4122), `6` (Microsoft), `7` (future); `getVersion()` is `null` for nil/max and non-RFC variants.
 - `getDateTime()` works for RFC time-based versions (v1, v2, v6, v7) and throws `FastUuid\Exception\UnsupportedOperationException` for non-time-based versions and non-RFC variants.
 - `getFields()` returns an associative array of hex strings (`time_low`, `time_mid`, `time_hi_and_version`, `clock_seq_hi_and_reserved`, `clock_seq_low`, `node`). For the ramsey-shaped `FieldsInterface` / `Type` objects, use the compat layer below.
 - `equals()` and `compareTo()` accept another UUID object (native, a compat wrapper, or any `Stringable` whose string form parses as a UUID) or its canonical string.
+- `uuid3()` and `uuid5()` accept `object|string` namespaces. Native UUIDs resolve directly; wrappers with a compatible public, non-static `getCore()` callable without arguments resolve through its native UUID result. Other `Stringable` objects resolve through their string form. Foreign `getBytes()` methods are not used, because those bytes may have GUID or ordered-time storage order. The same resolution applies to native `equals()` and `compareTo()`. Ordinary PHP weak string coercion applies to scalar namespace arguments; `strict_types=1` rejects scalars other than strings with `TypeError`.
 - `var_dump()` shows the value as a virtual `uuid` property, and `var_export()` output rebuilds through `Uuid::__set_state()`.
 
 Constants: `NIL`, `MAX`, `NAMESPACE_DNS`, `NAMESPACE_URL`, `NAMESPACE_OID`, `NAMESPACE_X500`, `DCE_DOMAIN_PERSON`, `DCE_DOMAIN_GROUP`, `DCE_DOMAIN_ORG`.
@@ -145,6 +147,7 @@ fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 
 `uuid_v4_fast()` uses a non-cryptographic xoshiro256** PRNG. Use it only for non-security IDs.
 Batch count is capped at 100,000 UUIDs per call, and `fast_uuid_random_bytes()` is capped at 16 MiB per call.
+UUIDv7 batches read the clock once per call and advance the same random-increment counter as single calls, so a large batch's timestamps can trail the wall clock by the batch duration.
 
 ## ramsey/uuid compatibility layer (`FastUuid\Compat`)
 
@@ -152,15 +155,21 @@ Batch count is capped at 100,000 UUIDs per call, and `fast_uuid_random_bytes()` 
 
 To migrate from `ramsey/uuid`, swap `use Ramsey\Uuid\Uuid` for `use FastUuid\Compat\Uuid`; most code needs nothing else. The compat package depends only on the extension.
 
+Compatibility covers the API shape; generation algorithms and some codec conventions differ. In particular, live-clock v7 uses sub-millisecond time and the random increments described above, and GUID text follows the canonical RFC form described below.
+
 Generation stays on the pure-C fast path. A custom `RandomGeneratorInterface`, `TimeGeneratorInterface`, or `NodeProviderInterface` routes the affected factories off it (ramsey behaviour), so your generators win. Custom node providers feed `uuid1()`, `uuid2()`, `uuid6()`, and `fromDateTime()` when you pass no explicit node. The compat `Uuid::uuid7()` facade also accepts a unix-millisecond `int`, matching the core object API.
+
+Compat `uuid3()` and `uuid5()` retain `UuidInterface|string` namespace parameters. String namespaces identify network-order UUIDs independently of the output codec, including under COMB codecs and on subclasses that inherit `fromString()`. Overriding `getCodec()` does not change namespace identity; an explicit `fromString()` override retains the subclass parsing path. To use codec-formatted text as a namespace, decode it with `$factory->fromString($text)` first and pass the resulting UUID object.
 
 Decoded UUID objects keep the factory's active codec for strings, bytes, and serialization, and derive identity forms from `toString()` as ramsey does: `getUrn()` is `'urn:uuid:' . toString()` and `getHex()` is `toString()` without the hyphens, while `getInteger()` always reads the network-order core. `equals()` takes any value and returns false for non-UUID input instead of throwing. `compareTo()` accepts UUID objects only, orders by the network-order bytes regardless of codec, and throws `InvalidArgumentException` otherwise. Under the default codec all of these match the canonical form, so nothing changes unless you set a codec.
 
 `GuidStringCodec` swaps the first three fields in `encodeBinary()` / `decodeBytes()` only. A GUID is mixed-endian in its byte array but its text is the plain RFC string, which is why `.NET`'s `Guid.ToString()` and `Guid.ToByteArray()` disagree. Under that codec, pass GUID-ordered bytes to `fromBytes()` and canonical text to `fromString()`; `Guid\Guid::getBytes()` returns the same mixed-endian order. `OrderedTimeCodec` and the COMB codecs change their documented binary storage order, and the COMB codecs also reshape the text, so their `getHex()` follows it.
 
-Validation is strict by default: `GenericValidator` enforces the version nibble (1-8) and the variant nibble (8/9/a/b), with the nil UUID explicitly exempt; `NonstandardValidator` stays shape-only with no nibble constraints. `UuidInterface` has no `getCore()`, so third-party Ramsey implementations and doubles can satisfy it (`AbstractUuid` and `Guid\Guid` still expose it); internals resolve any other implementation through its string form.
+Validation is strict by default: `GenericValidator` enforces the version nibble (1-8) and the variant nibble (8/9/a/b), with the nil UUID explicitly exempt; `NonstandardValidator` stays shape-only with no nibble constraints. `UuidInterface` has no required `getCore()`, so third-party Ramsey implementations and doubles can satisfy it. Internals use a compatible optional `getCore()` returning a native UUID when available (`AbstractUuid` and `Guid\Guid` expose one), then fall back to the implementation's string form.
 
 ## 📊 Benchmarks
+
+These measurements predate the v1/v6 timestamp guard and the v7 random-increment fix. They are historical results, not measurements of the current generation paths.
 
 Throughput against `ramsey/uuid` 4.9.2 and the PECL `uuid` extension 1.3.0
 (libuuid-backed). PHP 8.4.22 NTS, non-debug, no sanitizers; SSSE3 hex formatter
