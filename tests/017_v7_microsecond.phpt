@@ -29,8 +29,8 @@ $c = Uuid::uuid7(new DateTimeImmutable('2023-01-01 00:00:00.001000', new DateTim
 var_dump(ms_of($c) - ms_of($a) === 1);
 
 // Batch path: one clock read for the whole batch, then the monotonic
-// (key, rand_b) counter advances in pure C. Order, uniqueness and the exact
-// +1 counter step are structural; no wall-clock statistics involved.
+// (key, rand_b) counter advances in pure C by bounded random steps.
+// Order, uniqueness and step bounds do not depend on wall-clock statistics.
 $n = 256;
 $batch = uuid_v7_batch($n);
 var_dump(count($batch) === $n);
@@ -47,7 +47,8 @@ for ($i = 1; $i < $n; $i++) {
     $k1 = key_of($cur);
     $r0 = randb_of($prev);
     $r1 = randb_of($cur);
-    $stepsOk = $stepsOk && (($k1 === $k0 && $r1 === $r0 + 1) || ($k1 === $k0 + 1 && $r1 === 0));
+    $step = $k1 === $k0 + 1 ? (0x3fffffffffffffff - $r0) + 1 + $r1 : $r1 - $r0;
+    $stepsOk = $stepsOk && ($k1 === $k0 || $k1 === $k0 + 1) && $step >= 1 && $step <= 0x1000000;
     $prev = $cur;
 }
 var_dump($stepsOk);

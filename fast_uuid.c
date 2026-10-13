@@ -912,8 +912,37 @@ static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t sub, uint64
     return SUCCESS;
 }
 
+static zend_result fu_v7_increment(uint64_t *key, uint64_t *randb) {
+    unsigned char r[3];
+    if (fu_rand(r, sizeof(r)) == FAILURE) return FAILURE;
+    uint64_t step = ((uint64_t)r[0] << 16 | (uint64_t)r[1] << 8 | r[2]) + 1;
+    uint64_t next = *randb + step; /* 1..2^24, so the 62-bit addition fits uint64_t */
+    if (next > FU_RANDB_MASK) {
+        if (UNEXPECTED(*key == ((1ULL << 60) - 1))) {
+            zend_throw_exception(fu_ex_unsupported, "UUIDv7 monotonic timestamp exhausted", 0);
+            return FAILURE;
+        }
+        (*key)++;
+        next &= FU_RANDB_MASK;
+    }
+    *randb = next;
+    return SUCCESS;
+}
+
+static zend_result fu_v7_start(uint64_t *key, uint64_t *randb) {
+    if (!FAST_UUID_G(v7_initialized) || *key > FAST_UUID_G(v7_key)) {
+        if (fu_rand_u64(randb) == FAILURE) return FAILURE;
+        *randb &= FU_RANDB_MASK;
+    } else {
+        *key = FAST_UUID_G(v7_key);
+        *randb = FAST_UUID_G(v7_randb);
+        if (fu_v7_increment(key, randb) == FAILURE) return FAILURE;
+    }
+    return SUCCESS;
+}
+
 /* monotonic v7 using module-global state. The 60-bit time key (ms<<12 | sub)
-   gives ~244ns resolution; rand_b breaks ties within a single tick. */
+   gives ~244ns resolution; rand_b advances by random positive steps on ties. */
 static zend_result fu_gen_v7(unsigned char *b) {
     uint64_t ns;
     if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
@@ -921,19 +950,10 @@ static zend_result fu_gen_v7(unsigned char *b) {
     uint64_t sub = ((ns % 1000000ULL) * 4096ULL) / 1000000ULL; /* 0..4095 */
     uint64_t key = (ms << 12) | sub;
     uint64_t randb;
-    if (!FAST_UUID_G(v7_initialized) || key > FAST_UUID_G(v7_key)) {
-        if (fu_rand_u64(&randb) == FAILURE) return FAILURE; /* draw before mutating state */
-        randb &= FU_RANDB_MASK; /* full 62-bit rand_b; the overflow check below carries into the key */
-        FAST_UUID_G(v7_key) = key;
-        FAST_UUID_G(v7_randb) = randb;
-        FAST_UUID_G(v7_initialized) = 1;
-    } else {
-        key = FAST_UUID_G(v7_key);
-        randb = FAST_UUID_G(v7_randb) + 1;
-        if (randb > FU_RANDB_MASK) { key++; randb = 0; } /* carry into sub, then ms */
-        FAST_UUID_G(v7_key) = key;
-        FAST_UUID_G(v7_randb) = randb;
-    }
+    if (fu_v7_start(&key, &randb) == FAILURE) return FAILURE;
+    FAST_UUID_G(v7_key) = key;
+    FAST_UUID_G(v7_randb) = randb;
+    FAST_UUID_G(v7_initialized) = 1;
     return fu_lay_v7(b, key >> 12, key & 0xfff, randb);
 }
 
@@ -2049,23 +2069,17 @@ static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
     uint64_t key = (ms << 12) | sub;
     uint64_t randb;
 
-    if (!FAST_UUID_G(v7_initialized) || key > FAST_UUID_G(v7_key)) {
-        if (fu_rand_u64(&randb) == FAILURE) return FAILURE;
-        randb &= FU_RANDB_MASK;
-    } else {
-        key = FAST_UUID_G(v7_key);
-        randb = FAST_UUID_G(v7_randb) + 1;
-        if (randb > FU_RANDB_MASK) { key++; randb = 0; }
-    }
+    if (fu_v7_start(&key, &randb) == FAILURE) return FAILURE;
 
+    zend_result rc = SUCCESS;
     zend_hash_real_init_packed(Z_ARRVAL_P(arr));
     ZEND_ASSERT(Z_ARRVAL_P(arr)->nTableSize >= n);
     ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(arr)) {
         for (uint32_t i = 0; i < n; i++) {
             unsigned char b[16];
-            if (i > 0) {
-                randb++;
-                if (randb > FU_RANDB_MASK) { key++; randb = 0; }
+            if (i > 0 && fu_v7_increment(&key, &randb) == FAILURE) {
+                rc = FAILURE;
+                break;
             }
             fu_lay_v7(b, key >> 12, key & 0xfff, randb);
             ZEND_HASH_FILL_SET_STR(fu_uuid_zstr(b, as_bytes));
@@ -2075,7 +2089,7 @@ static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
     FAST_UUID_G(v7_key) = key;
     FAST_UUID_G(v7_randb) = randb;
     FAST_UUID_G(v7_initialized) = 1;
-    return SUCCESS;
+    return rc;
 }
 
 FU_FN_LONG1(uuid_v7_batch,     fu_fn_batch(return_value, lval, fu_gen_v7_batch_n, 0))
