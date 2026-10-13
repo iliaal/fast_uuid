@@ -49,10 +49,10 @@ namespace FastUuid {
         /** $localDomain 0..255 (PERSON=0, GROUP=1, ORG=2); out-of-range raises InvalidArgumentException, never truncates. $localIdentifier defaults to the process uid (PERSON) or gid (GROUP); it is required for other domains and on Windows. $node/$clockSeq as in uuid1. */
         public static function uuid2(int $localDomain, int|string|null $localIdentifier = null, int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
         /** $name over 16 MiB raises InvalidArgumentException; $ns parses tolerantly, InvalidArgumentException on failure. */
-        public static function uuid3(UuidInterface|string $ns, string $name): UuidValueInterface {}
+        public static function uuid3(object|string $ns, string $name): UuidValueInterface {}
         public static function uuid4(): UuidValueInterface {}
         /** $name over 16 MiB raises InvalidArgumentException; $ns parses tolerantly, InvalidArgumentException on failure. */
-        public static function uuid5(UuidInterface|string $ns, string $name): UuidValueInterface {}
+        public static function uuid5(object|string $ns, string $name): UuidValueInterface {}
         /** $node/$clockSeq as in uuid1. */
         public static function uuid6(int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
         /** $dateTime is an instant or a unix-millisecond int; null means now. */

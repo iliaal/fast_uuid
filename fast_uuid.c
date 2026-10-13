@@ -1409,10 +1409,12 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid3) {
-    zval *zns; zend_string *name;
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
+    zend_object *ns_obj; zend_string *ns_str, *name;
+    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_OBJ_OR_STR(ns_obj, ns_str) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
+    zval zns;
+    if (ns_obj) { ZVAL_OBJ(&zns, ns_obj); } else { ZVAL_STR(&zns, ns_str); }
     unsigned char ns[16];
-    if (!fu_resolve_uuid(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_uuid(&zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16];
     fu_gen_v3(b, ns, ZSTR_VAL(name), ZSTR_LEN(name));
     if (UNEXPECTED(EG(exception))) RETURN_THROWS();
@@ -1425,10 +1427,12 @@ PHP_METHOD(FastUuid_Uuid, uuid4) {
 }
 
 PHP_METHOD(FastUuid_Uuid, uuid5) {
-    zval *zns; zend_string *name;
-    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_ZVAL(zns) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
+    zend_object *ns_obj; zend_string *ns_str, *name;
+    ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_OBJ_OR_STR(ns_obj, ns_str) Z_PARAM_STR(name) ZEND_PARSE_PARAMETERS_END();
+    zval zns;
+    if (ns_obj) { ZVAL_OBJ(&zns, ns_obj); } else { ZVAL_STR(&zns, ns_str); }
     unsigned char ns[16];
-    if (!fu_resolve_uuid(zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
+    if (!fu_resolve_uuid(&zns, ns)) { if (!EG(exception)) zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0); RETURN_THROWS(); }
     unsigned char b[16];
     fu_gen_v5(b, ns, ZSTR_VAL(name), ZSTR_LEN(name));
     if (UNEXPECTED(EG(exception))) RETURN_THROWS();

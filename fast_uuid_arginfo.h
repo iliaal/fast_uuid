@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 0d01042c934b59b63d2a543f9aba02b27daab608 */
+ * Stub hash: fcb3430cc65af38c7edaf70411c8a9655c91c4b6 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -132,7 +132,7 @@ ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid2, 0, 1, 
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_FastUuid_Uuid_uuid3, 0, 2, FastUuid\\\125uidValueInterface, 0)
-	ZEND_ARG_OBJ_TYPE_MASK(0, ns, FastUuid\\\125uidInterface, MAY_BE_STRING, NULL)
+	ZEND_ARG_TYPE_MASK(0, ns, MAY_BE_OBJECT|MAY_BE_STRING, NULL)
 	ZEND_ARG_TYPE_INFO(0, name, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
