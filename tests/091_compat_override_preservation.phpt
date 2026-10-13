@@ -98,8 +98,8 @@ foreach ($factories as $index => $factory) {
     }
 }
 
-// A recording codec on an open UuidFactory subclass: a string namespace must
-// still reach the overriding getCodec() rather than the direct-parse shortcut.
+// getCodec() overrides control fromString() presentation decoding, while
+// namespace strings retain their canonical identity independently of codecs.
 final class RecordingCodec extends StringCodec
 {
     public int $decoded = 0;
@@ -129,9 +129,11 @@ final class CodecOverridingFactory extends UuidFactory
 $overriding = new CodecOverridingFactory();
 $dns = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 var_dump($overriding->uuid5($dns, 'x')->getCore()->equals(\FastUuid\Uuid::uuid5($dns, 'x')));
-var_dump($overriding->recording->decoded === 1);
+var_dump($overriding->recording->decoded === 0);
 var_dump($overriding->uuid3($dns, 'x')->getCore()->equals(\FastUuid\Uuid::uuid3($dns, 'x')));
-var_dump($overriding->recording->decoded === 2);
+var_dump($overriding->recording->decoded === 0);
+var_dump($overriding->fromString($dns)->toString() === $dns);
+var_dump($overriding->recording->decoded === 1);
 
 // A GenericValidator subclass that accepts a 34-byte inner shape: a braced
 // 36-byte candidate must still be unwrapped before that check.
@@ -152,6 +154,8 @@ var_dump((new GenericValidator())->validate($braced) === false);
 var_dump((new NonstandardValidator())->validate($braced) === false);
 ?>
 --EXPECT--
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)

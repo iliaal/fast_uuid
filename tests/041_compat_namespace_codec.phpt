@@ -1,5 +1,5 @@
 --TEST--
-Compat name-based UUIDs decode string namespaces through the configured codec
+Compat name-based UUIDs retain canonical string namespaces with a GUID output codec
 --EXTENSIONS--
 fast_uuid
 --FILE--

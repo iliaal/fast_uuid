@@ -335,13 +335,10 @@ class UuidFactory implements UuidFactoryInterface
             return WrapperClass::coreFrom($ns);
         }
         try {
-            // The default codec's decode() is Uuid::fromString() plus a wrapper
-            // the caller discards. getCodec() materialises a StringCodec into
-            // $codec on first use, so both forms count as the default. A
-            // subclass may override fromString() or getCodec(), so only the
-            // exact class takes the shortcut.
-            $codec = $this->codec;
-            if (($codec === null || $codec::class === StringCodec::class) && static::class === self::class) {
+            // Namespace strings identify network-order UUIDs independently of
+            // the output codec. Preserve explicit subclass parsing overrides.
+            if (static::class === self::class
+                || (new \ReflectionMethod($this, 'fromString'))->getDeclaringClass()->getName() === self::class) {
                 return \FastUuid\Uuid::fromString((string) $ns);
             }
             return WrapperClass::coreFrom($this->fromString((string) $ns));

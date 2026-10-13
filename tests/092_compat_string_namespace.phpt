@@ -1,12 +1,11 @@
 --TEST--
-compat: string namespaces resolve identically on the direct-parse shortcut and the codec path
+compat: string namespaces preserve canonical identity and explicit factory parsing overrides
 --EXTENSIONS--
 fast_uuid
 --FILE--
 <?php
 require __DIR__ . '/_autoload.inc';
 
-use FastUuid\Compat\Codec\CodecInterface;
 use FastUuid\Compat\Codec\GuidStringCodec;
 use FastUuid\Compat\Codec\StringCodec;
 use FastUuid\Compat\Codec\TimestampFirstCombCodec;
@@ -16,14 +15,13 @@ use FastUuid\Compat\UuidInterface;
 use FastUuid\Exception\InvalidArgumentException;
 use FastUuid\Exception\InvalidUuidStringException;
 
-// A subclass never takes the shortcut, so it is the reference for the codec path.
 final class CodecPathFactory extends UuidFactory {}
 
-final class ThrowingCodec extends StringCodec
+final class ThrowingFactory extends UuidFactory
 {
-    public function decode(string $encoded): UuidInterface
+    public function fromString(string $uuid): UuidInterface
     {
-        throw new InvalidArgumentException('codec refused');
+        throw new InvalidArgumentException('factory refused');
     }
 }
 
@@ -88,25 +86,24 @@ foreach ([$fresh, $materialised, $explicit, $reference] as $factory) {
     }
 }
 
-// A non-default codec still decodes the namespace text through itself.
+// Output presentation never changes the namespace string's identity.
 $comb = new UuidFactory();
 $comb->setCodec(new TimestampFirstCombCodec());
 $combText = (new TimestampFirstCombCodec())->encode(Uuid::fromString($dns));
-var_dump($comb->uuid5($combText, 'x')->getCore()->equals(\FastUuid\Uuid::uuid5($dns, 'x')));
+var_dump($comb->uuid5($combText, 'x')->getCore()->equals(\FastUuid\Uuid::uuid5($combText, 'x')));
 $guid = new UuidFactory();
 $guid->setCodec(new GuidStringCodec());
 var_dump($guid->uuid5($dns, 'x')->getCore()->equals(\FastUuid\Uuid::uuid5($dns, 'x')));
 
-// A codec failure other than a bad string is still wrapped.
-$throwing = new UuidFactory();
-$throwing->setCodec(new ThrowingCodec());
+// A factory parsing override's failure other than a bad string is still wrapped.
+$throwing = new ThrowingFactory();
 try {
     $throwing->uuid5($dns, 'x');
     var_dump(false);
 } catch (InvalidArgumentException $e) {
     var_dump(!$e instanceof InvalidUuidStringException);
     var_dump($e->getMessage() === 'Invalid namespace');
-    var_dump($e->getPrevious()?->getMessage() === 'codec refused');
+    var_dump($e->getPrevious()?->getMessage() === 'factory refused');
 }
 ?>
 --EXPECT--
