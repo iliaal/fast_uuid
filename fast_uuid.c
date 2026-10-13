@@ -724,6 +724,7 @@ static void fu_atfork_child(void) {
     FAST_UUID_G(v7_key) = 0;                        /* force v7 reseed (new key > 0) */
     FAST_UUID_G(v7_randb) = 0;
     FAST_UUID_G(v7_initialized) = 0;
+    FAST_UUID_G(greg_last) = 0;
 }
 #endif
 
@@ -839,9 +840,25 @@ static inline zend_result fu_greg_now(uint64_t *out) {
     return SUCCESS;
 }
 
-static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+static inline zend_result fu_greg_monotonic(uint64_t *out) {
     uint64_t g;
     if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    if (g <= FAST_UUID_G(greg_last)) {
+        if (UNEXPECTED(FAST_UUID_G(greg_last) == ((1ULL << 60) - 1))) {
+            zend_throw_exception(fu_ex_unsupported, "Gregorian timestamp exhausted", 0);
+            return FAILURE;
+        }
+        g = FAST_UUID_G(greg_last) + 1;
+    }
+    ZEND_ASSERT(g < (1ULL << 60));
+    FAST_UUID_G(greg_last) = g;
+    *out = g;
+    return SUCCESS;
+}
+
+static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+    uint64_t g;
+    if (fu_greg_monotonic(&g) == FAILURE) return FAILURE;
     return fu_lay_v1(b, g, node, clockseq);
 }
 
@@ -860,7 +877,7 @@ static zend_result fu_lay_v6(unsigned char *b, uint64_t g, const unsigned char *
 
 static zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
     uint64_t g;
-    if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    if (fu_greg_monotonic(&g) == FAILURE) return FAILURE;
     return fu_lay_v6(b, g, node, clockseq);
 }
 

@@ -42,6 +42,8 @@ ZEND_BEGIN_MODULE_GLOBALS(fast_uuid)
     /* non-crypto fast PRNG (xoshiro256**) for uuid_v4_fast() */
     uint64_t      prng_s[4];
     zend_bool     prng_seeded;
+    /* Shared v1/v6 timestamp high-water mark (per-thread under ZTS). */
+    uint64_t      greg_last;
 ZEND_END_MODULE_GLOBALS(fast_uuid)
 
 ZEND_EXTERN_MODULE_GLOBALS(fast_uuid)
