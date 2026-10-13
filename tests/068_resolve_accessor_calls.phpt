@@ -1,5 +1,5 @@
 --TEST--
-UUID resolution calls getCore()/getBytes() once, propagates their exceptions, and never autoloads type names
+UUID resolution calls getCore() once, ignores storage accessors, and never autoloads type names
 --EXTENSIONS--
 fast_uuid
 --FILE--
@@ -97,18 +97,18 @@ foreach (['equals', 'compareTo', 'uuid3', 'uuid5'] as $op) {
         && Calls::count('getBytes') === 0 && Calls::count('toString') === 0);
 }
 
-// getCore() returning something that is not a native Uuid falls through to getBytes().
-final class BadCoreThenBytes
+// A non-native getCore() result falls through to the canonical string form.
+final class BadCoreThenString
 {
-    public function __toString(): string { return '00000000-0000-4000-8000-000000000000'; }
+    public function __toString(): string { Calls::hit('toString'); return '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; }
     public function getCore() { Calls::hit('getCore'); return 42; }
-    public function getBytes(): string { Calls::hit('getBytes'); return (string) hex2bin('6ba7b8109dad11d180b400c04fd430c8'); }
+    public function getBytes(): string { Calls::hit('getBytes'); return str_repeat("\x00", 16); }
 }
 Calls::reset();
-var_dump($core->equals(new BadCoreThenBytes()));
-var_dump(Calls::count('getCore') === 1 && Calls::count('getBytes') === 1);
+var_dump($core->equals(new BadCoreThenString()));
+var_dump(Calls::count('getCore') === 1 && Calls::count('getBytes') === 0 && Calls::count('toString') === 1);
 
-// getBytes()-only Stringable: the raw bytes win over a different __toString().
+// Foreign storage bytes never override the canonical string form.
 final class BytesOnly
 {
     public function __construct(private string $bytes, private string $text) {}
@@ -116,25 +116,23 @@ final class BytesOnly
     public function getBytes(): string { Calls::hit('getBytes'); return $this->bytes; }
 }
 Calls::reset();
-var_dump($core->equals(new BytesOnly($dnsBytes, $other)));
-var_dump(Calls::count('getBytes') === 1 && Calls::count('toString') === 0);
-var_dump(!Uuid::fromString($other)->equals(new BytesOnly($dnsBytes, $other)));
-var_dump(Uuid::uuid5(new BytesOnly($dnsBytes, $other), $name)->toString() === $expected5);
+var_dump(!$core->equals(new BytesOnly($dnsBytes, $other)));
+var_dump(Calls::count('getBytes') === 0 && Calls::count('toString') === 1);
+var_dump(Uuid::fromString($other)->equals(new BytesOnly($dnsBytes, $other)));
+var_dump(Uuid::uuid5(new BytesOnly(Uuid::fromString($other)->getBytes(), $dns), $name)->toString() === $expected5);
 
-// A getBytes() that is not 16 bytes falls back to parsing the Stringable form.
+// Storage byte length has no effect on UUID identity.
 var_dump($core->equals(new BytesOnly('short', $dns)));
 var_dump(!$core->equals(new BytesOnly('short', $other)));
 
-// A throwing getBytes() propagates and never reaches __toString().
+// An unrelated throwing storage accessor is never called.
 final class ThrowingBytes
 {
     public function __toString(): string { Calls::hit('toString'); return '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; }
     public function getBytes(): string { Calls::hit('getBytes'); throw new LogicException('bytes boom'); }
 }
 Calls::reset();
-$msg = null;
-try { $core->equals(new ThrowingBytes()); } catch (LogicException $e) { $msg = $e->getMessage(); }
-var_dump($msg === 'bytes boom' && Calls::count('getBytes') === 1 && Calls::count('toString') === 0);
+var_dump($core->equals(new ThrowingBytes()) && Calls::count('getBytes') === 0 && Calls::count('toString') === 1);
 
 // Non-public and static accessors are never invoked; the Stringable form decides.
 final class HiddenAccessors

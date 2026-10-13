@@ -1,5 +1,5 @@
 --TEST--
-Native UUID accessors preserve scalar union identity and skip unrelated static returns
+Native UUID resolution ignores storage accessors and skips unrelated static returns
 --EXTENSIONS--
 fast_uuid
 --FILE--
@@ -15,7 +15,7 @@ abstract class ForeignUuid implements UuidInterface
     public function jsonSerialize(): string { return $this->text; }
     protected function bytes(): string
     {
-        return (string) hex2bin('6ba7b8109dad11d180b400c04fd430c8');
+        return (string) hex2bin('00112233445546778899aabbccddeeff');
     }
 }
 
@@ -63,9 +63,9 @@ final class SupertypeStaticCore extends ForeignUuid
 $text = '00112233-4455-4677-8899-aabbccddeeff';
 $core = Uuid::fromString(ForeignUuid::CORE);
 foreach ([
-    new NamedUnionBytes($text),
-    new ListUnionBytes($text),
-    new MixedBytes($text),
+    new NamedUnionBytes(ForeignUuid::CORE),
+    new ListUnionBytes(ForeignUuid::CORE),
+    new MixedBytes(ForeignUuid::CORE),
     new StaticCore(ForeignUuid::CORE),
     new NullableStaticCore(ForeignUuid::CORE),
     new UnionStaticCore($text),

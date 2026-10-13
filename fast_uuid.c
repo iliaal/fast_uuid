@@ -1024,11 +1024,10 @@ static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
 }
 
 /* Resolve a UUID-valued argument (namespace, equals, compareTo) to 16 bytes.
-   Accepts a native Uuid (zero-copy), a compat/userland wrapper via its
-   raw-bytes accessor, any other Stringable by parsing its string form, or a
-   UUID string. getCore() is preferred: a codec-shaped getBytes()/toString()
-   (COMB, Guid) still parses as valid hex yet decodes to the wrong bytes, so
-   raw accessors win and the Stringable fallback assumes canonical RFC text.
+   Accepts a native Uuid, a compat/userland wrapper via getCore(), any other
+   Stringable by parsing its string form, or a UUID string. getCore() preserves
+   native identity under presentation codecs. Foreign getBytes() may use GUID
+   or ordered-time storage order, so only the canonical string form is trusted.
    Returns 0 on a non-match or unparseable value; on a throwing accessor it
    leaves EG(exception) set, which the caller must honor rather than
    overwrite. */
@@ -1118,26 +1117,6 @@ static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
             if (!EG(exception)
                 && Z_TYPE(ret) == IS_OBJECT && instanceof_function(Z_OBJCE(ret), fast_uuid_ce)) {
                 memcpy(ns, fu_from_zobj(Z_OBJ(ret))->b, 16);
-                zval_ptr_dtor(&ret);
-                return 1;
-            }
-            if (Z_TYPE(ret) != IS_UNDEF) zval_ptr_dtor(&ret);
-            if (EG(exception)) return 0;
-        }
-        /* Foreign UuidInterface (e.g. ramsey/uuid): getBytes() is the 16 raw
-           network-order bytes; take them directly, never via toString().
-           Gated on Stringable so arbitrary objects exposing getBytes()
-           (blobs, buffers) never resolve as UUIDs. */
-        fn = instanceof_function(ce, zend_ce_stringable)
-            ? fu_find_zero_arg_method(ce, "getbytes", sizeof("getbytes") - 1, MAY_BE_STRING, NULL)
-            : NULL;
-        if (fn) {
-            zval ret;
-            ZVAL_UNDEF(&ret);
-            zend_call_known_instance_method(fn, Z_OBJ_P(z), &ret, 0, NULL);
-            if (!EG(exception)
-                && Z_TYPE(ret) == IS_STRING && Z_STRLEN(ret) == 16) {
-                memcpy(ns, Z_STRVAL(ret), 16);
                 zval_ptr_dtor(&ret);
                 return 1;
             }

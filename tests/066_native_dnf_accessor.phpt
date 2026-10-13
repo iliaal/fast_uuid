@@ -70,9 +70,9 @@ var_dump($factory->uuid5($foreign, $name)->getCore()->toString() === $expected5)
 $scalarArm = new class implements \FastUuid\UuidInterface {
     public function getBytes(): (Stringable&JsonSerializable)|string
     {
-        return (string) hex2bin('6ba7b8109dad11d180b400c04fd430c8');
+        return (string) hex2bin('00112233445546778899aabbccddeeff');
     }
-    public function __toString(): string { return '00112233-4455-4677-8899-aabbccddeeff'; }
+    public function __toString(): string { return '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; }
     public function jsonSerialize(): string { return $this->__toString(); }
 };
 var_dump($core->equals($scalarArm));
