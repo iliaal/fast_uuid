@@ -44,6 +44,9 @@ ZEND_BEGIN_MODULE_GLOBALS(fast_uuid)
     zend_bool     prng_seeded;
     /* Shared v1/v6 timestamp high-water mark (per-thread under ZTS). */
     uint64_t      greg_last;
+    /* v2 timestamp high-water mark on the visible 28-bit portion
+       (time_mid + time_hi; time_low is the local id). Per-thread under ZTS. */
+    uint64_t      v2_last;
 ZEND_END_MODULE_GLOBALS(fast_uuid)
 
 ZEND_EXTERN_MODULE_GLOBALS(fast_uuid)

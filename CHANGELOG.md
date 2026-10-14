@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Live-clock `uuid2()` generation advances a per-process high-water mark (per thread under ZTS) on the visible 28-bit timestamp portion when the clock stalls or moves backward, preventing repeated UUIDs with a fixed local identifier, node, and clock sequence. The shared v1/v6 mark is not used because `time_low` carries the local id, making its increments invisible in the output. Supplied fields are preserved; fixed values still require coordination across processes, threads, forks, and restarts.
+
 ## [0.8.1] - 2026-10-13
 
 ### Changed
