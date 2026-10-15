@@ -725,6 +725,7 @@ static void fu_atfork_child(void) {
     FAST_UUID_G(v7_randb) = 0;
     FAST_UUID_G(v7_initialized) = 0;
     FAST_UUID_G(greg_last) = 0;
+    FAST_UUID_G(v2_last) = 0;                    /* reset v2 visible-timestamp mark */
 }
 #endif
 
@@ -856,6 +857,27 @@ static inline zend_result fu_greg_monotonic(uint64_t *out) {
     return SUCCESS;
 }
 
+/* v2 monotonic clock: v2 overwrites time_low (low 32 timestamp bits) with the
+   local identifier, so only the upper 28 bits (time_mid + time_hi) are visible
+   in the output. A shared 60-bit mark would be invisible until a bit-32 carry
+   (~7 minutes), so v2 keeps its own high-water mark on the visible portion. */
+static inline zend_result fu_v2_monotonic(uint64_t *out) {
+    uint64_t g;
+    if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    uint64_t vis = g >> 32; /* visible 28-bit portion */
+    if (vis <= FAST_UUID_G(v2_last)) {
+        if (UNEXPECTED(FAST_UUID_G(v2_last) == ((1ULL << 28) - 1))) {
+            zend_throw_exception(fu_ex_unsupported, "v2 timestamp exhausted", 0);
+            return FAILURE;
+        }
+        vis = FAST_UUID_G(v2_last) + 1;
+    }
+    ZEND_ASSERT(vis < (1ULL << 28));
+    FAST_UUID_G(v2_last) = vis;
+    *out = (vis << 32) | (g & 0xffffffffULL);
+    return SUCCESS;
+}
+
 static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
     uint64_t g;
     if (fu_greg_monotonic(&g) == FAILURE) return FAILURE;
@@ -885,11 +907,18 @@ static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1
 
 /* DCE Security (v2): v1 time layout, but time_low := local identifier and
    clock_seq_low := local domain; version nibble = 2. The low 32 timestamp bits
-   are sacrificed for the local id, so v2 time resolution is coarse. */
+   are sacrificed for the local id, so v2 time resolution is coarse.
+   monotonic is true only when the caller supplied both node and clockseq: a
+   defaulted node or clockseq is freshly random per call, so only the
+   both-supplied case can repeat on a stalled clock. */
 static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
-                      const unsigned char *node, int clockseq) {
+                      const unsigned char *node, int clockseq, zend_bool monotonic) {
     uint64_t g;
-    if (fu_greg_now(&g) == FAILURE) return FAILURE;
+    if (monotonic) {
+        if (fu_v2_monotonic(&g) == FAILURE) return FAILURE;
+    } else if (fu_greg_now(&g) == FAILURE) {
+        return FAILURE;
+    }
     if (fu_lay_v1(b, g, node, clockseq) == FAILURE) return FAILURE;
     b[0] = (local_id >> 24) & 0xff; b[1] = (local_id >> 16) & 0xff;
     b[2] = (local_id >> 8)  & 0xff; b[3] = local_id & 0xff;
@@ -1424,7 +1453,10 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
     int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     unsigned char b[16];
-    if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cseq) == FAILURE) RETURN_THROWS();
+    /* Only a fully supplied node+clockseq pair can repeat on a stalled clock;
+       defaulted values are random per call, so the mark would only add drift. */
+    zend_bool mono = (!node_null && !cs_null);
+    if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cseq, mono) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
 }
 

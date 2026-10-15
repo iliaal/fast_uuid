@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed `uuid2()` emitting duplicate UUIDs when both node and clock sequence are supplied and the clock stalls or moves backward; the visible 28-bit timestamp portion advances instead, and default arguments keep their existing behavior.
+
 ## [0.8.1] - 2026-10-13
 
 ### Changed
