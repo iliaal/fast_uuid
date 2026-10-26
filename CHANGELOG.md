@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-26
+
 ### Fixed
 - Fixed `uuid2()` emitting duplicate UUIDs when both node and clock sequence are supplied and the clock stalls or moves backward; the visible 28-bit timestamp portion advances instead, and default arguments keep their existing behavior.
 
@@ -249,7 +251,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.8.1...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.8.2...HEAD
+[0.8.2]: https://github.com/iliaal/fast_uuid/releases/tag/0.8.2
 [0.8.1]: https://github.com/iliaal/fast_uuid/releases/tag/0.8.1
 [0.8.0]: https://github.com/iliaal/fast_uuid/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/iliaal/fast_uuid/compare/0.6.0...0.7.0
