@@ -1738,10 +1738,10 @@ static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micro
                 : ((uint64_t)b[0]<<24)|((uint64_t)b[1]<<16)|((uint64_t)b[2]<<8)|b[3];
             t60 = (th<<48)|(tm<<32)|tl;
         }
-        int64_t unix100 = (int64_t)(t60 - FU_GREG_UNIX_EPOCH); /* signed: pre-1970 is negative */
-        int64_t s = unix100 / 10000000LL, frac = unix100 % 10000000LL;
-        if (frac < 0) { s -= 1; frac += 10000000LL; } /* floor toward -inf, keep frac >= 0 */
-        *secs = s; *micros = (uint32_t)(frac / 10LL); /* 100ns -> us */
+        /* The epoch offset is an exact number of seconds, so the remainder is unchanged. */
+        int64_t s = (int64_t)(t60 / 10000000ULL) - (int64_t)(FU_GREG_UNIX_EPOCH / 10000000ULL);
+        uint64_t frac = t60 % 10000000ULL;
+        *secs = s; *micros = (uint32_t)(frac / 10ULL); /* 100ns -> us */
         return 1;
     }
     if (ver == 7) {
