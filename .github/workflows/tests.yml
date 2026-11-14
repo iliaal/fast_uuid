@@ -13,6 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  benchmark-runner:
+    name: Benchmark runner regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check shell syntax and error propagation
+        run: |
+          bash -n bench/run_neon.sh
+          python3 .github/tests/test_benchmark_runner.py
+
   arginfo-sync:
     name: Generated arginfo matches stub
     runs-on: ubuntu-latest
