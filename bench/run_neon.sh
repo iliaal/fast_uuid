@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Drive the NEON-vs-scalar A/B plus a ramsey/uuid headline on this ARM box.
 # Usage: run_neon.sh <neon.so> <scalar.so> [core] [iters] [runs]
-set -u
+set -euo pipefail
 NEON="$1"; SCALAR="$2"; CORE="${3:-3}"; ITERS="${4:-300000}"; RUNS="${5:-25}"
 PHP=php
 HARNESS="$(dirname "$0")/neon_bench.php"
@@ -9,7 +9,7 @@ PIN="taskset -c $CORE"
 
 run() { $PIN "$PHP" -d extension="$1" "$HARNESS" "$2" "$ITERS" "$RUNS"; }
 
-echo "== host =="; uname -m; (lscpu | grep -i 'model name' | head -1)
+echo "== host =="; uname -m; (lscpu | grep -i 'model name' | head -1) || true
 echo "core=$CORE iters=$ITERS runs=$RUNS (best-of)"
 echo
 echo "== formatter A/B (RNG shared; delta = NEON formatter) =="
