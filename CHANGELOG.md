@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Stop the NEON comparison runner when a benchmark fails instead of printing incomplete results and potentially reporting success.
+
 ## [0.8.2] - 2026-10-26
 
 ### Fixed
