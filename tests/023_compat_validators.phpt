@@ -15,7 +15,7 @@ $bare = str_replace('-', '', $s);
 $upper = strtoupper($s);
 $urn = 'urn:uuid:' . $s;
 $urnBraced = 'urn:uuid:{' . $s . '}';
-$badUrn = 'urn:' . $s;
+$shortUrn = 'urn:' . $s;                  // ramsey/uuid 4.10 accepts "urn:" without "uuid:"
 $badWrappedUrn = '{urn:uuid:' . $s . '}'; // composed wrapper of a VALID uuid: accepted
 $badComposed = '{urn:uuid:nope}';         // composed wrapper of garbage: rejected
 $braced = '{' . $s . '}';
@@ -29,7 +29,7 @@ var_dump((new GenericValidator())->validate($braced));
 var_dump((new GenericValidator())->validate(Uuid::NIL));
 var_dump((new GenericValidator())->validate('nope') === false);
 var_dump((new GenericValidator())->validate($bare) === false);
-var_dump((new GenericValidator())->validate($badUrn) === false);
+var_dump((new GenericValidator())->validate($shortUrn));
 // composed wrapper forms mirror the C parser
 var_dump((new GenericValidator())->validate($badWrappedUrn));
 var_dump((new GenericValidator())->validate($badComposed) === false);
@@ -43,7 +43,7 @@ var_dump((new NonstandardValidator())->validate($upper));
 var_dump((new NonstandardValidator())->validate($urn));
 var_dump((new NonstandardValidator())->validate($urnBraced));
 var_dump((new NonstandardValidator())->validate($bare) === false);
-var_dump((new NonstandardValidator())->validate($badUrn) === false);
+var_dump((new NonstandardValidator())->validate($shortUrn));
 // NonstandardValidator shares GenericValidator's wrapper grammar
 var_dump((new NonstandardValidator())->validate($badWrappedUrn));
 var_dump((new NonstandardValidator())->validate($badComposed) === false);

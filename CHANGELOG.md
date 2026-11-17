@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The parser, `isValid()`, `uuid_is_valid()`, and the compat validators accept a `urn:` or `uuid:` prefix on its own, as `ramsey/uuid` 4.10 does, in addition to `urn:uuid:`. The prefixes are case-insensitive and may come before or inside braces. A string takes one prefix at most, so `uuid:urn:…`, `urn:urn:…`, and `urn:uuid:urn:uuid:…` are rejected; the parser accepted the last of these before. The compat validators also accept `{urn:uuid:{…}}`, which the parser already accepted.
 - `getDateTime()` on v1, v2, and v6 UUIDs, in the core and the compat layer, now rounds the 100 ns timestamp to the nearest microsecond, with halves rounded up, instead of truncating it, matching `ramsey/uuid` 4.10. For example, `1381400a-1dd2-11b2-8000-010203040506` and `13814009-1dd2-11b2-8000-010203040506` both return `1970-01-01 00:00:00.000001`, where the second returned `.000000` before, and a time less than 0.5 µs before a second boundary now rounds up to that second. Seconds before the Unix epoch still round down, so microseconds are never negative. `getTimestampMillis()` is unchanged: it still returns floor milliseconds, so near a millisecond boundary it can be 1 ms less than `getDateTime()`.
 
 ## [0.8.2] - 2026-10-26

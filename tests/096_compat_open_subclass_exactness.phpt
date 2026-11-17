@@ -39,7 +39,7 @@ var_dump(StaticStripValidator::stripForwarding('{' . $inner34 . '}') === $inner3
 var_dump(StaticStripValidator::strip('urn:uuid:' . substr($canonical, 0, 27)) === substr($canonical, 0, 27));
 var_dump(StaticStripValidator::strip($canonical) === $canonical);
 var_dump(StaticStripValidator::strip('{' . $canonical . '}') === $canonical);
-var_dump(StaticStripValidator::strip(str_repeat('a', 48)) === null);
+var_dump(StaticStripValidator::strip(str_repeat('a', 50)) === null);
 
 // A user subclass redeclaring a version-looking constant never skips the
 // class/version check: construction and unserialize() agree.

@@ -9,8 +9,9 @@ namespace FastUuid\Compat\Validator;
  *
  * Accepts the canonical 8-4-4-4-12 form (case-insensitive) with an RFC
  * version nibble (1..8) and an RFC variant nibble (8/9/a/b), after stripping
- * urn:/{} wrappers in any composition up to depth 2 (mirroring the C parser:
- * {urn:uuid:...} and urn:uuid:{...} are valid). The nil UUID is exempt from
+ * an optional "urn:" then an optional "uuid:" prefix (case-insensitive) and {}
+ * wrappers in any composition up to depth 2 (mirroring the C parser:
+ * uuid:..., urn:..., {urn:uuid:...} and urn:uuid:{...} are valid). The nil UUID is exempt from
  * the nibble checks as the all-zero special case (ramsey parity).
  *
  * For the shape-only variant without version/variant constraints see
@@ -56,16 +57,24 @@ class GenericValidator implements ValidatorInterface
 
     /**
      * Match fu_parse's wrapper grammar; cap copies at the longest accepted
-     * form, "urn:uuid:{...}" (47 bytes).
+     * form, "{urn:uuid:{...}}" (49 bytes).
      */
     protected static function stripWrappers(string $uuid): ?string
     {
-        if (\strlen($uuid) > 47) {
+        if (\strlen($uuid) > 49) {
             return null;
         }
+        $prefixed = false;
         for ($pass = 0; $pass < 2; $pass++) {
-            if (\strlen($uuid) >= 9 && \strncasecmp($uuid, 'urn:uuid:', 9) === 0) {
-                $uuid = \substr($uuid, 9);
+            if (!$prefixed) {
+                if (\strlen($uuid) >= 4 && \strncasecmp($uuid, 'urn:', 4) === 0) {
+                    $uuid = \substr($uuid, 4);
+                    $prefixed = true;
+                }
+                if (\strlen($uuid) >= 5 && \strncasecmp($uuid, 'uuid:', 5) === 0) {
+                    $uuid = \substr($uuid, 5);
+                    $prefixed = true;
+                }
             }
             if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[\strlen($uuid) - 1] === '}') {
                 $uuid = \substr($uuid, 1, -1);

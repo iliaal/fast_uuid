@@ -218,12 +218,19 @@ static inline void fu_format36(const unsigned char *b, char *o) {
     out[(outidx)] = (unsigned char)((hi << 4) | lo); \
 } while (0)
 
-/* tolerant parser: accepts canonical 36, bare 32-hex, optional urn:uuid:/{}
-   wrappers in any composition up to depth 2 ({urn:uuid:...}, urn:uuid:{...}) */
+/* tolerant parser: accepts canonical 36, bare 32-hex, an optional "urn:" then an optional "uuid:" prefix
+   (case-insensitive), and {} wrappers in any composition up to depth 2 ({urn:uuid:...}, urn:uuid:{...}) */
 static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
+    bool prefixed = false;
     for (int pass = 0; pass < 2; pass++) {
-        if (len >= 9 && (s[0]=='u'||s[0]=='U') && zend_binary_strncasecmp(s, len, "urn:uuid:", 9, 9) == 0) {
-            s += 9; len -= 9;
+        /* One prefix per string, so "uuid:urn:..." and "urn:uuid:urn:uuid:..." stay invalid. */
+        if (!prefixed) {
+            if (len >= 4 && (s[0]=='u'||s[0]=='U') && zend_binary_strncasecmp(s, len, "urn:", 4, 4) == 0) {
+                s += 4; len -= 4; prefixed = true;
+            }
+            if (len >= 5 && (s[0]=='u'||s[0]=='U') && zend_binary_strncasecmp(s, len, "uuid:", 5, 5) == 0) {
+                s += 5; len -= 5; prefixed = true;
+            }
         }
         if (len >= 2 && s[0] == '{' && s[len-1] == '}') { s++; len -= 2; }
     }

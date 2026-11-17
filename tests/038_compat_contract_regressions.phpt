@@ -59,7 +59,7 @@ var_dump(CompatUuid::fromString('{' . $canonical . '}')->equals($canonicalCompat
 $validator = new GenericValidator();
 var_dump($validator->validate('urn:uuid:' . $canonical));
 var_dump($validator->validate('urn:uuid:{' . $canonical . '}'));
-var_dump($validator->validate('urn:' . $canonical) === false);
+var_dump($validator->validate('urn:' . $canonical));
 var_dump($validator->validate('{urn:uuid:' . $canonical . '}'));
 var_dump($validator->validate('{urn:uuid:nope}') === false);
 

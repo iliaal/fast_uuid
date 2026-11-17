@@ -73,7 +73,7 @@ uuid5(object|string $ns, string $name)
 uuid6(int|string|null $node = null, ?int $clockSeq = null)
 uuid7(int|DateTimeInterface|null $dateTime = null)   // int = unix milliseconds
 uuid8(string $bytes)                       // 16 raw bytes
-fromString(string $uuid)                   // canonical, urn:uuid:, {braced}, bare 32-hex, any case
+fromString(string $uuid)                   // canonical, urn:uuid:/urn:/uuid:, {braced}, bare 32-hex, any case
 fromBytes(string $bytes)                   // 16 raw bytes
 fromInteger(string $integer)               // decimal string
 fromHexadecimal(Stringable|string $hex)    // 32 hex chars; Stringable covers ramsey's Type\Hexadecimal
