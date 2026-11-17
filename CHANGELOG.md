@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `uuid_is_valid()` and `Uuid::isValid()` take an optional `$strict` argument. With `true`, they accept only the forms `ramsey/uuid`'s `GenericValidator` accepts: the 8-4-4-4-12 form, optionally after `urn:`, `uuid:`, or `urn:uuid:` (case-insensitive), optionally inside one pair of braces. Bare 32-digit hex, a prefix inside the braces, and nested braces are rejected. Without it, the tolerant set is unchanged.
+- `Uuid::fromHexadecimal()` takes an optional `$pad` argument. With `true`, it accepts 1 to 32 hex digits and fills the rest with zeros on the left, so `fromHexadecimal('ff', true)->getInteger()` returns `'255'`. Without it, exactly 32 digits are still required.
 
 ### Changed
 - The parser, `isValid()`, `uuid_is_valid()`, and the compat validators accept a `urn:` or `uuid:` prefix on its own, as `ramsey/uuid` 4.10 does, in addition to `urn:uuid:`. The prefixes are case-insensitive and may come before or inside braces. A string takes one prefix at most, so `uuid:urn:…`, `urn:urn:…`, and `urn:uuid:urn:uuid:…` are rejected; the parser accepted the last of these before. The compat validators also accept `{urn:uuid:{…}}`, which the parser already accepted.

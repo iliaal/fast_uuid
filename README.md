@@ -76,7 +76,7 @@ uuid8(string $bytes)                       // 16 raw bytes
 fromString(string $uuid)                   // canonical, urn:uuid:/urn:/uuid:, {braced}, bare 32-hex, any case
 fromBytes(string $bytes)                   // 16 raw bytes
 fromInteger(string $integer)               // decimal string
-fromHexadecimal(Stringable|string $hex)    // 32 hex chars; Stringable covers ramsey's Type\Hexadecimal
+fromHexadecimal(Stringable|string $hex, bool $pad = false) // 32 hex chars (1 to 32 with $pad); Stringable covers ramsey's Type\Hexadecimal
 fromDateTime(DateTimeInterface $dt, int|string|null $node = null, ?int $clockSeq = null)
 isValid(string $uuid, bool $strict = false): bool
 ```

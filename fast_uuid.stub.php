@@ -64,8 +64,8 @@ namespace FastUuid {
         public static function fromBytes(string $bytes): UuidValueInterface {}
         /** Network-order identity, immune to compat factory codecs. Throws InvalidArgumentException on failure. */
         public static function fromInteger(string $integer): UuidValueInterface {}
-        /** 32 hex chars or a Stringable yielding them; network-order, immune to compat factory codecs. Throws InvalidUuidStringException on failure. */
-        public static function fromHexadecimal(\Stringable|string $hex): UuidValueInterface {}
+        /** 32 hex chars or a Stringable yielding them; network-order, immune to compat factory codecs. With $pad, 1 to 32 hex chars, zero-filled on the left. Throws InvalidUuidStringException on failure. */
+        public static function fromHexadecimal(\Stringable|string $hex, bool $pad = false): UuidValueInterface {}
         /** $node/$clockSeq as in uuid1. */
         public static function fromDateTime(\DateTimeInterface $dateTime, int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
         /** Same tolerant set as fromString, without throwing; $strict as in uuid_is_valid(). The compat GenericValidator accepts strict-canonical only, so swapping facades flips validation. */

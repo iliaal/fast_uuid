@@ -1633,8 +1633,11 @@ PHP_METHOD(FastUuid_Uuid, isValid) {
 
 PHP_METHOD(FastUuid_Uuid, fromHexadecimal) {
     zend_object *obj = NULL; zend_string *s = NULL;
-    ZEND_PARSE_PARAMETERS_START(1, 1)
+    bool pad = false;
+    ZEND_PARSE_PARAMETERS_START(1, 2)
         Z_PARAM_OBJ_OF_CLASS_OR_STR(obj, zend_ce_stringable, s)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_BOOL(pad)
     ZEND_PARSE_PARAMETERS_END();
     /* accept a 32-char hex string or any object stringifiable to one (ramsey Type\Hexadecimal) */
     if (obj) {
@@ -1644,9 +1647,22 @@ PHP_METHOD(FastUuid_Uuid, fromHexadecimal) {
         zend_string_addref(s);
     }
     unsigned char b[16];
-    int ok = (ZSTR_LEN(s) == 32) && fu_parse(ZSTR_VAL(s), 32, b);
+    size_t len = ZSTR_LEN(s);
+    int ok;
+    if (pad && len >= 1 && len < 32) {
+        /* A leading '0' keeps fu_parse from reading a prefix or braces, so only hex digits pass. */
+        char padded[32];
+        memset(padded, '0', 32 - len);
+        memcpy(padded + 32 - len, ZSTR_VAL(s), len);
+        ok = fu_parse(padded, 32, b);
+    } else {
+        ok = len == 32 && fu_parse(ZSTR_VAL(s), 32, b);
+    }
     zend_string_release(s);
-    if (!ok) { zend_throw_exception(fu_ex_invalid_str, "Invalid hexadecimal UUID (expect 32 hex chars)", 0); RETURN_THROWS(); }
+    if (!ok) {
+        zend_throw_exception(fu_ex_invalid_str, pad ? "Invalid hexadecimal UUID (expect 1 to 32 hex chars)" : "Invalid hexadecimal UUID (expect 32 hex chars)", 0);
+        RETURN_THROWS();
+    }
     fu_return_uuid(return_value, b);
 }
 
