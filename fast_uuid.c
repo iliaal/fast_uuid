@@ -1721,7 +1721,7 @@ PHP_METHOD(FastUuid_Uuid, getInteger) {
 
 /* Decode the embedded timestamp of a time-based UUID into unix seconds +
    microseconds. Returns 1 for v1/v2/v6/v7, 0 for versions with no timestamp. */
-static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micros) {
+static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micros, bool round_us) {
     if ((b[8] & 0xC0) != 0x80) return 0;
     int ver = (b[6] >> 4) & 0x0f;
     if (ver == 1 || ver == 2 || ver == 6) {
@@ -1741,7 +1741,11 @@ static int fu_decode_time(const unsigned char *b, int64_t *secs, uint32_t *micro
         /* The epoch offset is an exact number of seconds, so the remainder is unchanged. */
         int64_t s = (int64_t)(t60 / 10000000ULL) - (int64_t)(FU_GREG_UNIX_EPOCH / 10000000ULL);
         uint64_t frac = t60 % 10000000ULL;
-        *secs = s; *micros = (uint32_t)(frac / 10ULL); /* 100ns -> us */
+        /* getDateTime rounds 100 ns ticks to the nearest microsecond, halves up, as ramsey/uuid 4.10
+           does; getTimestampMillis keeps floor milliseconds. */
+        uint32_t us = (uint32_t)((frac + (round_us ? 5ULL : 0ULL)) / 10ULL);
+        if (us == 1000000U) { s++; us = 0; }
+        *secs = s; *micros = us;
         return 1;
     }
     if (ver == 7) {
@@ -1758,7 +1762,7 @@ PHP_METHOD(FastUuid_Uuid, getDateTime) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     int64_t secs; uint32_t micros;
-    if (!fu_decode_time(u->b, &secs, &micros)) {
+    if (!fu_decode_time(u->b, &secs, &micros, true)) {
         zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
         RETURN_THROWS();
     }
@@ -1769,7 +1773,7 @@ PHP_METHOD(FastUuid_Uuid, getTimestampMillis) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     int64_t secs; uint32_t micros;
-    if (!fu_decode_time(u->b, &secs, &micros)) {
+    if (!fu_decode_time(u->b, &secs, &micros, false)) {
         zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
         RETURN_THROWS();
     }
