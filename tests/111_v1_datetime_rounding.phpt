@@ -4,33 +4,36 @@ v1/v6 getDateTime() rounds 100 ns ticks to the nearest microsecond; getTimestamp
 fast_uuid
 --FILE--
 <?php
-const GREG = 122192928000000000;
-
-function v1(int $t60): FastUuid\Uuid {
-    return FastUuid\Uuid::fromString(sprintf('%08x-%04x-%04x-8000-000000000001',
-        $t60 & 0xffffffff, ($t60 >> 32) & 0xffff, (($t60 >> 48) & 0x0fff) | 0x1000));
+// Each v1/v6 UUID below is 1,700,000,000 s after the Unix epoch plus the 100 ns ticks in the key, or a few ticks
+// before the epoch.
+$cases = [
+    '1234564' => ['04c29684-833b-11ee-8000-000000000001', 1700000000123],
+    '1234565' => ['04c29685-833b-11ee-8000-000000000001', 1700000000123],
+    '1234567' => ['04c29687-833b-11ee-8000-000000000001', 1700000000123],
+    '9999994' => ['0548567a-833b-11ee-8000-000000000001', 1700000000999],
+    '9999995' => ['0548567b-833b-11ee-8000-000000000001', 1700000000999],
+];
+foreach ($cases as $ticks => [$s, $ms]) {
+    $u = FastUuid\Uuid::fromString($s);
+    echo $ticks, ' ', $u->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
+    // Millisecond timestamps this large do not fit a 32-bit int.
+    var_dump(PHP_INT_SIZE < 8 || $u->getTimestampMillis() === $ms);
 }
-
-function v6(int $t60): FastUuid\Uuid {
-    $h = sprintf('%015x', $t60);
-    return FastUuid\Uuid::fromString(substr($h, 0, 8) . '-' . substr($h, 8, 4) . '-6' . substr($h, 12, 3) . '-8000-000000000001');
-}
-
-$base = GREG + 1700000000 * 10000000;
-foreach ([1234564, 1234565, 1234567, 9999994, 9999995] as $ticks) {
-    $u = v1($base + $ticks);
-    echo $ticks, ' ', $u->getDateTime()->format('Y-m-d H:i:s.u'), ' ', $u->getTimestampMillis(), "\n";
-}
-echo v6($base + 1234567)->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
-echo v1(GREG - 5)->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
-echo v1(GREG - 6)->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
+echo FastUuid\Uuid::fromString('1ee833b0-4c29-6687-8000-000000000001')->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
+echo FastUuid\Uuid::fromString('13813ffb-1dd2-11b2-8000-000000000001')->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
+echo FastUuid\Uuid::fromString('13813ffa-1dd2-11b2-8000-000000000001')->getDateTime()->format('Y-m-d H:i:s.u'), "\n";
 ?>
 --EXPECT--
-1234564 2023-11-14 22:13:20.123456 1700000000123
-1234565 2023-11-14 22:13:20.123457 1700000000123
-1234567 2023-11-14 22:13:20.123457 1700000000123
-9999994 2023-11-14 22:13:20.999999 1700000000999
-9999995 2023-11-14 22:13:21.000000 1700000000999
+1234564 2023-11-14 22:13:20.123456
+bool(true)
+1234565 2023-11-14 22:13:20.123457
+bool(true)
+1234567 2023-11-14 22:13:20.123457
+bool(true)
+9999994 2023-11-14 22:13:20.999999
+bool(true)
+9999995 2023-11-14 22:13:21.000000
+bool(true)
 2023-11-14 22:13:20.123457
 1970-01-01 00:00:00.000000
 1969-12-31 23:59:59.999999
