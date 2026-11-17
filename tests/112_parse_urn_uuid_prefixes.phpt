@@ -17,9 +17,11 @@ foreach (["uuid:$u", "urn:$u", "UUID:$u", "URN:$u", "Urn:Uuid:$u", "urn:uuid:$u"
           "{uuid:$u}", "{urn:$u}", 'uuid:' . str_replace('-', '', $u)] as $s) {
     var_dump(FastUuid\Uuid::isValid($s) && uuid_is_valid($s) && FastUuid\Uuid::fromString($s)->toString() === $u);
 }
-foreach (["uuid:$u", "urn:$u", "URN:$u", "uuid:{" . $u . "}", "{urn:$u}"] as $s) {
+foreach (["uuid:$u", "urn:$u", "URN:$u", "uuid:{" . $u . "}"] as $s) {
     var_dump($generic->validate($s) && $nonstandard->validate($s));
 }
+// ramsey/uuid 4.10 takes the prefix only outside the braces.
+var_dump(uuid_is_valid("{urn:$u}") && !$generic->validate("{urn:$u}") && !$nonstandard->validate("{urn:$u}"));
 foreach (["uuid:urn:$u", "uuid$u", "urn$u", "urn: $u", "uid:$u", "uuid::$u", ":$u", "urn:urn:$u", "uuid:uuid:$u", "urn:{uuid:$u}", "uuid:{urn:$u}"] as $s) {
     var_dump(!FastUuid\Uuid::isValid($s) && !uuid_is_valid($s) && !$generic->validate($s) && !$nonstandard->validate($s));
 }

@@ -5,25 +5,14 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Validator;
 
 /**
- * Lax validator for nonstandard UUIDs: accepts the same canonical 8-4-4-4-12
- * shape and urn:/{} wrapper grammar as GenericValidator, WITHOUT constraining
- * the version or variant nibbles. Future/special forms the strict validator
- * rejects (non-RFC variants, unassigned versions, max UUID) validate here.
+ * Accepts the same strings as GenericValidator, which does not check the version or variant either.
  *
- * getPattern() (inherited) returns the inner canonical grammar; like the
- * parent, validate() strips wrappers before matching.
+ * @deprecated Use GenericValidator.
  */
 final class NonstandardValidator extends GenericValidator
 {
     public function validate(string $uuid): bool
     {
-        // Stripping wrappers only shortens a 36-byte input, so it cannot
-        // turn a noncanonical input of that length into a canonical one.
-        $inner = \strlen($uuid) === 36 ? $uuid : static::stripWrappers($uuid);
-        if ($inner === null) {
-            return false;
-        }
-
-        return static::isCanonicalShape($inner);
+        return \uuid_is_valid($uuid, true);
     }
 }

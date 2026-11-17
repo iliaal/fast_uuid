@@ -17,9 +17,7 @@ $valid = [
     'ffffffff-ffff-ffff-ffff-ffffffffffff',
 ];
 foreach ($valid as $uuid) {
-    foreach ([$uuid, '{' . $uuid . '}', 'URN:UUID:' . $uuid,
-        '{urn:uuid:' . $uuid . '}', 'urn:uuid:{' . $uuid . '}',
-        '{{' . $uuid . '}}'] as $input) {
+    foreach ([$uuid, '{' . $uuid . '}', 'URN:UUID:' . $uuid, 'urn:uuid:{' . $uuid . '}'] as $input) {
         if (!$validator->validate($input)) {
             throw new RuntimeException('Rejected valid input: ' . $input);
         }
@@ -49,6 +47,8 @@ $invalid = [
     "\n" . $canonical,
     $canonical . "\n",
     '{{{' . $canonical . '}}}',
+    '{{' . $canonical . '}}',
+    '{urn:uuid:' . $canonical . '}',
     'urn:uuid:urn:uuid:' . $canonical,
     '',
 ];

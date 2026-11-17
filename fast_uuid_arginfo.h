@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: 39e007450c5df8a843289bba92a19ba831cce664 */
+ * Stub hash: adc13a9381bd3f38833af4f509787c9b0d02b153 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()

@@ -152,11 +152,10 @@ final class Uuid
     }
 
     /**
-     * Validates through the factory's validator (default GenericValidator):
-     * canonical 8-4-4-4-12 form with RFC version/variant nibbles after
-     * urn:/{} unwrapping; nil exempt. Rejects bare 32-hex and non-RFC nibbles,
-     * which the core \FastUuid\Uuid::isValid() accepts. NonstandardValidator
-     * drops the nibble constraints and keeps the canonical shape.
+     * Validates through the factory's validator. The default GenericValidator
+     * accepts the forms ramsey/uuid 4.10 accepts, of any version and variant;
+     * Rfc4122\Validator also checks them. The core \FastUuid\Uuid::isValid()
+     * accepts more forms, such as 32 hex digits without hyphens.
      */
     public static function isValid(string $uuid): bool
     {

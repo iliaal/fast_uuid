@@ -143,7 +143,7 @@ $bare = new class implements UuidFactoryInterface {
     public function fromBytes(string $bytes): \FastUuid\Compat\UuidInterface { throw new LogicException('unused'); }
     public function fromInteger(string $integer): \FastUuid\Compat\UuidInterface { throw new LogicException('unused'); }
     public function fromDateTime(\DateTimeInterface $dateTime, int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): \FastUuid\Compat\UuidInterface { throw new LogicException('unused'); }
-    public function getValidator(): \FastUuid\Compat\Validator\ValidatorInterface { return new \FastUuid\Compat\Validator\NonstandardValidator(); }
+    public function getValidator(): \FastUuid\Compat\Validator\ValidatorInterface { return new \FastUuid\Compat\Rfc4122\Validator(); }
 };
 Uuid::setFactory($bare);
 try {
@@ -153,7 +153,7 @@ try {
     var_dump(true);
 }
 // isValid() goes through the installed factory's validator, not the default one.
-var_dump(Uuid::isValid('ffffffff-ffff-ffff-ffff-ffffffffffff'));
+var_dump(Uuid::isValid('a1b2c3d4-e5f6-4718-f93a-4b5c6d7e8f90') === false);
 
 $withV7 = new class extends UuidFactory {
     public function uuid7(int|\DateTimeInterface|null $dateTime = null): \FastUuid\Compat\UuidInterface
@@ -166,7 +166,7 @@ var_dump(Uuid::uuid7() instanceof UuidV7);
 var_dump(Uuid::uuid7()->getCore()->getTimestampMillis() === 1700000000);
 
 Uuid::setFactory($default);
-var_dump(Uuid::isValid('ffffffff-ffff-ffff-ffff-ffffffffffff') === false);
+var_dump(Uuid::isValid('a1b2c3d4-e5f6-4718-f93a-4b5c6d7e8f90'));
 var_dump(Uuid::uuid1() instanceof UuidV1);
 ?>
 --EXPECT--

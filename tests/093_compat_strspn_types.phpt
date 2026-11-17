@@ -77,7 +77,7 @@ var_dump($generic->validate('{' . $canonical . '}'));
 var_dump($generic->validate('urn:uuid:' . $canonical));
 var_dump($generic->validate('URN:UUID:{' . $canonical . '}'));
 var_dump($generic->validate('00000000-0000-0000-0000-000000000000'));
-var_dump(!$generic->validate('ffffffff-ffff-ffff-ffff-ffffffffffff'));
+var_dump($generic->validate('ffffffff-ffff-ffff-ffff-ffffffffffff'));
 var_dump($lax->validate('ffffffff-ffff-ffff-ffff-ffffffffffff'));
 var_dump(!$generic->validate(''));
 var_dump(!$generic->validate(str_repeat('a', 48)));

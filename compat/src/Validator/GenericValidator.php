@@ -5,88 +5,64 @@ declare(strict_types=1);
 namespace FastUuid\Compat\Validator;
 
 /**
- * Strict RFC 4122 / RFC 9562 string validator.
+ * Validates strings as UUIDs of any variant, as ramsey/uuid 4.10's GenericValidator does.
  *
- * Accepts the canonical 8-4-4-4-12 form (case-insensitive) with an RFC
- * version nibble (1..8) and an RFC variant nibble (8/9/a/b), after stripping
- * an optional "urn:" then an optional "uuid:" prefix (case-insensitive) and {}
- * wrappers in any composition up to depth 2 (mirroring the C parser:
- * uuid:..., urn:..., {urn:uuid:...} and urn:uuid:{...} are valid). The nil UUID is exempt from
- * the nibble checks as the all-zero special case (ramsey parity).
+ * Accepts the 8-4-4-4-12 form in any letter case, optionally after "urn:", "uuid:", or "urn:uuid:" (any letter
+ * case), optionally inside one pair of braces. The version and variant are not checked; Rfc4122\Validator checks
+ * them. The core \FastUuid\Uuid::isValid() accepts more forms, such as 32 hex digits without hyphens.
  *
- * For the shape-only variant without version/variant constraints see
- * NonstandardValidator. For the more permissive core parser (additionally
- * bare 32-hex, no nibble constraints) see \FastUuid\Uuid::isValid().
- *
- * getPattern() returns the inner canonical grammar only; validate() strips
- * wrappers before matching against it.
+ * getPattern() returns the grammar of the UUID itself; validate() removes the prefixes and braces first.
  */
 class GenericValidator implements ValidatorInterface
 {
-    private const PATTERN = '\A[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\z';
+    private const VALID_PATTERN = '\A[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\z';
 
-    private const NIL = '00000000-0000-0000-0000-000000000000';
+    /** The longest valid form: "urn:uuid:", braces, and 36 characters. */
+    private const MAX_LENGTH = 47;
 
     public function getPattern(): string
     {
-        return self::PATTERN;
+        return self::VALID_PATTERN;
     }
 
     public function validate(string $uuid): bool
     {
-        // Unwrapping can only shorten a 36-byte candidate, and this class's
-        // shape check accepts nothing shorter, so skipping stripWrappers()
-        // cannot change the verdict. A subclass may override either method,
-        // so only the exact class skips it.
-        $inner = \strlen($uuid) === 36 && static::class === self::class
-            ? $uuid
-            : static::stripWrappers($uuid);
-        if ($inner === null || !static::isCanonicalShape($inner)) {
-            return false;
-        }
-        if ($inner === self::NIL) {
-            return true;
-        }
-        // Strict nibbles: version 1..8, variant 10xx.
-        if ($inner[14] < '1' || $inner[14] > '8') {
-            return false;
+        // ext-fast_uuid's strict mode accepts exactly these forms. A subclass may override stripWrappers() or
+        // isCanonicalShape(), so only the exact class takes it.
+        if (static::class === self::class) {
+            return \uuid_is_valid($uuid, true);
         }
 
-        return \strpos('89abAB', $inner[19]) !== false;
+        $inner = static::stripWrappers($uuid);
+
+        return $inner !== null && static::isCanonicalShape($inner);
     }
 
     /**
-     * Match fu_parse's wrapper grammar; cap copies at the longest accepted
-     * form, "{urn:uuid:{...}}" (49 bytes).
+     * Removes one "urn:" prefix, then one "uuid:" prefix (any letter case), then one pair of braces; returns null
+     * when the string is longer than any valid form.
      */
     protected static function stripWrappers(string $uuid): ?string
     {
-        if (\strlen($uuid) > 49) {
+        if (\strlen($uuid) > self::MAX_LENGTH) {
             return null;
         }
-        $prefixed = false;
-        for ($pass = 0; $pass < 2; $pass++) {
-            if (!$prefixed) {
-                if (\strlen($uuid) >= 4 && \strncasecmp($uuid, 'urn:', 4) === 0) {
-                    $uuid = \substr($uuid, 4);
-                    $prefixed = true;
-                }
-                if (\strlen($uuid) >= 5 && \strncasecmp($uuid, 'uuid:', 5) === 0) {
-                    $uuid = \substr($uuid, 5);
-                    $prefixed = true;
-                }
-            }
-            if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[\strlen($uuid) - 1] === '}') {
-                $uuid = \substr($uuid, 1, -1);
-            }
+        if (\strncasecmp($uuid, 'urn:', 4) === 0) {
+            $uuid = \substr($uuid, 4);
+        }
+        if (\strncasecmp($uuid, 'uuid:', 5) === 0) {
+            $uuid = \substr($uuid, 5);
+        }
+        if (\strlen($uuid) >= 2 && $uuid[0] === '{' && $uuid[-1] === '}') {
+            $uuid = \substr($uuid, 1, -1);
         }
 
         return $uuid;
     }
 
-    /** Inner canonical 8-4-4-4-12 shape, no version/variant constraint. */
+    /** The 8-4-4-4-12 form, without a version or variant constraint. */
     protected static function isCanonicalShape(string $inner): bool
     {
-        return \strlen($inner) === 36 && \preg_match('/' . self::PATTERN . '/', $inner) === 1;
+        return \strlen($inner) === 36 && \preg_match('/' . self::VALID_PATTERN . '/', $inner) === 1;
     }
 }

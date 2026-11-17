@@ -60,7 +60,7 @@ $validator = new GenericValidator();
 var_dump($validator->validate('urn:uuid:' . $canonical));
 var_dump($validator->validate('urn:uuid:{' . $canonical . '}'));
 var_dump($validator->validate('urn:' . $canonical));
-var_dump($validator->validate('{urn:uuid:' . $canonical . '}'));
+var_dump($validator->validate('{urn:uuid:' . $canonical . '}') === false);
 var_dump($validator->validate('{urn:uuid:nope}') === false);
 
 // The integer-millisecond uuid7 facade is 64-bit only (ms > PHP_INT_MAX on

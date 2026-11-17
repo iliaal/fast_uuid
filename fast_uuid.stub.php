@@ -68,7 +68,7 @@ namespace FastUuid {
         public static function fromHexadecimal(\Stringable|string $hex, bool $pad = false): UuidValueInterface {}
         /** $node/$clockSeq as in uuid1. */
         public static function fromDateTime(\DateTimeInterface $dateTime, int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
-        /** Same tolerant set as fromString, without throwing; $strict as in uuid_is_valid(). The compat GenericValidator accepts strict-canonical only, so swapping facades flips validation. */
+        /** Same tolerant set as fromString, without throwing; $strict as in uuid_is_valid(). Without $strict it accepts more than the compat GenericValidator, which follows ramsey/uuid. */
         public static function isValid(string $uuid, bool $strict = false): bool {}
 
         private function __construct() {}
