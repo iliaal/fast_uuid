@@ -140,7 +140,7 @@ $u = Uuid::<span class="fn">uuid2</span>(Uuid::DCE_DOMAIN_PERSON, <span class="s
   </div>
 
   <h2 id="parse">Parsing and conversion</h2>
-  <p><code>fromString</code> accepts the canonical form, a <code>urn:uuid:</code>, <code>urn:</code>, or <code>uuid:</code> prefix, brace-wrapped, bare 32-hex, and any letter case. A bad string raises <code>FastUuid\Exception\InvalidUuidStringException</code>.</p>
+  <p><code>fromString</code> accepts the canonical form, a <code>urn:uuid:</code>, <code>urn:</code>, or <code>uuid:</code> prefix, brace-wrapped, bare 32-hex, and any letter case. A bad string raises <code>FastUuid\Exception\InvalidUuidStringException</code>. <code>isValid($s, true)</code> and <code>uuid_is_valid($s, true)</code> accept only the forms <code>ramsey/uuid</code>'s validator accepts.</p>
   <div class="ex">
     <pre class="code">$s = <span class="str">'6ba7b810-9dad-11d1-80b4-00c04fd430c8'</span>;
 

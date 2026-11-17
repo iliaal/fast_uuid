@@ -59,6 +59,24 @@ function via_tostring_first(): string {
 }
 var_dump(via_tostring_first() === uuid_v5($ns, str_repeat('x', 40)));
 var_dump($b);
+
+// uuid_is_valid(): coercing $strict (null) runs the handler, which frees $d's string.
+set_error_handler(function (): bool { $GLOBALS['d'] = null; return true; });
+function valid_via_handler(): bool {
+    global $d;
+    $d = strtoupper('6ba7b810-9dad-11d1-80b4-00c04fd430c8');
+    return uuid_is_valid($d, null);
+}
+var_dump(valid_via_handler(), $d);
+restore_error_handler();
+
+// Coercing $uuid (Stringable) reassigns $c; the call still uses the old $c, so 32 digits stay invalid.
+function valid_via_tostring(): bool {
+    global $c;
+    $c = true;
+    return uuid_is_valid(new Reassign('c', false, '6ba7b8109dad11d180b400c04fd430c8'), $c);
+}
+var_dump(valid_via_tostring(), $c);
 ?>
 --EXPECT--
 bool(true)
@@ -70,3 +88,7 @@ bool(true)
 bool(true)
 bool(true)
 string(7) "changed"
+bool(true)
+NULL
+bool(false)
+bool(false)

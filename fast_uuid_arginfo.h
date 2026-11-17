@@ -1,5 +1,5 @@
 /* This is a generated file, edit fast_uuid.stub.php instead.
- * Stub hash: fcb3430cc65af38c7edaf70411c8a9655c91c4b6 */
+ * Stub hash: 627954e71bae1c7f40faeda0ffa99263d9eb3314 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_v1, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -63,6 +63,7 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_uuid_is_valid, 0, 1, _IS_BOOL, 0)
 	ZEND_ARG_TYPE_INFO(0, uuid, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, strict, _IS_BOOL, 0, "false")
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_fast_uuid_random_bytes, 0, 1, IS_STRING, 0)
@@ -366,8 +367,10 @@ static const zend_frameless_function_info frameless_function_infos_uuid_from_bin
 };
 
 ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 1);
+ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 2);
 static const zend_frameless_function_info frameless_function_infos_uuid_is_valid[] = {
 	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_is_valid, 1), 1 },
+	{ ZEND_FRAMELESS_FUNCTION_NAME(uuid_is_valid, 2), 2 },
 	{ 0 },
 };
 

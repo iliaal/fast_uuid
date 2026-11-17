@@ -21,6 +21,7 @@ namespace {
 $s = uuid_v7();
 $b = uuid_v8_bin(uuid_to_bin($s));
 $n = uuid_v4(1);
+$v = uuid_is_valid($s, true);
 }
 ?>
 --EXPECTF--
@@ -32,6 +33,8 @@ $_main:
 %w%d %r[TV]%r%d = FRAMELESS_ICALL_1(uuid_v8_bin) T%d
 %A
 %w%d INIT_FCALL 1 %d string("uuid_v4")
+%A
+%w%d %r[TV]%r%d = FRAMELESS_ICALL_2(uuid_is_valid) CV0($s) bool(true)
 %A
 Fl\f:
 %A

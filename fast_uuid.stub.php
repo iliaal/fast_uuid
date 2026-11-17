@@ -68,8 +68,8 @@ namespace FastUuid {
         public static function fromHexadecimal(\Stringable|string $hex): UuidValueInterface {}
         /** $node/$clockSeq as in uuid1. */
         public static function fromDateTime(\DateTimeInterface $dateTime, int|string|null $node = null, ?int $clockSeq = null): UuidValueInterface {}
-        /** Same tolerant set as fromString, without throwing. The compat GenericValidator accepts strict-canonical only, so swapping facades flips validation. */
-        public static function isValid(string $uuid): bool {}
+        /** Same tolerant set as fromString, without throwing; $strict as in uuid_is_valid(). The compat GenericValidator accepts strict-canonical only, so swapping facades flips validation. */
+        public static function isValid(string $uuid, bool $strict = false): bool {}
 
         private function __construct() {}
         public function toString(): string {}
@@ -178,10 +178,13 @@ namespace {
     /** @frameless-function {"arity": 1} */
     function uuid_from_bin(string $bytes): string {}
     /**
-     * Same tolerant set as FastUuid\Uuid::isValid, without throwing.
+     * Same tolerant set as FastUuid\Uuid::isValid, without throwing. With $strict, only the forms ramsey/uuid's
+     * GenericValidator accepts: the 8-4-4-4-12 form, optionally after "urn:", "uuid:", or "urn:uuid:"
+     * (case-insensitive), optionally inside one pair of braces.
      * @frameless-function {"arity": 1}
+     * @frameless-function {"arity": 2}
      */
-    function uuid_is_valid(string $uuid): bool {}
+    function uuid_is_valid(string $uuid, bool $strict = false): bool {}
     /** @frameless-function {"arity": 1} */
     function fast_uuid_random_bytes(int $length): string {}
 }

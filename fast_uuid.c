@@ -266,6 +266,23 @@ static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
 
 #undef FU_PARSE_HEX_BYTE_AT
 
+/* ramsey/uuid GenericValidator grammar: an optional "urn:", then an optional "uuid:" (case-insensitive), then
+   the 8-4-4-4-12 form, optionally inside one pair of braces. No bare 32-hex and no nested wrappers. */
+static bool fu_valid_strict(const char *s, size_t len) {
+    if (len >= 4 && zend_binary_strncasecmp(s, len, "urn:", 4, 4) == 0) { s += 4; len -= 4; }
+    if (len >= 5 && zend_binary_strncasecmp(s, len, "uuid:", 5, 5) == 0) { s += 5; len -= 5; }
+    if (len == 38 && s[0] == '{' && s[37] == '}') { s++; len -= 2; }
+    if (len != 36) return false;
+    for (size_t i = 0; i < 36; i++) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (s[i] != '-') return false;
+        } else if (fu_nib_lut[(unsigned char)s[i]] < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static zend_string *fu_str(fu_obj *u) {
     if (u->str) return zend_string_copy(u->str);
     zend_string *s = zend_string_alloc(36, 0);
@@ -1607,7 +1624,9 @@ PHP_METHOD(FastUuid_Uuid, fromInteger) {
 
 PHP_METHOD(FastUuid_Uuid, isValid) {
     zend_string *s;
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
+    bool strict = false;
+    ZEND_PARSE_PARAMETERS_START(1, 2) Z_PARAM_STR(s) Z_PARAM_OPTIONAL Z_PARAM_BOOL(strict) ZEND_PARSE_PARAMETERS_END();
+    if (strict) RETURN_BOOL(fu_valid_strict(ZSTR_VAL(s), ZSTR_LEN(s)));
     unsigned char b[16];
     RETURN_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
 }
@@ -2155,14 +2174,53 @@ static zend_always_inline void fu_fn_from_bin(zval *return_value, zend_string *s
     fu_retval_uuid(return_value, (const unsigned char *)ZSTR_VAL(s), 0);
 }
 
-static zend_always_inline void fu_fn_is_valid(zval *return_value, zend_string *s) {
+static zend_always_inline void fu_fn_is_valid(zval *return_value, zend_string *s, bool strict) {
+    if (strict) {
+        RETVAL_BOOL(fu_valid_strict(ZSTR_VAL(s), ZSTR_LEN(s)));
+        return;
+    }
     unsigned char b[16];
     RETVAL_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
 }
 
 FU_FN_STR1(uuid_to_bin,   fu_fn_to_bin(return_value, str))
 FU_FN_STR1(uuid_from_bin, fu_fn_from_bin(return_value, str))
-FU_FN_STR1(uuid_is_valid, fu_fn_is_valid(return_value, str))
+
+PHP_FUNCTION(uuid_is_valid) {
+    zend_string *str;
+    bool strict = false;
+    ZEND_PARSE_PARAMETERS_START(1, 2) Z_PARAM_STR(str) Z_PARAM_OPTIONAL Z_PARAM_BOOL(strict) ZEND_PARSE_PARAMETERS_END();
+    fu_fn_is_valid(return_value, str, strict);
+}
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 1) {
+    zval str_tmp;
+    zend_string *str;
+    Z_FLF_PARAM_STR(1, str, str_tmp);
+    fu_fn_is_valid(return_value, str, false);
+flf_clean:
+    Z_FLF_PARAM_FREE_STR(1, str_tmp);
+})
+/* As in FU_FN_STR2: unless both arguments already have their types, pin both before coercing either. */
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 2) {
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING && (Z_TYPE_P(arg2) == IS_TRUE || Z_TYPE_P(arg2) == IS_FALSE))) {
+        fu_fn_is_valid(return_value, Z_STR_P(arg1), Z_TYPE_P(arg2) == IS_TRUE);
+        return;
+    }
+    zval str_tmp, strict_tmp;
+    ZVAL_COPY(&str_tmp, arg1);
+    ZVAL_COPY(&strict_tmp, arg2);
+    zend_string *str;
+    bool strict;
+    if (fu_flf_str_owned(&str_tmp, &str, 1)) {
+        if (zend_parse_arg_bool_ex(&strict_tmp, &strict, NULL, /* null_check */ false, 2, /* frameless */ true)) {
+            fu_fn_is_valid(return_value, str, strict);
+        } else {
+            zend_wrong_parameter_type_error(2, Z_EXPECTED_BOOL, &strict_tmp);
+        }
+    }
+    zval_ptr_dtor(&str_tmp);
+    zval_ptr_dtor(&strict_tmp);
+})
 
 static zend_always_inline void fu_fn_random_bytes(zval *return_value, zend_long n) {
     if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); return; }

@@ -78,7 +78,7 @@ fromBytes(string $bytes)                   // 16 raw bytes
 fromInteger(string $integer)               // decimal string
 fromHexadecimal(Stringable|string $hex)    // 32 hex chars; Stringable covers ramsey's Type\Hexadecimal
 fromDateTime(DateTimeInterface $dt, int|string|null $node = null, ?int $clockSeq = null)
-isValid(string $uuid): bool
+isValid(string $uuid, bool $strict = false): bool
 ```
 
 Instance methods:
@@ -142,7 +142,7 @@ uuid_v4_batch($n) uuid_v7_batch($n)          // array of $n canonical strings
 uuid_v4_bin_batch($n) uuid_v7_bin_batch($n)  // array of $n raw 16-byte values
 uuid_to_bin($uuid)   // canonical/parsed string -> 16 raw bytes
 uuid_from_bin($bytes)// 16 raw bytes -> canonical string
-uuid_is_valid($uuid) // bool
+uuid_is_valid($uuid, $strict = false) // bool; $strict: only ramsey/uuid's forms
 fast_uuid_random_bytes($length) // batched CSPRNG bytes, $length > 0
 ```
 
