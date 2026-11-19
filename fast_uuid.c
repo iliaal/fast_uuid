@@ -932,9 +932,9 @@ static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1
 /* DCE Security (v2): v1 time layout, but time_low := local identifier and
    clock_seq_low := local domain; version nibble = 2. The low 32 timestamp bits
    are sacrificed for the local id, so v2 time resolution is coarse.
-   monotonic is true only when the caller supplied both node and clockseq: a
-   defaulted node or clockseq is freshly random per call, so only the
-   both-supplied case can repeat on a stalled clock. */
+   monotonic is true only when the caller supplied both node and clockseq.
+   Defaulted fields use fresh randomness instead; this does not guarantee
+   uniqueness (only six clockseq bits survive the local-domain overwrite). */
 static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
                       const unsigned char *node, int clockseq, zend_bool monotonic) {
     uint64_t g;
@@ -1477,8 +1477,8 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
     int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     unsigned char b[16];
-    /* Only a fully supplied node+clockseq pair can repeat on a stalled clock;
-       defaulted values are random per call, so the mark would only add drift. */
+    /* Apply the high-water mark only to a fully supplied node+clockseq pair;
+       defaulted values retain the randomized path without the mark or its drift. */
     zend_bool mono = (!node_null && !cs_null);
     if (fu_gen_v2(b, local_id, (unsigned char)local_domain, np, cseq, mono) == FAILURE) RETURN_THROWS();
     fu_return_uuid(return_value, b);
