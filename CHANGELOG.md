@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Prebuilt PHP 8.6 binaries for Windows, Linux glibc `x86_64`/`arm64`, and macOS `arm64`.
+
+### Fixed
+- The compat `UuidFactory::uuid2()` no longer raises a precision-loss notice on 32-bit PHP 8.6 when the local identifier is a decimal string above 2147483647.
+
 ## [0.9.0] - 2026-11-17
 
 ### Added

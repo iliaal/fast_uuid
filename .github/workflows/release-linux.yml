@@ -29,15 +29,16 @@ jobs:
           - ubuntu-24.04
           - ubuntu-24.04-arm
           - macos-15
-        php: ['8.4', '8.5']
+        php: ['8.4', '8.5', '8.6']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # setup-php main until a release marks PHP 8.6 stable; return to a tagged release then.
       - name: Setup PHP
         if: runner.os != 'macOS'
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@3c21e10268bafaf84c59e8f4e65b39acacb62ca4 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: ${{ matrix.php }}
           coverage: none

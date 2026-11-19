@@ -427,8 +427,10 @@ class UuidFactory implements UuidFactoryInterface
                     'localIdentifier out of range (0..4294967295)'
                 );
             }
-            $hex = \str_pad(\base_convert($id, 10, 16), 8, '0', \STR_PAD_LEFT);
-            return (string) \hex2bin($hex);
+            // A float holds every value up to 4294967295 exactly, and each 16-bit half
+            // fits a 32-bit int. base_convert() raises a precision notice on 32-bit 8.6.
+            $n = (float) $id;
+            return \pack('nn', (int) \floor($n / 65536), (int) \fmod($n, 65536));
         }
         if ($id < 0 || $id > 0xFFFFFFFF) {
             throw new \FastUuid\Exception\InvalidArgumentException(

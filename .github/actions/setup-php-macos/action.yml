@@ -2,7 +2,7 @@ name: Build PHP for macOS
 description: Build pinned NTS release PHP without Homebrew PHP bottles.
 inputs:
   php-version:
-    description: PHP release series (8.4 or 8.5).
+    description: PHP release series (8.4, 8.5, or 8.6).
     required: true
 runs:
   using: composite
@@ -28,6 +28,10 @@ runs:
           8.5)
             version=8.5.11
             sha256=338630ba9450f0b938bef8d740162c61c33bf64a1b421c6333c01df8a9fdb0ab
+            ;;
+          8.6)
+            version=8.6.0
+            sha256=62337dccde3d9fcc39797d4529f42637613036eaf3875353c206874e5813a3c1
             ;;
           *)
             printf 'Unsupported PHP series: %s\n' "${PHP_SERIES}" >&2
