@@ -1,0 +1,64 @@
+name: PHP master (advisory)
+
+# Builds against php-src master through setup-php's nightly build. The job is
+# continue-on-error, so an upstream break shows up here without blocking merges.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: php-master-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  php-master:
+    name: PHP 8.7 (master, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup PHP
+        uses: shivammathur/setup-php@3c21e10268bafaf84c59e8f4e65b39acacb62ca4 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
+        with:
+          php-version: '8.7'
+          tools: none
+          extensions: none
+        env:
+          phpts: nts
+      - name: Show PHP build
+        run: php -v
+      - name: Build
+        run: |
+          phpize
+          ./configure --enable-fast-uuid
+          make -j"$(nproc)"
+      - name: Guard against __cpu_model linkage
+        run: |
+          # SSSE3 detection uses a direct CPUID probe, not __builtin_cpu_supports;
+          # __cpu_model reappearing means the libgcc dependency crept back in and
+          # can break -shared under alternative toolchains (zig cc / compiler-rt).
+          if nm modules/fast_uuid.so | grep -qi '__cpu_model\|__cpu_indicator_init'; then
+            echo "unexpected __cpu_model / __cpu_indicator_init linkage"; exit 1
+          fi
+      - name: Test
+        run: |
+          make test TESTS="tests" \
+            TEST_PHP_ARGS="-q" \
+            NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+      - name: Dump diffs on failure
+        if: failure()
+        run: |
+          for f in tests/*.diff tests/*.out tests/*.log; do
+            [ -e "$f" ] || continue
+            echo "===== $f ====="; cat "$f"
+          done
