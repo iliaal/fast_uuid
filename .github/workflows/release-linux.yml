@@ -29,27 +29,29 @@ jobs:
           - ubuntu-24.04
           - ubuntu-24.04-arm
           - macos-15
-        php: ['8.4', '8.5']
+        php: ['8.4', '8.5', '8.6']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # setup-php still resolves '8.6' to a nightly build, so 8.6 builds from
+      # the checksummed php-8.6.0 release tarball on every OS.
       - name: Setup PHP
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' && matrix.php != '8.6'
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php }}
           coverage: none
 
       - name: Build PHP from pinned source
-        if: runner.os == 'macOS'
-        uses: ./.github/actions/setup-php-macos
+        if: runner.os == 'macOS' || matrix.php == '8.6'
+        uses: ./.github/actions/setup-php-source
         with:
           php-version: ${{ matrix.php }}
 
       - name: Select built PHP
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' || matrix.php == '8.6'
         run: echo "$RUNNER_TEMP/fastuuid-php/bin" >> "$GITHUB_PATH"
 
       - name: Build and upload prebuilt binary

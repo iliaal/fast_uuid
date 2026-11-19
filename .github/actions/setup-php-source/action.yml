@@ -1,17 +1,24 @@
-name: Build PHP for macOS
-description: Build pinned NTS release PHP without Homebrew PHP bottles.
+name: Build PHP from release source
+description: Build pinned NTS release PHP from a checksummed php.net tarball, without Homebrew PHP bottles or setup-php.
 inputs:
   php-version:
-    description: PHP release series (8.4 or 8.5).
+    description: PHP release series (8.4, 8.5, or 8.6).
     required: true
 runs:
   using: composite
   steps:
-    - name: Install build tools
+    - name: Install build tools (macOS)
+      if: runner.os == 'macOS'
       shell: bash
       env:
         HOMEBREW_NO_AUTO_UPDATE: '1'
       run: brew install autoconf pkgconf
+    - name: Install build tools (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends autoconf pkg-config
     - name: Build PHP
       shell: bash
       env:
@@ -19,7 +26,7 @@ runs:
         MACOSX_DEPLOYMENT_TARGET: '14.0'
       run: |
         set -euo pipefail
-        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}"
+        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${RUNNER_OS:?}"
         case "${PHP_SERIES}" in
           8.4)
             version=8.4.26
@@ -28,6 +35,10 @@ runs:
           8.5)
             version=8.5.11
             sha256=338630ba9450f0b938bef8d740162c61c33bf64a1b421c6333c01df8a9fdb0ab
+            ;;
+          8.6)
+            version=8.6.0
+            sha256=62337dccde3d9fcc39797d4529f42637613036eaf3875353c206874e5813a3c1
             ;;
           *)
             printf 'Unsupported PHP series: %s\n' "${PHP_SERIES}" >&2
@@ -52,4 +63,6 @@ runs:
         "${prefix}/bin/phpize" --version
         installed_version=$("${prefix}/bin/php-config" --version)
         test "${installed_version}" = "${version}"
-        printf 'MACOSX_DEPLOYMENT_TARGET=14.0\n' >>"${GITHUB_ENV}"
+        if [ "${RUNNER_OS}" = macOS ]; then
+          printf 'MACOSX_DEPLOYMENT_TARGET=14.0\n' >>"${GITHUB_ENV}"
+        fi
