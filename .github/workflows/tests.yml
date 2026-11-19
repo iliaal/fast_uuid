@@ -34,8 +34,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # setup-php main until a release marks PHP 8.6 stable; return to a tagged release then.
       - name: Setup PHP
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: '8.5'
           tools: none
@@ -54,13 +55,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.1', '8.2', '8.3', '8.4', '8.5']
+        php: ['8.1', '8.2', '8.3', '8.4', '8.5', '8.6']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Setup PHP
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: ${{ matrix.php }}
           tools: none
@@ -93,46 +94,6 @@ jobs:
             echo "===== $f ====="; cat "$f"
           done
 
-  php86-release:
-    # setup-php still resolves '8.6' to a nightly build, so this lane builds
-    # the checksummed php-8.6.0 release tarball instead.
-    name: "PHP 8.6 (NTS, 8.6.0 release source)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Build PHP from pinned source
-        uses: ./.github/actions/setup-php-source
-        with:
-          php-version: '8.6'
-      - name: Select built PHP
-        run: echo "$RUNNER_TEMP/fastuuid-php/bin" >> "$GITHUB_PATH"
-      - name: Build
-        run: |
-          php -v
-          phpize
-          ./configure --enable-fast-uuid
-          make -j"$(nproc)"
-      - name: Guard against __cpu_model linkage
-        run: |
-          if nm modules/fast_uuid.so | grep -qi '__cpu_model\|__cpu_indicator_init'; then
-            echo "unexpected __cpu_model / __cpu_indicator_init linkage"; exit 1
-          fi
-      - name: Test
-        run: |
-          make test TESTS="tests" \
-            TEST_PHP_ARGS="-q" \
-            NO_INTERACTION=1 REPORT_EXIT_STATUS=1
-      - name: Dump diffs on failure
-        if: failure()
-        run: |
-          for f in tests/*.diff tests/*.out tests/*.log; do
-            [ -e "$f" ] || continue
-            echo "===== $f ====="; cat "$f"
-          done
-
   zts-canary:
     name: "PHP 8.4 (ZTS canary)"
     runs-on: ubuntu-latest
@@ -142,7 +103,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup PHP (ZTS)
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: '8.4'
           tools: none
@@ -165,7 +126,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup PHP
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: '8.4'
           tools: none
@@ -192,7 +153,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup PHP
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: '8.4'
           tools: none
@@ -224,7 +185,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build PHP from pinned source
-        uses: ./.github/actions/setup-php-source
+        uses: ./.github/actions/setup-php-macos
         with:
           php-version: ${{ matrix.php }}
       - name: Select built PHP
@@ -285,7 +246,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup PHP
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: '8.4'
           tools: composer
@@ -302,7 +263,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+      - uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: '8.4'
           tools: phpize, php-config

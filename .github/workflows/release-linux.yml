@@ -35,23 +35,22 @@ jobs:
         with:
           persist-credentials: false
 
-      # setup-php still resolves '8.6' to a nightly build, so 8.6 builds from
-      # the checksummed php-8.6.0 release tarball on every OS.
+      # setup-php main until a release marks PHP 8.6 stable; return to a tagged release then.
       - name: Setup PHP
-        if: runner.os != 'macOS' && matrix.php != '8.6'
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        if: runner.os != 'macOS'
+        uses: shivammathur/setup-php@292f25acb388a711c0c758f382e5c3109a391dd7 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: ${{ matrix.php }}
           coverage: none
 
       - name: Build PHP from pinned source
-        if: runner.os == 'macOS' || matrix.php == '8.6'
-        uses: ./.github/actions/setup-php-source
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/setup-php-macos
         with:
           php-version: ${{ matrix.php }}
 
       - name: Select built PHP
-        if: runner.os == 'macOS' || matrix.php == '8.6'
+        if: runner.os == 'macOS'
         run: echo "$RUNNER_TEMP/fastuuid-php/bin" >> "$GITHUB_PATH"
 
       - name: Build and upload prebuilt binary

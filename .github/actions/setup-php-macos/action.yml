@@ -1,5 +1,5 @@
-name: Build PHP from release source
-description: Build pinned NTS release PHP from a checksummed php.net tarball, without Homebrew PHP bottles or setup-php.
+name: Build PHP for macOS
+description: Build pinned NTS release PHP without Homebrew PHP bottles.
 inputs:
   php-version:
     description: PHP release series (8.4, 8.5, or 8.6).
@@ -7,18 +7,11 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install build tools (macOS)
-      if: runner.os == 'macOS'
+    - name: Install build tools
       shell: bash
       env:
         HOMEBREW_NO_AUTO_UPDATE: '1'
       run: brew install autoconf pkgconf
-    - name: Install build tools (Linux)
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends autoconf pkg-config
     - name: Build PHP
       shell: bash
       env:
@@ -26,7 +19,7 @@ runs:
         MACOSX_DEPLOYMENT_TARGET: '14.0'
       run: |
         set -euo pipefail
-        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${RUNNER_OS:?}"
+        : "${PHP_SERIES:?}" "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}"
         case "${PHP_SERIES}" in
           8.4)
             version=8.4.26
@@ -63,6 +56,4 @@ runs:
         "${prefix}/bin/phpize" --version
         installed_version=$("${prefix}/bin/php-config" --version)
         test "${installed_version}" = "${version}"
-        if [ "${RUNNER_OS}" = macOS ]; then
-          printf 'MACOSX_DEPLOYMENT_TARGET=14.0\n' >>"${GITHUB_ENV}"
-        fi
+        printf 'MACOSX_DEPLOYMENT_TARGET=14.0\n' >>"${GITHUB_ENV}"
