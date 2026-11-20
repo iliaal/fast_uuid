@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Prebuilt PHP 8.6 binaries for Windows, Linux glibc `x86_64`/`arm64`, and macOS `arm64`.
-- An advisory CI job builds and tests against php-src master (PHP 8.7-dev) weekly and on every push and PR, without blocking merges.
+- An advisory CI job builds and tests against php-src master (PHP 8.7-dev) weekly and on every push and PR, without blocking merges. A failing weekly run opens a tracking issue, and the issue closes once a later run passes.
 
 ### Fixed
 - The compat `UuidFactory::uuid2()` no longer raises a precision-loss notice on 32-bit PHP 8.6 when the local identifier is a decimal string above 2147483647.
