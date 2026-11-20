@@ -170,9 +170,9 @@ $b = Uuid::<span class="fn">uuid7</span>(<span class="kw">new</span> DateTimeImm
 <span class="kw">echo</span> $a, <span class="str">"\n"</span>, $b, <span class="str">"\n"</span>;
 <span class="kw">var_dump</span>($a-&gt;<span class="fn">compareTo</span>($b) &lt; 0);    <span class="cm">// ordered by the sub-ms fraction</span>
 
-<span class="cm">// integer-millisecond API: build and read v7 with no DateTime object</span>
-$u = Uuid::<span class="fn">uuid7</span>(<span class="str">1704067200123</span>);
-<span class="kw">echo</span> $u-&gt;<span class="fn">getTimestampMillis</span>();</pre>
+<span class="cm">// Explicit v7 and timestamp read without a platform-integer dependency</span>
+$u = Uuid::<span class="fn">uuid7</span>(<span class="kw">new</span> DateTimeImmutable(<span class="str">'2024-01-01 00:00:00.123'</span>, $utc));
+<span class="kw">echo</span> $u-&gt;<span class="fn">getDateTime</span>()-&gt;<span class="fn">format</span>(<span class="str">'Uv'</span>);</pre>
     <pre class="out">018cc251-f400-7199-9088-32b2a89d9aaa   <span style="color:#9a9488">(sample; sub-ms 0x199 in the 3rd group)</span>
 018cc251-f400-7e66-8fc2-8b98b1b54214   <span style="color:#9a9488">(same ms 018cc251-f400, sub-ms 0xe66, so a &lt; b)</span>
 bool(true)
@@ -181,13 +181,14 @@ bool(true)
   <p>Live-clock v7 calls encode the sub-millisecond fraction in <code>rand_a</code>. When the millisecond/sub-millisecond time key repeats or moves backward, the counter in <code>rand_b</code> advances by a fresh CSPRNG-selected value from <code>1..2^24</code> inclusive, carrying into the time key on overflow. Single and batch calls share monotonic state within a process, or within a thread under ZTS; ties across processes or threads carry no order. Explicit <code>uuid7($dateTime)</code> and <code>uuid7($unixMillis)</code> calls do not use that state. <code>getDateTime()</code> decodes v7 at millisecond precision.</p>
 
   <h2 id="inspect">Reading a UUID</h2>
+  <p><code>getTimestampMillis()</code> throws <code>UnsupportedOperationException</code> if the Unix milliseconds do not fit a PHP integer. Current-era values do not fit on 32-bit PHP; use <code>getDateTime()</code> instead. For explicit v7 generation on that platform, use the DateTime overload of <code>Uuid::uuid7()</code> or its compat facade.</p>
   <div class="ex">
     <pre class="code">$u = Uuid::<span class="fn">fromString</span>(<span class="str">'6ba7b810-9dad-11d1-80b4-00c04fd430c8'</span>);
 
 $u-&gt;<span class="fn">getHex</span>();        $u-&gt;<span class="fn">getUrn</span>();      $u-&gt;<span class="fn">getBytes</span>();   <span class="cm">// 16 raw bytes</span>
 $u-&gt;<span class="fn">getVersion</span>();    $u-&gt;<span class="fn">getVariant</span>();  $u-&gt;<span class="fn">getInteger</span>();
 $u-&gt;<span class="fn">getFields</span>();     $u-&gt;<span class="fn">getDateTime</span>();
-$u-&gt;<span class="fn">getTimestampMillis</span>();             <span class="cm">// unix ms, no DateTime object built</span>
+<span class="kw">if</span> (PHP_INT_SIZE &gt;= 8) { $u-&gt;<span class="fn">getTimestampMillis</span>(); } <span class="cm">// this sample needs 64-bit int</span>
 $u-&gt;<span class="fn">equals</span>($other); $u-&gt;<span class="fn">compareTo</span>($other);
 
 <span class="cm">// ramsey/identifier-style aliases of the four get* converters above</span>
@@ -214,7 +215,7 @@ compareTo   -1   (00..01 vs 00..02)</pre>
   <div class="ex">
     <pre class="code">uuid_v1(); uuid_v3($ns, $name); uuid_v4(); uuid_v5($ns, $name);
 uuid_v6(); uuid_v7(); uuid_v8($bytes);
-uuid_v7_at($unixMillis);         <span class="cm">// v7 from a unix-ms int, no DateTime</span>
+uuid_v7_at($unixMillis);         <span class="cm">// v7 from Unix milliseconds that fit a PHP int</span>
 uuid_v4_fast();                  <span class="cm">// non-crypto xoshiro256**, IDs only</span>
 
 uuid_v1_bin(); uuid_v4_bin(); uuid_v6_bin(); uuid_v7_bin();   <span class="cm">// raw 16 bytes, no string</span>
@@ -370,7 +371,7 @@ factory uuid4 ver   4</pre>
       <tr><td>getTimestampMillis (read)</td><td>n/a</td><td class="win">24.0M</td><td>n/a</td></tr>
     </tbody>
   </table>
-  <p><code>uuid7($dateTime)</code> runs ~17x faster than ramsey's and <code>getDateTime()</code> ~44x. <code>Uuid::uuid7($unixMillis)</code>, <code>uuid_v7_at($unixMillis)</code>, and <code>getTimestampMillis()</code> are integer-native with no DateTime object, and ramsey has no equivalent. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
+  <p><code>uuid7($dateTime)</code> runs ~17x faster than ramsey's and <code>getDateTime()</code> ~44x. <code>Uuid::uuid7($unixMillis)</code>, <code>uuid_v7_at($unixMillis)</code>, and <code>getTimestampMillis()</code> avoid DateTime allocation when the milliseconds fit a PHP integer, and ramsey has no integer equivalent. Full method and raw numbers live in <code>BENCHMARKS.md</code>.</p>
 
   <footer>
     <a href="https://github.com/iliaal/fast_uuid">GitHub</a>

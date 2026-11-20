@@ -107,7 +107,8 @@ as above; ramsey/uuid 4.9.2 for comparison.
   integer and build v7 with no DateTime object, matching plain `uuid_v7()` speed.
   `getTimestampMillis()` reads the timestamp as an int without constructing a
   `DateTimeImmutable`, ~5x faster than `getDateTime()`. ramsey has no integer
-  equivalent for either.
+  equivalent for either. The integer paths require the Unix milliseconds to
+  fit a PHP `int`; use the DateTime APIs for current-era timestamps on 32-bit PHP.
 
 ## Frameless calls (PHP 8.4+)
 
