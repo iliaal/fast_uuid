@@ -934,7 +934,10 @@ static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1
    are sacrificed for the local id, so v2 time resolution is coarse.
    monotonic is true only when the caller supplied both node and clockseq.
    Defaulted fields use fresh randomness instead; this does not guarantee
-   uniqueness (only six clockseq bits survive the local-domain overwrite). */
+   uniqueness. With a supplied node and defaulted clockseq, only six random
+   clockseq bits survive the local-domain overwrite, allowing at most 64 UUIDs
+   for a fixed local id, domain, node and visible timestamp. A defaulted node
+   also varies randomly, so that 64-value bound does not apply to it. */
 static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char local_domain,
                       const unsigned char *node, int clockseq, zend_bool monotonic) {
     uint64_t g;
