@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-20
+
 ### Added
 - Prebuilt PHP 8.6 binaries for Windows, Linux glibc `x86_64`/`arm64`, and macOS `arm64`.
 - An advisory CI job builds and tests against php-src master (PHP 8.7-dev) weekly and on every push and PR, without blocking merges. A failing weekly run opens a tracking issue, and the issue closes once a later run passes.
@@ -270,7 +272,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux glibc x86_64/arm64 + macOS arm64 (8.4/8.5), with a PIE source-build
   fallback for other targets.
 
-[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/iliaal/fast_uuid/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/iliaal/fast_uuid/releases/tag/0.10.0
 [0.9.0]: https://github.com/iliaal/fast_uuid/releases/tag/0.9.0
 [0.8.2]: https://github.com/iliaal/fast_uuid/releases/tag/0.8.2
 [0.8.1]: https://github.com/iliaal/fast_uuid/releases/tag/0.8.1
