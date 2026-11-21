@@ -38,7 +38,7 @@ jobs:
       # setup-php main until a release marks PHP 8.6 stable; return to a tagged release then.
       - name: Setup PHP
         if: runner.os != 'macOS'
-        uses: shivammathur/setup-php@3c21e10268bafaf84c59e8f4e65b39acacb62ca4 # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
+        uses: shivammathur/setup-php@2001cd3148dcbaf467b7fa06cd7155ebb6d4cacf # main # zizmor: ignore[stale-action-refs,ref-version-mismatch]
         with:
           php-version: ${{ matrix.php }}
           coverage: none
@@ -68,3 +68,32 @@ jobs:
           ./configure --enable-fast-uuid
           make -j"$(getconf _NPROCESSORS_ONLN)"
           make test TESTS="tests" TEST_PHP_ARGS="-q" NO_INTERACTION=1 REPORT_EXIT_STATUS=1
+
+      # Package the dry-run module like the release archives so a pre-tag
+      # PHP symbol-floor check can inspect the exact binary this run built.
+      - name: Package module (pre-tag dry run)
+        if: github.event_name != 'release'
+        env:
+          PHP_MINOR: ${{ matrix.php }}
+        run: |
+          set -euo pipefail
+          arch=$(uname -m)
+          [ "$arch" = aarch64 ] && arch=arm64
+          case "$(uname -s)" in
+            Linux) platform=linux-glibc ;;
+            Darwin) platform=darwin-bsdlibc ;;
+            *) echo "unsupported OS $(uname -s)" >&2; exit 1 ;;
+          esac
+          name="php_fast_uuid-dryrun_php${PHP_MINOR}-${arch}-${platform}"
+          mkdir -p dist
+          zip -j "dist/${name}.zip" modules/fast_uuid.so
+          echo "ARCHIVE_NAME=${name}" >> "$GITHUB_ENV"
+
+      - name: Upload module artifact (pre-tag dry run)
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: dist/${{ env.ARCHIVE_NAME }}.zip
+          if-no-files-found: error
+          retention-days: 7
