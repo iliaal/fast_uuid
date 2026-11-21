@@ -23,9 +23,22 @@ var_dump(Uuid::uuid7($ms)->getTimestampMillis() === $ms);
 $dt = (new DateTimeImmutable('@0'))->modify("+$ms milliseconds");
 var_dump(Uuid::uuid7($dt)->getTimestampMillis() === $ms);
 
-foreach ([Uuid::uuid1(), Uuid::uuid6(), Uuid::uuid7()] as $t) {
-    var_dump($t->getTimestampMillis() === (int) $t->getDateTime()->format('Uv'));
+// v1/v6 carry 100 ns ticks. The integer API floors milliseconds, while
+// getDateTime() rounds to microseconds and can cross a millisecond boundary.
+foreach ([
+    'below' => ['b29d9caa-89d0-11ed-8000-010203040506', '1ed89d0b-29d9-6caa-8000-010203040506'],
+    'half' => ['b29d9cab-89d0-11ed-8000-010203040506', '1ed89d0b-29d9-6cab-8000-010203040506'],
+    'exact' => ['b29d9cb0-89d0-11ed-8000-010203040506', '1ed89d0b-29d9-6cb0-8000-010203040506'],
+    'rollover' => ['b3236e7b-89d0-11ed-8000-010203040506', '1ed89d0b-3236-6e7b-8000-010203040506'],
+] as $case => $strings) {
+    foreach ($strings as $string) {
+        $t = Uuid::fromString($string);
+        printf("%s v%d: %s %s\n", $case, $t->getVersion(),
+            var_export($t->getTimestampMillis(), true), var_export($t->getDateTime()->format('U.u'), true));
+    }
 }
+$liveV7 = Uuid::uuid7();
+var_dump($liveV7->getTimestampMillis() === (int) $liveV7->getDateTime()->format('Uv'));
 
 var_dump(throws(fn() => Uuid::uuid4()->getTimestampMillis(), UOE::class));
 
@@ -45,8 +58,14 @@ bool(true)
 bool(true)
 bool(true)
 bool(true)
-bool(true)
-bool(true)
+below v1: 1672576496122 '1672576496.122999'
+below v6: 1672576496122 '1672576496.122999'
+half v1: 1672576496122 '1672576496.123000'
+half v6: 1672576496122 '1672576496.123000'
+exact v1: 1672576496123 '1672576496.123000'
+exact v6: 1672576496123 '1672576496.123000'
+rollover v1: 1672576496999 '1672576497.000000'
+rollover v6: 1672576496999 '1672576497.000000'
 bool(true)
 bool(true)
 bool(true)
