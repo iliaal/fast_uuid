@@ -27,9 +27,16 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 
 ## 📦 Install
 
-The quickest path is [PIE](https://github.com/php/pie), which resolves a prebuilt
-binary for your platform (Windows `x86`/`x64` `NTS`/`TS`, Linux glibc
-`x86_64`/`arm64`, macOS `arm64`) and falls back to a source build otherwise:
+Use [PIE](https://github.com/php/pie) to install fast_uuid. On Unix, PIE
+looks for a matching prebuilt archive before trying a source build. On
+Windows, PIE 1.5.5 needs a matching DLL archive for your PHP minor, compiler
+toolset, architecture and thread-safety mode; it does not build from source.
+
+Check the assets for the release you want. For example,
+[0.10.0](https://github.com/iliaal/fast_uuid/releases/tag/0.10.0) provides
+Windows DLL archives for PHP 8.1–8.6 (`x86`/`x64`, `NTS`/`TS`), and Unix
+archives for PHP 8.4–8.6 NTS on glibc Linux (`x86_64`/`arm64`) and macOS
+(`arm64`).
 
 ```sh
 pie install iliaal/fast_uuid
