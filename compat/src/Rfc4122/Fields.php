@@ -21,12 +21,13 @@ final class Fields implements FieldsInterface
                 'Fields expects exactly 16 bytes, got ' . \strlen($bytes),
             );
         }
-        if ($bytes !== self::NIL_BYTES && $bytes !== self::MAX_BYTES) {
-            if ((\ord($bytes[8]) & 0xc0) !== 0x80) {
+        if ((\ord($bytes[8]) & 0xc0) !== 0x80) {
+            if ($bytes !== self::NIL_BYTES && $bytes !== self::MAX_BYTES) {
                 throw new \FastUuid\Exception\InvalidArgumentException(
                     'The byte string does not conform to the RFC 9562 variant',
                 );
             }
+        } else {
             $version = \ord($bytes[6]) >> 4;
             if ($version < 1 || $version > 8) {
                 throw new \FastUuid\Exception\InvalidArgumentException(
@@ -65,11 +66,7 @@ final class Fields implements FieldsInterface
 
     public function getVersion(): ?int
     {
-        if ($this->bytes === self::NIL_BYTES || $this->bytes === self::MAX_BYTES) {
-            return null;
-        }
-        // Non-RFC variants carry no version field. Keep in sync with the C
-        // getVersion (fast_uuid.c, variant guard on byte 8).
+        // Nil (byte 8 = 0x00) and Max (byte 8 = 0xff) both fail the RFC variant check.
         if ((\ord($this->bytes[8]) & 0xc0) !== 0x80) {
             return null;
         }

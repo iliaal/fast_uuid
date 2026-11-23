@@ -24,22 +24,34 @@ class StringCodec implements CodecInterface
 
     public function decode(string $encoded): UuidInterface
     {
-        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromString($encoded), $this);
+        return \FastUuid\Compat\AbstractUuid::wrapCore(
+            \FastUuid\Uuid::fromString($encoded),
+            static::class === self::class ? null : $this,
+        );
     }
 
     public function decodeBytes(string $bytes): UuidInterface
     {
-        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromBytes($bytes), $this);
+        return \FastUuid\Compat\AbstractUuid::wrapCore(
+            \FastUuid\Uuid::fromBytes($bytes),
+            static::class === self::class ? null : $this,
+        );
     }
 
     final protected function uuidFromBytes(string $bytes): UuidInterface
     {
-        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromBytes($bytes), $this);
+        return \FastUuid\Compat\AbstractUuid::wrapCore(
+            \FastUuid\Uuid::fromBytes($bytes),
+            static::class === self::class ? null : $this,
+        );
     }
 
     final protected function uuidFromString(string $uuid): UuidInterface
     {
-        return WrapperClass::instantiateMapped(\FastUuid\Uuid::fromString($uuid), $this);
+        return \FastUuid\Compat\AbstractUuid::wrapCore(
+            \FastUuid\Uuid::fromString($uuid),
+            static::class === self::class ? null : $this,
+        );
     }
 
     final protected static function bytesToString(string $b): string
@@ -52,20 +64,11 @@ class StringCodec implements CodecInterface
 
     final protected static function stringToBytes(string $s): string
     {
-        if (\strlen($s) === 36) {
-            if (!\preg_match('/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/', $s)) {
-                throw new InvalidUuidStringException('Invalid UUID string');
-            }
-            $hex = \str_replace('-', '', $s);
-        } elseif (\strlen($s) === 32) {
-            if (!\preg_match('/\A[0-9a-fA-F]{32}\z/', $s)) {
-                throw new InvalidUuidStringException('Invalid UUID string');
-            }
-            $hex = $s;
-        } else {
-            throw new InvalidUuidStringException('Invalid UUID string');
+        $len = \strlen($s);
+        // Only canonical 36-char (hyphen at 8 rules out urn:/uuid:/{}) and bare 32-char hex.
+        if (($len === 36 && $s[8] === '-') || $len === 32) {
+            return \uuid_to_bin($s);
         }
-
-        return (string) \hex2bin($hex);
+        throw new InvalidUuidStringException('Invalid UUID string');
     }
 }

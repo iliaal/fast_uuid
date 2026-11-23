@@ -42,11 +42,15 @@ use FastUuid\Compat\Validator\ValidatorInterface;
  */
 class UuidFactory implements UuidFactoryInterface
 {
+    /** @var array<class-string<self>, bool> */
+    private static array $inheritsFromString = [];
+
     private ?RandomGeneratorInterface $randomGenerator = null;
     private ?TimeGeneratorInterface $timeGenerator = null;
     private ?NodeProviderInterface $nodeProvider = null;
     private ?ValidatorInterface $validator = null;
     private ?CodecInterface $codec = null;
+    private ?CodecInterface $nonDefaultCodec = null;
 
     // Lazy getters must not mark defaults custom and disable the C fast path.
     private bool $customRandomGenerator = false;
@@ -116,6 +120,7 @@ class UuidFactory implements UuidFactoryInterface
     public function setCodec(CodecInterface $codec): void
     {
         $this->codec = $codec;
+        $this->nonDefaultCodec = \get_class($codec) === StringCodec::class ? null : $codec;
     }
 
     public function uuid1(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
@@ -128,15 +133,11 @@ class UuidFactory implements UuidFactoryInterface
             $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
             return new UuidV1(
                 \FastUuid\Uuid::fromBytes($b),
-                $this->codec,
+                $this->nonDefaultCodec,
                 ConstructionToken::Trusted,
             );
         }
-        return new UuidV1(
-            \FastUuid\Uuid::uuid1($node, $clockSeq),
-            $this->codec,
-            ConstructionToken::Trusted,
-        );
+        return AbstractUuid::mintV1($node, $clockSeq, $this->nonDefaultCodec);
     }
 
     public function uuid2(
@@ -168,24 +169,30 @@ class UuidFactory implements UuidFactoryInterface
             $b[9] = \chr($localDomain & 0xff);
             return new UuidV2(
                 \FastUuid\Uuid::fromBytes($b),
-                $this->codec,
+                $this->nonDefaultCodec,
                 ConstructionToken::Trusted,
             );
         }
-        return new UuidV2(
-            \FastUuid\Uuid::uuid2($localDomain, $localIdentifier, $node, $clockSeq),
-            $this->codec,
-            ConstructionToken::Trusted,
-        );
+        return AbstractUuid::mintV2($localDomain, $localIdentifier, $node, $clockSeq, $this->nonDefaultCodec);
     }
 
     public function uuid3(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return new UuidV3(
-            \FastUuid\Uuid::uuid3($this->coreNamespace($ns), $name),
-            $this->codec,
-            ConstructionToken::Trusted,
-        );
+        if (\is_string($ns) && $this->usesDefaultFromString()) {
+            try {
+                return AbstractUuid::mintV3($ns, $name, $this->nonDefaultCodec);
+            } catch (\FastUuid\Exception\InvalidArgumentException $e) {
+                if (!\uuid_is_valid($ns)) {
+                    throw new \FastUuid\Exception\InvalidUuidStringException(
+                        \sprintf('Invalid UUID string (len=%d)', \strlen($ns)),
+                        0,
+                        $e,
+                    );
+                }
+                throw $e;
+            }
+        }
+        return AbstractUuid::mintV3($this->coreNamespace($ns), $name, $this->nonDefaultCodec);
     }
 
     public function uuid4(): UuidInterface
@@ -201,20 +208,30 @@ class UuidFactory implements UuidFactoryInterface
             $b[8] = \chr((\ord($b[8]) & 0x3f) | 0x80);
             return new UuidV4(
                 \FastUuid\Uuid::fromBytes($b),
-                $this->codec,
+                $this->nonDefaultCodec,
                 ConstructionToken::Trusted,
             );
         }
-        return new UuidV4(\FastUuid\Uuid::uuid4(), $this->codec, ConstructionToken::Trusted);
+        return AbstractUuid::mintV4($this->nonDefaultCodec);
     }
 
     public function uuid5(UuidInterface|string $ns, string $name): UuidInterface
     {
-        return new UuidV5(
-            \FastUuid\Uuid::uuid5($this->coreNamespace($ns), $name),
-            $this->codec,
-            ConstructionToken::Trusted,
-        );
+        if (\is_string($ns) && $this->usesDefaultFromString()) {
+            try {
+                return AbstractUuid::mintV5($ns, $name, $this->nonDefaultCodec);
+            } catch (\FastUuid\Exception\InvalidArgumentException $e) {
+                if (!\uuid_is_valid($ns)) {
+                    throw new \FastUuid\Exception\InvalidUuidStringException(
+                        \sprintf('Invalid UUID string (len=%d)', \strlen($ns)),
+                        0,
+                        $e,
+                    );
+                }
+                throw $e;
+            }
+        }
+        return AbstractUuid::mintV5($this->coreNamespace($ns), $name, $this->nonDefaultCodec);
     }
 
     public function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
@@ -229,26 +246,18 @@ class UuidFactory implements UuidFactoryInterface
             $b = self::applyVersionAndVariant($this->getTimeGenerator()->generate($node, $clockSeq), 1);
             $v1 = new UuidV1(
                 \FastUuid\Uuid::fromBytes($b),
-                $this->codec,
+                $this->nonDefaultCodec,
                 ConstructionToken::Trusted,
             );
             return UuidV6::fromUuidV1($v1);
         }
-        return new UuidV6(
-            \FastUuid\Uuid::uuid6($node, $clockSeq),
-            $this->codec,
-            ConstructionToken::Trusted,
-        );
+        return AbstractUuid::mintV6($node, $clockSeq, $this->nonDefaultCodec);
     }
 
     public function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
         if (!$this->customRandomGenerator) {
-            return new UuidV7(
-                \FastUuid\Uuid::uuid7($dateTime),
-                $this->codec,
-                ConstructionToken::Trusted,
-            );
+            return AbstractUuid::mintV7($dateTime, $this->nonDefaultCodec);
         }
         // Replacing a core-generated UUID's random bits would consume a monotonic
         $timestamp = self::v7TimestampBytes($dateTime);
@@ -268,14 +277,14 @@ class UuidFactory implements UuidFactoryInterface
         }
         return new UuidV7(
             \FastUuid\Uuid::fromBytes($bytes),
-            $this->codec,
+            $this->nonDefaultCodec,
             ConstructionToken::Trusted,
         );
     }
 
     public function uuid8(string $bytes): UuidInterface
     {
-        return new UuidV8(\FastUuid\Uuid::uuid8($bytes), $this->codec, ConstructionToken::Trusted);
+        return AbstractUuid::mintV8($bytes, $this->nonDefaultCodec);
     }
 
     public function fromString(string $uuid): UuidInterface
@@ -297,13 +306,7 @@ class UuidFactory implements UuidFactoryInterface
 
     public function fromHexadecimal(Hexadecimal|string $hex): UuidInterface
     {
-        // Strict 32-hex input only: network-order hex identity, not Guid text.
-        // Attach the factory codec for presentation only (toString/getBytes).
-        $h = (string) $hex;
-        if (\strlen($h) !== 32 || !\preg_match('/\A[0-9a-fA-F]{32}\z/', $h)) {
-            throw new \FastUuid\Exception\InvalidUuidStringException('Invalid hexadecimal UUID (expect 32 hex chars)');
-        }
-        return $this->wrap(\FastUuid\Uuid::fromHexadecimal($h));
+        return $this->wrap(\FastUuid\Uuid::fromHexadecimal((string) $hex));
     }
 
     public function fromDateTime(
@@ -312,11 +315,7 @@ class UuidFactory implements UuidFactoryInterface
         ?int $clockSeq = null,
     ): UuidInterface {
         $node = $this->resolveNode($node);
-        return new UuidV1(
-            \FastUuid\Uuid::fromDateTime($dateTime, $node, $clockSeq),
-            $this->codec,
-            ConstructionToken::Trusted,
-        );
+        return AbstractUuid::mintFromDateTime($dateTime, $node, $clockSeq, $this->nonDefaultCodec);
     }
 
     /**
@@ -326,7 +325,16 @@ class UuidFactory implements UuidFactoryInterface
      */
     public function wrap(\FastUuid\Uuid $core, ?CodecInterface $codec = null): UuidInterface
     {
-        return WrapperClass::instantiateMapped($core, $codec ?? $this->codec);
+        return AbstractUuid::wrapCore($core, $codec ?? $this->nonDefaultCodec);
+    }
+
+    private function usesDefaultFromString(): bool
+    {
+        if (static::class === self::class) {
+            return true;
+        }
+        return self::$inheritsFromString[static::class]
+            ??= (new \ReflectionMethod($this, 'fromString'))->getDeclaringClass()->getName() === self::class;
     }
 
     private function coreNamespace(UuidInterface|\Stringable|string $ns): \FastUuid\Uuid
@@ -337,8 +345,7 @@ class UuidFactory implements UuidFactoryInterface
         try {
             // Namespace strings identify network-order UUIDs independently of
             // the output codec. Preserve explicit subclass parsing overrides.
-            if (static::class === self::class
-                || (new \ReflectionMethod($this, 'fromString'))->getDeclaringClass()->getName() === self::class) {
+            if ($this->usesDefaultFromString()) {
                 return \FastUuid\Uuid::fromString((string) $ns);
             }
             return WrapperClass::coreFrom($this->fromString((string) $ns));
