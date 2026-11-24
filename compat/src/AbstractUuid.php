@@ -38,7 +38,7 @@ abstract class AbstractUuid implements UuidInterface
     protected \FastUuid\Uuid $core;
     protected ?CodecInterface $codec = null;
 
-    /** @internal Unforgeable minting helpers; each constructs its own C core. */
+    /** @internal Clones the cached prototype for `$class` and attaches `$core`. */
     private static function cloneWrapper(int|string $key, string $class, \FastUuid\Uuid $core, ?CodecInterface $codec): self
     {
         $proto = self::$prototypes[$key] ??= (new \ReflectionClass($class))->newInstanceWithoutConstructor();

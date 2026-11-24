@@ -71,9 +71,9 @@ final class WrapperClass
     ];
 
     /**
-     * The match arms, VERSION_CLASSES and CLASS_VERSIONS must name the same
-     * class per version. Every other core (nil, max, nonstandard,
-     * unassigned versions) resolves through for().
+     * The match arms in AbstractUuid::wrapCore(), VERSION_CLASSES and
+     * CLASS_VERSIONS must name the same class per version. Every other core
+     * (nil, max, nonstandard, unassigned versions) resolves through for().
      */
     public static function instantiateMapped(
         \FastUuid\Uuid $core,

@@ -67,7 +67,11 @@ class StringCodec implements CodecInterface
         $len = \strlen($s);
         // Only canonical 36-char (hyphen at 8 rules out urn:/uuid:/{}) and bare 32-char hex.
         if (($len === 36 && $s[8] === '-') || $len === 32) {
-            return \uuid_to_bin($s);
+            try {
+                return \uuid_to_bin($s);
+            } catch (InvalidUuidStringException) {
+                throw new InvalidUuidStringException('Invalid UUID string');
+            }
         }
         throw new InvalidUuidStringException('Invalid UUID string');
     }

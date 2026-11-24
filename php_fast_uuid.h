@@ -39,9 +39,9 @@ ZEND_BEGIN_MODULE_GLOBALS(fast_uuid)
     zend_bool     v7_initialized;
     zend_bool     prng_seeded;
     zend_bool     drbg_seeded;
+    size_t        drbg_since_seed; /* output bytes since the last OS reseed */
     /* AES-256-CTR DRBG: drbg_key is overwritten after every generate call
        (fast key erasure); round keys only ever live on the stack */
-    size_t        drbg_since_seed; /* output bytes since the last OS reseed */
     unsigned char drbg_key[32];
     unsigned char drbg_ctr[16];
     /* batched CSPRNG buffer: refilled by the AES-256-CTR DRBG when the CPU has
