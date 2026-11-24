@@ -25,28 +25,28 @@ extern zend_module_entry fast_uuid_module_entry;
 #endif
 
 ZEND_BEGIN_MODULE_GLOBALS(fast_uuid)
-    /* batched CSPRNG buffer: refilled by the AES-256-CTR DRBG when the CPU has
-       AES instructions, otherwise by the OS CSPRNG (php_random_bytes) */
-    unsigned char rbuf[8192];
     size_t        rpos;
-    /* AES-256-CTR DRBG: drbg_key is overwritten after every generate call
-       (fast key erasure); round keys only ever live on the stack */
-    unsigned char drbg_key[32];
-    unsigned char drbg_ctr[16];
-    size_t        drbg_since_seed; /* output bytes since the last OS reseed */
-    zend_bool     drbg_seeded;
     /* v7 monotonic state (per-process scope, per-thread under ZTS) */
     uint64_t      v7_key;       /* last (unix_ms << 12 | sub_ms), 60-bit time key */
     uint64_t      v7_randb;     /* 62-bit rand_b counter */
-    zend_bool     v7_initialized;
-    /* non-crypto fast PRNG (xoshiro256**) for uuid_v4_fast() */
-    uint64_t      prng_s[4];
-    zend_bool     prng_seeded;
     /* Shared v1/v6 timestamp high-water mark (per-thread under ZTS). */
     uint64_t      greg_last;
     /* v2 timestamp high-water mark on the visible 28-bit portion
        (time_mid + time_hi; time_low is the local id). Per-thread under ZTS. */
     uint64_t      v2_last;
+    /* non-crypto fast PRNG (xoshiro256**) for uuid_v4_fast() */
+    uint64_t      prng_s[4];
+    zend_bool     v7_initialized;
+    zend_bool     prng_seeded;
+    zend_bool     drbg_seeded;
+    size_t        drbg_since_seed; /* output bytes since the last OS reseed */
+    /* AES-256-CTR DRBG: drbg_key is overwritten after every generate call
+       (fast key erasure); round keys only ever live on the stack */
+    unsigned char drbg_key[32];
+    unsigned char drbg_ctr[16];
+    /* batched CSPRNG buffer: refilled by the AES-256-CTR DRBG when the CPU has
+       AES instructions, otherwise by the OS CSPRNG (php_random_bytes) */
+    unsigned char rbuf[8192];
 ZEND_END_MODULE_GLOBALS(fast_uuid)
 
 ZEND_EXTERN_MODULE_GLOBALS(fast_uuid)

@@ -71,25 +71,15 @@ final class WrapperClass
     ];
 
     /**
-     * The match arms, VERSION_CLASSES and CLASS_VERSIONS must name the same
-     * class per version. Every other core (nil, max, nonstandard,
-     * unassigned versions) resolves through for().
+     * The match arms in AbstractUuid::wrapCore(), VERSION_CLASSES and
+     * CLASS_VERSIONS must name the same class per version. Every other core
+     * (nil, max, nonstandard, unassigned versions) resolves through for().
      */
     public static function instantiateMapped(
         \FastUuid\Uuid $core,
         ?CodecInterface $codec = null,
     ): UuidInterface {
-        return match ($core->getVersion()) {
-            4 => new UuidV4($core, $codec, ConstructionToken::Trusted),
-            7 => new UuidV7($core, $codec, ConstructionToken::Trusted),
-            1 => new UuidV1($core, $codec, ConstructionToken::Trusted),
-            3 => new UuidV3($core, $codec, ConstructionToken::Trusted),
-            5 => new UuidV5($core, $codec, ConstructionToken::Trusted),
-            6 => new UuidV6($core, $codec, ConstructionToken::Trusted),
-            2 => new UuidV2($core, $codec, ConstructionToken::Trusted),
-            8 => new UuidV8($core, $codec, ConstructionToken::Trusted),
-            default => self::instantiate(self::for($core), $core, $codec),
-        };
+        return \FastUuid\Compat\AbstractUuid::wrapCore($core, $codec);
     }
 
     /**
@@ -115,16 +105,6 @@ final class WrapperClass
             return 'FastUuid\Compat\Rfc4122\MaxUuid';
         }
         return 'FastUuid\Compat\Nonstandard\Uuid';
-    }
-
-    // Rechecking in the constructor measured cheaper than a trusted-call cache.
-    /** @param class-string<\FastUuid\Compat\AbstractUuid> $class */
-    private static function instantiate(
-        string $class,
-        \FastUuid\Uuid $core,
-        ?CodecInterface $codec,
-    ): UuidInterface {
-        return new $class($core, $codec, ConstructionToken::Trusted);
     }
 
     private static function returnTypeMayBeCore(

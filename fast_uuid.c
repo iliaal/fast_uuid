@@ -79,6 +79,9 @@ static int fu_detect_ssse3(void) {
 #if defined(__aarch64__) && !defined(FU_DISABLE_NEON)
 # include <arm_neon.h>
 # define FU_AARCH64 1
+# if defined(__AARCH64EL__)
+#  define FU_AARCH64_LE 1
+# endif
 #endif
 
 ZEND_DECLARE_MODULE_GLOBALS(fast_uuid)
@@ -88,6 +91,29 @@ static zend_object_handlers fu_handlers;
 static zend_class_entry *fu_ex_invalid_arg;
 static zend_class_entry *fu_ex_invalid_str;
 static zend_class_entry *fu_ex_unsupported;
+static zend_string *fu_str_getcore;
+
+static zend_always_inline void fu_store_be64(unsigned char *dst, uint64_t v) {
+#if defined(WORDS_BIGENDIAN)
+    memcpy(dst, &v, 8);
+#elif defined(_MSC_VER)
+    uint64_t be = _byteswap_uint64(v);
+    memcpy(dst, &be, 8);
+#else
+    uint64_t be = __builtin_bswap64(v);
+    memcpy(dst, &be, 8);
+#endif
+}
+
+static zend_always_inline uint64_t fu_bswap64(uint64_t v) {
+#if defined(WORDS_BIGENDIAN)
+    return v;
+#elif defined(_MSC_VER)
+    return _byteswap_uint64(v);
+#else
+    return __builtin_bswap64(v);
+#endif
+}
 
 #define FU_MAX_BATCH_COUNT 100000U
 #define FU_MAX_RANDOM_BYTES (16U * 1024U * 1024U)
@@ -115,11 +141,26 @@ static inline fu_obj *fu_from_zobj(zend_object *o) {
     return (fu_obj *)((char *)o - offsetof(fu_obj, std));
 }
 
-static zend_object *fu_create(zend_class_entry *ce) {
-    fu_obj *u = zend_object_alloc(sizeof(fu_obj), ce);
-    zend_object_std_init(&u->std, ce);
+static zend_always_inline fu_obj *fu_alloc_obj(void) {
+    fu_obj *u = (fu_obj *)emalloc(sizeof(fu_obj));
+    zend_object_std_init(&u->std, fast_uuid_ce);
+#if PHP_VERSION_ID < 80300
     u->std.handlers = &fu_handlers;
+#endif
     u->str = NULL;
+    return u;
+}
+
+static zend_object *fu_create(zend_class_entry *ce) {
+    fu_obj *u;
+    if (EXPECTED(ce == fast_uuid_ce)) {
+        u = fu_alloc_obj();
+    } else {
+        u = zend_object_alloc(sizeof(fu_obj), ce);
+        zend_object_std_init(&u->std, ce);
+        u->std.handlers = &fu_handlers;
+        u->str = NULL;
+    }
     memset(u->b, 0, 16);
     return &u->std;
 }
@@ -132,17 +173,16 @@ static void fu_free(zend_object *o) {
 
 static zend_object *fu_clone(zend_object *o) {
     fu_obj *src = fu_from_zobj(o);
-    zend_object *no = fu_create(o->ce);
-    fu_obj *dst = fu_from_zobj(no);
+    fu_obj *dst = fu_alloc_obj();
     memcpy(dst->b, src->b, 16);
-    zend_objects_clone_members(no, o);
-    return no;
+    if (src->str) dst->str = zend_string_copy(src->str);
+    return &dst->std;
 }
 
 static int fu_compare(zval *a, zval *b) {
     if (Z_TYPE_P(a) != IS_OBJECT || Z_TYPE_P(b) != IS_OBJECT ||
-        !instanceof_function(Z_OBJCE_P(a), fast_uuid_ce) ||
-        !instanceof_function(Z_OBJCE_P(b), fast_uuid_ce)) {
+        Z_OBJCE_P(a) != fast_uuid_ce ||
+        Z_OBJCE_P(b) != fast_uuid_ce) {
         return ZEND_UNCOMPARABLE;
     }
     int r = memcmp(fu_from_zobj(Z_OBJ_P(a))->b, fu_from_zobj(Z_OBJ_P(b))->b, 16);
@@ -158,9 +198,57 @@ static inline void fu_hex32_scalar(const unsigned char *b, char *o) {
     for (int i = 0; i < 16; i++) { o[i*2] = L[b[i]*2]; o[i*2+1] = L[b[i]*2+1]; }
 }
 
+static inline void fu_format36_scalar(const unsigned char *b, char *o) {
+    const char *L = fu_lut;
+    for (int i = 0; i < 4; i++)  { o[i*2]      = L[b[i]*2]; o[i*2+1]      = L[b[i]*2+1]; }
+    o[8] = '-';
+    for (int i = 4; i < 6; i++)  { o[i*2+1]    = L[b[i]*2]; o[i*2+2]      = L[b[i]*2+1]; }
+    o[13] = '-';
+    for (int i = 6; i < 8; i++)  { o[i*2+2]    = L[b[i]*2]; o[i*2+3]      = L[b[i]*2+1]; }
+    o[18] = '-';
+    for (int i = 8; i < 10; i++) { o[i*2+3]    = L[b[i]*2]; o[i*2+4]      = L[b[i]*2+1]; }
+    o[23] = '-';
+    for (int i = 10; i < 16; i++){ o[i*2+4]    = L[b[i]*2]; o[i*2+5]      = L[b[i]*2+1]; }
+}
+
+static inline void fu_format36_v4_scalar(const unsigned char *raw, char *o) {
+    const char *L = fu_lut;
+    unsigned char b6 = (raw[6] & 0x0f) | 0x40;
+    unsigned char b8 = (raw[8] & 0x3f) | 0x80;
+    for (int i = 0; i < 4; i++)  { o[i*2]      = L[raw[i]*2]; o[i*2+1]      = L[raw[i]*2+1]; }
+    o[8] = '-';
+    for (int i = 4; i < 6; i++)  { o[i*2+1]    = L[raw[i]*2]; o[i*2+2]      = L[raw[i]*2+1]; }
+    o[13] = '-';
+    o[14] = L[b6*2];     o[15] = L[b6*2+1];
+    o[16] = L[raw[7]*2]; o[17] = L[raw[7]*2+1];
+    o[18] = '-';
+    o[19] = L[b8*2];     o[20] = L[b8*2+1];
+    o[21] = L[raw[9]*2]; o[22] = L[raw[9]*2+1];
+    o[23] = '-';
+    for (int i = 10; i < 16; i++){ o[i*2+4]    = L[raw[i]*2]; o[i*2+5]      = L[raw[i]*2+1]; }
+}
+
+/* Format trailing 8 bytes b8[0..7] into o[19..35] as "xxxx-xxxxxxxxxxxx". */
+static inline void fu_format_v7_tail17_scalar(const unsigned char *b8, char *o) {
+    const char *L = fu_lut;
+    o[19] = L[b8[0]*2]; o[20] = L[b8[0]*2+1];
+    o[21] = L[b8[1]*2]; o[22] = L[b8[1]*2+1];
+    o[23] = '-';
+    for (int i = 2; i < 8; i++) {
+        o[20 + i*2]     = L[b8[i]*2];
+        o[20 + i*2 + 1] = L[b8[i]*2+1];
+    }
+}
+
 #ifdef FU_X86
+# if defined(__SSSE3__)
+#  define FU_SSSE3_FN static zend_always_inline
+# else
+#  define FU_SSSE3_FN FU_TARGET_SSSE3 static
+# endif
+
 /* A single UUID fits one XMM register; AVX2 offers no benefit here. */
-FU_TARGET_SSSE3 static void fu_hex32_ssse3(const unsigned char *b, char *o) {
+FU_SSSE3_FN void fu_hex32_ssse3(const unsigned char *b, char *o) {
     const __m128i v    = _mm_loadu_si128((const __m128i *)b);
     const __m128i mask = _mm_set1_epi8(0x0f);
     const __m128i lut  = _mm_setr_epi8('0','1','2','3','4','5','6','7',
@@ -171,6 +259,112 @@ FU_TARGET_SSSE3 static void fu_hex32_ssse3(const unsigned char *b, char *o) {
     __m128i lh = _mm_shuffle_epi8(lut, lo);
     _mm_storeu_si128((__m128i *)o,        _mm_unpacklo_epi8(hh, lh));
     _mm_storeu_si128((__m128i *)(o + 16), _mm_unpackhi_epi8(hh, lh));
+}
+
+FU_SSSE3_FN void fu_format36_ssse3_vec(__m128i v, char *o) {
+    const __m128i mask  = _mm_set1_epi8(0x0f);
+    const __m128i lut   = _mm_setr_epi8('0','1','2','3','4','5','6','7',
+                                        '8','9','a','b','c','d','e','f');
+    const __m128i shuf0 = _mm_setr_epi8(0,1,2,3,4,5,6,7, -1, 8,9,10,11, -1, 12,13);
+    const __m128i dash0 = _mm_setr_epi8(0,0,0,0,0,0,0,0, '-', 0,0,0,0, '-', 0,0);
+    const __m128i shuf1 = _mm_setr_epi8(0,1, -1, 2,3,4,5, -1, 6,7,8,9,10,11,12,13);
+    const __m128i dash1 = _mm_setr_epi8(0,0, '-', 0,0,0,0, '-', 0,0,0,0,0,0,0,0);
+    __m128i hi   = _mm_and_si128(_mm_srli_epi16(v, 4), mask);
+    __m128i lo   = _mm_and_si128(v, mask);
+    __m128i hh   = _mm_shuffle_epi8(lut, hi);
+    __m128i lh   = _mm_shuffle_epi8(lut, lo);
+    __m128i lo16 = _mm_unpacklo_epi8(hh, lh);
+    __m128i hi16 = _mm_unpackhi_epi8(hh, lh);
+    __m128i out0 = _mm_or_si128(_mm_shuffle_epi8(lo16, shuf0), dash0);
+    __m128i mid  = _mm_alignr_epi8(hi16, lo16, 14);
+    __m128i out1 = _mm_or_si128(_mm_shuffle_epi8(mid, shuf1), dash1);
+    _mm_storeu_si128((__m128i *)o, out0);
+    _mm_storeu_si128((__m128i *)(o + 16), out1);
+    uint32_t tail = (uint32_t)_mm_cvtsi128_si32(_mm_srli_si128(hi16, 12));
+    memcpy(o + 32, &tail, 4);
+}
+
+FU_SSSE3_FN void fu_format36_ssse3(const unsigned char *b, char *o) {
+    fu_format36_ssse3_vec(_mm_loadu_si128((const __m128i *)b), o);
+}
+
+FU_SSSE3_FN void fu_format36_v4_ssse3(const unsigned char *raw, char *o) {
+    __m128i v = _mm_loadu_si128((const __m128i *)raw);
+    const __m128i clr = _mm_setr_epi8(-1,-1,-1,-1,-1,-1, 0x0f,-1, 0x3f,-1,-1,-1,-1,-1,-1,-1);
+    const __m128i set = _mm_setr_epi8( 0, 0, 0, 0, 0, 0, 0x40, 0, (char)0x80, 0, 0, 0, 0, 0, 0, 0);
+    v = _mm_or_si128(_mm_and_si128(v, clr), set);
+    fu_format36_ssse3_vec(v, o);
+}
+
+FU_SSSE3_FN void fu_format_v7_tail17_ssse3(const unsigned char *b8, char *o) {
+    __m128i v    = _mm_loadl_epi64((const __m128i *)b8);
+    const __m128i mask = _mm_set1_epi8(0x0f);
+    const __m128i lut  = _mm_setr_epi8('0','1','2','3','4','5','6','7',
+                                       '8','9','a','b','c','d','e','f');
+    __m128i hi   = _mm_and_si128(_mm_srli_epi16(v, 4), mask);
+    __m128i lo   = _mm_and_si128(v, mask);
+    __m128i hex  = _mm_unpacklo_epi8(_mm_shuffle_epi8(lut, hi), _mm_shuffle_epi8(lut, lo));
+    _mm_storeu_si128((__m128i *)(o + 20), hex);
+    uint32_t head4 = (uint32_t)_mm_cvtsi128_si32(hex);
+    memcpy(o + 19, &head4, 4);
+    o[23] = '-';
+}
+
+/* Validate 32 hex chars in v0/v1 and optionally decode into out[16]. */
+FU_SSSE3_FN int fu_hex32_decode_ssse3_vecs(__m128i v0, __m128i v1, unsigned char *out) {
+    const __m128i zero  = _mm_setzero_si128();
+    const __m128i c0    = _mm_set1_epi8('0');
+    const __m128i c9    = _mm_set1_epi8(9);
+    const __m128i lc    = _mm_set1_epi8(0x20);
+    const __m128i ca    = _mm_set1_epi8('a');
+    const __m128i c5    = _mm_set1_epi8(5);
+    __m128i d0    = _mm_sub_epi8(v0, c0);
+    __m128i d1    = _mm_sub_epi8(v1, c0);
+    __m128i is_d0 = _mm_cmpeq_epi8(_mm_subs_epu8(d0, c9), zero);
+    __m128i is_d1 = _mm_cmpeq_epi8(_mm_subs_epu8(d1, c9), zero);
+    __m128i a0    = _mm_sub_epi8(_mm_or_si128(v0, lc), ca);
+    __m128i a1    = _mm_sub_epi8(_mm_or_si128(v1, lc), ca);
+    __m128i is_a0 = _mm_cmpeq_epi8(_mm_subs_epu8(a0, c5), zero);
+    __m128i is_a1 = _mm_cmpeq_epi8(_mm_subs_epu8(a1, c5), zero);
+    __m128i ok    = _mm_and_si128(_mm_or_si128(is_d0, is_a0), _mm_or_si128(is_d1, is_a1));
+    if (UNEXPECTED(_mm_movemask_epi8(ok) != 0xffff)) return 0;
+    if (out) {
+        const __m128i low4 = _mm_set1_epi8(0x0f);
+        const __m128i mult = _mm_set1_epi16(0x0110);
+        __m128i n0 = _mm_add_epi8(_mm_and_si128(v0, low4), _mm_and_si128(is_a0, c9));
+        __m128i n1 = _mm_add_epi8(_mm_and_si128(v1, low4), _mm_and_si128(is_a1, c9));
+        __m128i p0 = _mm_maddubs_epi16(n0, mult);
+        __m128i p1 = _mm_maddubs_epi16(n1, mult);
+        _mm_storeu_si128((__m128i *)out, _mm_packus_epi16(p0, p1));
+    }
+    return 1;
+}
+
+FU_SSSE3_FN int fu_parse36_ssse3(const char *s, unsigned char *out) {
+    __m128i c0 = _mm_loadu_si128((const __m128i *)s);
+    __m128i c1 = _mm_loadu_si128((const __m128i *)(s + 16));
+    __m128i c2 = _mm_loadu_si128((const __m128i *)(s + 20));
+    const __m128i p0m = _mm_setr_epi8(0,1,2,3,4,5,6,7, 9,10,11,12, 14,15, -1,-1);
+    const __m128i p1m = _mm_setr_epi8(-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1, 0,1);
+    const __m128i q0m = _mm_setr_epi8(3,4,5,6, -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1);
+    const __m128i q1m = _mm_setr_epi8(-1,-1,-1,-1, 4,5,6,7,8,9,10,11,12,13,14,15);
+    __m128i v0 = _mm_or_si128(_mm_shuffle_epi8(c0, p0m), _mm_shuffle_epi8(c1, p1m));
+    __m128i v1 = _mm_or_si128(_mm_shuffle_epi8(c1, q0m), _mm_shuffle_epi8(c2, q1m));
+    return fu_hex32_decode_ssse3_vecs(v0, v1, out);
+}
+
+FU_SSSE3_FN int fu_parse32_ssse3(const char *s, unsigned char *out) {
+    __m128i v0 = _mm_loadu_si128((const __m128i *)s);
+    __m128i v1 = _mm_loadu_si128((const __m128i *)(s + 16));
+    return fu_hex32_decode_ssse3_vecs(v0, v1, out);
+}
+
+FU_SSSE3_FN int fu_valid36_ssse3(const char *s) {
+    return fu_parse36_ssse3(s, NULL);
+}
+
+FU_SSSE3_FN int fu_valid32_ssse3(const char *s) {
+    return fu_parse32_ssse3(s, NULL);
 }
 #endif
 
@@ -187,11 +381,111 @@ static inline void fu_hex32_neon(const unsigned char *b, char *o) {
     vst1q_u8((uint8_t *)o,       z.val[0]);
     vst1q_u8((uint8_t *)(o + 16), z.val[1]);
 }
+
+# ifdef FU_AARCH64_LE
+static inline void fu_format36_neon_vec(uint8x16_t v, char *o) {
+    static const uint8_t shuf0_d[16] = { 0,1,2,3,4,5,6,7, 0x80, 8,9,10,11, 0x80, 12,13 };
+    static const uint8_t dash0_d[16] = { 0,0,0,0,0,0,0,0, '-',  0,0,0,0,   '-',  0,0 };
+    static const uint8_t shuf1_d[16] = { 0,1, 0x80, 2,3,4,5, 0x80, 6,7,8,9,10,11,12,13 };
+    static const uint8_t dash1_d[16] = { 0,0, '-',  0,0,0,0, '-',  0,0,0,0,0,0,0,0 };
+    const uint8x16_t mask = vdupq_n_u8(0x0f);
+    const uint8x16_t lut  = vld1q_u8((const uint8_t *)fu_hexd);
+    const uint8x16_t hh   = vqtbl1q_u8(lut, vshrq_n_u8(v, 4));
+    const uint8x16_t lh   = vqtbl1q_u8(lut, vandq_u8(v, mask));
+    const uint8x16x2_t z  = vzipq_u8(hh, lh);
+    const uint8x16_t lo16 = z.val[0];
+    const uint8x16_t hi16 = z.val[1];
+    const uint8x16_t out0 = vorrq_u8(vqtbl1q_u8(lo16, vld1q_u8(shuf0_d)), vld1q_u8(dash0_d));
+    const uint8x16_t mid  = vextq_u8(lo16, hi16, 14);
+    const uint8x16_t out1 = vorrq_u8(vqtbl1q_u8(mid, vld1q_u8(shuf1_d)), vld1q_u8(dash1_d));
+    vst1q_u8((uint8_t *)o, out0);
+    vst1q_u8((uint8_t *)(o + 16), out1);
+    uint32_t tail = vgetq_lane_u32(vreinterpretq_u32_u8(hi16), 3);
+    memcpy(o + 32, &tail, 4);
+}
+
+static inline void fu_format36_neon(const unsigned char *b, char *o) {
+    fu_format36_neon_vec(vld1q_u8((const uint8_t *)b), o);
+}
+
+static inline void fu_format36_v4_neon(const unsigned char *raw, char *o) {
+    static const uint8_t clr_d[16] = {
+        0xff,0xff,0xff,0xff,0xff,0xff,0x0f,0xff,0x3f,0xff,0xff,0xff,0xff,0xff,0xff,0xff
+    };
+    static const uint8_t set_d[16] = {
+        0,0,0,0,0,0,0x40,0,0x80,0,0,0,0,0,0,0
+    };
+    uint8x16_t v = vld1q_u8((const uint8_t *)raw);
+    v = vorrq_u8(vandq_u8(v, vld1q_u8(clr_d)), vld1q_u8(set_d));
+    fu_format36_neon_vec(v, o);
+}
+
+static inline void fu_format_v7_tail17_neon(const unsigned char *b8, char *o) {
+    uint8x8_t v    = vld1_u8((const uint8_t *)b8);
+    uint8x16_t lut = vld1q_u8((const uint8_t *)fu_hexd);
+    uint8x8_t hh   = vqtbl1_u8(lut, vshr_n_u8(v, 4));
+    uint8x8_t lh   = vqtbl1_u8(lut, vand_u8(v, vdup_n_u8(0x0f)));
+    uint8x8x2_t z  = vzip_u8(hh, lh);
+    uint8x16_t hex = vcombine_u8(z.val[0], z.val[1]);
+    vst1q_u8((uint8_t *)(o + 20), hex);
+    uint32_t head4 = vgetq_lane_u32(vreinterpretq_u32_u8(hex), 0);
+    memcpy(o + 19, &head4, 4);
+    o[23] = '-';
+}
+
+static inline int fu_hex32_decode_neon_vecs(uint8x16_t v0, uint8x16_t v1, unsigned char *out) {
+    const uint8x16_t c0   = vdupq_n_u8('0');
+    const uint8x16_t c9   = vdupq_n_u8(9);
+    const uint8x16_t lc   = vdupq_n_u8(0x20);
+    const uint8x16_t ca   = vdupq_n_u8('a');
+    const uint8x16_t c5   = vdupq_n_u8(5);
+    uint8x16_t is_d0 = vcleq_u8(vsubq_u8(v0, c0), c9);
+    uint8x16_t is_d1 = vcleq_u8(vsubq_u8(v1, c0), c9);
+    uint8x16_t is_a0 = vcleq_u8(vsubq_u8(vorrq_u8(v0, lc), ca), c5);
+    uint8x16_t is_a1 = vcleq_u8(vsubq_u8(vorrq_u8(v1, lc), ca), c5);
+    uint8x16_t ok    = vandq_u8(vorrq_u8(is_d0, is_a0), vorrq_u8(is_d1, is_a1));
+    if (UNEXPECTED(vminvq_u8(ok) == 0)) return 0;
+    if (out) {
+        const uint8x16_t low4 = vdupq_n_u8(0x0f);
+        uint8x16_t n0 = vaddq_u8(vandq_u8(v0, low4), vandq_u8(is_a0, c9));
+        uint8x16_t n1 = vaddq_u8(vandq_u8(v1, low4), vandq_u8(is_a1, c9));
+        uint8x16_t hi = vuzp1q_u8(n0, n1);
+        uint8x16_t lo = vuzp2q_u8(n0, n1);
+        vst1q_u8((uint8_t *)out, vsliq_n_u8(lo, hi, 4));
+    }
+    return 1;
+}
+
+static inline int fu_parse36_neon(const char *s, unsigned char *out) {
+    static const uint8_t idx0_d[16] = { 0,1,2,3,4,5,6,7, 9,10,11,12, 14,15, 16,17 };
+    static const uint8_t idx1_d[16] = { 3,4,5,6, 20,21,22,23,24,25,26,27,28,29,30,31 };
+    uint8x16_t c0 = vld1q_u8((const uint8_t *)s);
+    uint8x16_t c1 = vld1q_u8((const uint8_t *)(s + 16));
+    uint8x16_t c2 = vld1q_u8((const uint8_t *)(s + 20));
+    uint8x16x2_t pair0 = { { c0, c1 } };
+    uint8x16x2_t pair1 = { { c1, c2 } };
+    uint8x16_t v0 = vqtbl2q_u8(pair0, vld1q_u8(idx0_d));
+    uint8x16_t v1 = vqtbl2q_u8(pair1, vld1q_u8(idx1_d));
+    return fu_hex32_decode_neon_vecs(v0, v1, out);
+}
+
+static inline int fu_parse32_neon(const char *s, unsigned char *out) {
+    return fu_hex32_decode_neon_vecs(
+        vld1q_u8((const uint8_t *)s),
+        vld1q_u8((const uint8_t *)(s + 16)),
+        out);
+}
+# endif
 #endif
 
 static inline void fu_hex32(const unsigned char *b, char *o) {
 #ifdef FU_X86
-    if (fu_has_ssse3) { fu_hex32_ssse3(b, o); return; }
+# if defined(__SSSE3__)
+    fu_hex32_ssse3(b, o);
+    return;
+# else
+    if (EXPECTED(fu_has_ssse3)) { fu_hex32_ssse3(b, o); return; }
+# endif
 #endif
 #ifdef FU_AARCH64
     fu_hex32_neon(b, o);
@@ -202,85 +496,247 @@ static inline void fu_hex32(const unsigned char *b, char *o) {
 
 /* canonical 8-4-4-4-12 into 36 bytes (no NUL) */
 static inline void fu_format36(const unsigned char *b, char *o) {
-    char h[32];
-    fu_hex32(b, h);
-    memcpy(o,      h,      8); o[8]  = '-';
-    memcpy(o + 9,  h + 8,  4); o[13] = '-';
-    memcpy(o + 14, h + 12, 4); o[18] = '-';
-    memcpy(o + 19, h + 16, 4); o[23] = '-';
-    memcpy(o + 24, h + 20, 12);
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    fu_format36_ssse3(b, o);
+    return;
+# else
+    if (EXPECTED(fu_has_ssse3)) { fu_format36_ssse3(b, o); return; }
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    fu_format36_neon(b, o);
+    return;
+#endif
+    fu_format36_scalar(b, o);
 }
 
-#define FU_PARSE_HEX_BYTE_AT(pos, outidx) do { \
-    int hi = fu_nib_lut[(unsigned char)s[(pos)]]; \
-    int lo = fu_nib_lut[(unsigned char)s[(pos) + 1]]; \
-    if (UNEXPECTED((hi | lo) < 0)) return 0; \
-    out[(outidx)] = (unsigned char)((hi << 4) | lo); \
+static inline void fu_format36_v4(const unsigned char *raw, char *o) {
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    fu_format36_v4_ssse3(raw, o);
+    return;
+# else
+    if (EXPECTED(fu_has_ssse3)) { fu_format36_v4_ssse3(raw, o); return; }
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    fu_format36_v4_neon(raw, o);
+    return;
+#endif
+    fu_format36_v4_scalar(raw, o);
+}
+
+static inline void fu_format_v7_tail17(const unsigned char *b8, char *o) {
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    fu_format_v7_tail17_ssse3(b8, o);
+    return;
+# else
+    if (EXPECTED(fu_has_ssse3)) { fu_format_v7_tail17_ssse3(b8, o); return; }
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    fu_format_v7_tail17_neon(b8, o);
+    return;
+#endif
+    fu_format_v7_tail17_scalar(b8, o);
+}
+
+static zend_always_inline bool fu_has_urn_prefix(const char *s, size_t len) {
+    return len >= 4
+        && (s[0] | 0x20) == 'u'
+        && (s[1] | 0x20) == 'r'
+        && (s[2] | 0x20) == 'n'
+        && s[3] == ':';
+}
+
+static zend_always_inline bool fu_has_uuid_prefix(const char *s, size_t len) {
+    return len >= 5
+        && (s[0] | 0x20) == 'u'
+        && (s[1] | 0x20) == 'u'
+        && (s[2] | 0x20) == 'i'
+        && (s[3] | 0x20) == 'd'
+        && s[4] == ':';
+}
+
+/* Tolerant wrapper stripping: optional "urn:" then "uuid:" (once total) and {} up to depth 2. */
+static zend_never_inline void fu_strip_wrappers(const char **sp, size_t *lenp) {
+    const char *s = *sp;
+    size_t len = *lenp;
+    bool prefixed = false;
+    for (int pass = 0; pass < 2; pass++) {
+        size_t before = len;
+        if (!prefixed) {
+            if (fu_has_urn_prefix(s, len)) {
+                s += 4; len -= 4; prefixed = true;
+            }
+            if (fu_has_uuid_prefix(s, len)) {
+                s += 5; len -= 5; prefixed = true;
+            }
+        }
+        if (len >= 2 && s[0] == '{' && s[len - 1] == '}') {
+            s++; len -= 2;
+        }
+        if (len == before) break;
+    }
+    *sp = s;
+    *lenp = len;
+}
+
+static zend_never_inline bool fu_strip_strict_wrappers(const char **sp, size_t *lenp) {
+    const char *s = *sp;
+    size_t len = *lenp;
+    if (len < 36 || len > 47) return false;
+    if (fu_has_urn_prefix(s, len)) { s += 4; len -= 4; }
+    if (fu_has_uuid_prefix(s, len)) { s += 5; len -= 5; }
+    if (len == 38 && s[0] == '{' && s[37] == '}') { s++; len -= 2; }
+    if (len != 36) return false;
+    *sp = s;
+    *lenp = len;
+    return true;
+}
+
+static zend_always_inline bool fu_hyphens_ok(const char *s) {
+    return (((unsigned char)(s[8] ^ '-')
+           | (unsigned char)(s[13] ^ '-')
+           | (unsigned char)(s[18] ^ '-')
+           | (unsigned char)(s[23] ^ '-')) == 0);
+}
+
+#define FU_PARSE_HEX_ACC(pos, outidx) do { \
+    int hi_ = fu_nib_lut[(unsigned char)s[(pos)]]; \
+    int lo_ = fu_nib_lut[(unsigned char)s[(pos) + 1]]; \
+    bad |= hi_ | lo_; \
+    out[(outidx)] = (unsigned char)(((unsigned int)hi_ << 4) | (unsigned int)lo_); \
 } while (0)
+
+static inline int fu_parse36_scalar(const char *s, unsigned char out[16]) {
+    int bad = 0;
+    FU_PARSE_HEX_ACC(0, 0);   FU_PARSE_HEX_ACC(2, 1);
+    FU_PARSE_HEX_ACC(4, 2);   FU_PARSE_HEX_ACC(6, 3);
+    FU_PARSE_HEX_ACC(9, 4);   FU_PARSE_HEX_ACC(11, 5);
+    FU_PARSE_HEX_ACC(14, 6);  FU_PARSE_HEX_ACC(16, 7);
+    FU_PARSE_HEX_ACC(19, 8);  FU_PARSE_HEX_ACC(21, 9);
+    FU_PARSE_HEX_ACC(24, 10); FU_PARSE_HEX_ACC(26, 11);
+    FU_PARSE_HEX_ACC(28, 12); FU_PARSE_HEX_ACC(30, 13);
+    FU_PARSE_HEX_ACC(32, 14); FU_PARSE_HEX_ACC(34, 15);
+    return bad >= 0;
+}
+
+static inline int fu_parse32_scalar(const char *s, unsigned char out[16]) {
+    int bad = 0;
+    for (int i = 0; i < 16; i++) {
+        FU_PARSE_HEX_ACC(i * 2, i);
+    }
+    return bad >= 0;
+}
+
+#undef FU_PARSE_HEX_ACC
+
+static inline bool fu_valid36_scalar(const char *s) {
+    static const uint8_t pos[32] = {
+        0,1,2,3,4,5,6,7, 9,10,11,12, 14,15,16,17, 19,20,21,22,
+        24,25,26,27,28,29,30,31,32,33,34,35
+    };
+    int bad = 0;
+    for (int i = 0; i < 32; i++) bad |= fu_nib_lut[(unsigned char)s[pos[i]]];
+    return bad >= 0;
+}
+
+static inline bool fu_valid32_scalar(const char *s) {
+    int bad = 0;
+    for (int i = 0; i < 32; i++) bad |= fu_nib_lut[(unsigned char)s[i]];
+    return bad >= 0;
+}
+
+static inline int fu_parse_hex32(const char *s, unsigned char out[16]) {
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    return fu_parse32_ssse3(s, out);
+# else
+    if (EXPECTED(fu_has_ssse3)) return fu_parse32_ssse3(s, out);
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    return fu_parse32_neon(s, out);
+#endif
+    return fu_parse32_scalar(s, out);
+}
+
+static inline int fu_parse_canon36(const char *s, unsigned char out[16]) {
+    if (UNEXPECTED(!fu_hyphens_ok(s))) return 0;
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    return fu_parse36_ssse3(s, out);
+# else
+    if (EXPECTED(fu_has_ssse3)) return fu_parse36_ssse3(s, out);
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    return fu_parse36_neon(s, out);
+#endif
+    return fu_parse36_scalar(s, out);
+}
+
+static inline bool fu_valid_canon36(const char *s) {
+    if (UNEXPECTED(!fu_hyphens_ok(s))) return false;
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    return fu_valid36_ssse3(s) != 0;
+# else
+    if (EXPECTED(fu_has_ssse3)) return fu_valid36_ssse3(s) != 0;
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    return fu_parse36_neon(s, NULL) != 0;
+#endif
+    return fu_valid36_scalar(s);
+}
+
+static inline bool fu_valid_hex32(const char *s) {
+#ifdef FU_X86
+# if defined(__SSSE3__)
+    return fu_valid32_ssse3(s) != 0;
+# else
+    if (EXPECTED(fu_has_ssse3)) return fu_valid32_ssse3(s) != 0;
+# endif
+#endif
+#ifdef FU_AARCH64_LE
+    return fu_parse32_neon(s, NULL) != 0;
+#endif
+    return fu_valid32_scalar(s);
+}
 
 /* tolerant parser: accepts canonical 36, bare 32-hex, an optional "urn:" then an optional "uuid:" prefix
    (case-insensitive), and {} wrappers in any composition up to depth 2 ({urn:uuid:...}, urn:uuid:{...}) */
 static int fu_parse(const char *s, size_t len, unsigned char out[16]) {
-    bool prefixed = false;
-    for (int pass = 0; pass < 2; pass++) {
-        /* One prefix per string, so "uuid:urn:..." and "urn:uuid:urn:uuid:..." stay invalid. */
-        if (!prefixed) {
-            if (len >= 4 && (s[0]=='u'||s[0]=='U') && zend_binary_strncasecmp(s, len, "urn:", 4, 4) == 0) {
-                s += 4; len -= 4; prefixed = true;
-            }
-            if (len >= 5 && (s[0]=='u'||s[0]=='U') && zend_binary_strncasecmp(s, len, "uuid:", 5, 5) == 0) {
-                s += 5; len -= 5; prefixed = true;
-            }
-        }
-        if (len >= 2 && s[0] == '{' && s[len-1] == '}') { s++; len -= 2; }
+    if (UNEXPECTED(len == 0)) return 0;
+    if (UNEXPECTED(s[0] == '{' || (s[0] | 0x20) == 'u')) {
+        fu_strip_wrappers(&s, &len);
     }
-
-    if (len == 36) {
-        if (s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-') return 0;
-        FU_PARSE_HEX_BYTE_AT(0, 0);
-        FU_PARSE_HEX_BYTE_AT(2, 1);
-        FU_PARSE_HEX_BYTE_AT(4, 2);
-        FU_PARSE_HEX_BYTE_AT(6, 3);
-        FU_PARSE_HEX_BYTE_AT(9, 4);
-        FU_PARSE_HEX_BYTE_AT(11, 5);
-        FU_PARSE_HEX_BYTE_AT(14, 6);
-        FU_PARSE_HEX_BYTE_AT(16, 7);
-        FU_PARSE_HEX_BYTE_AT(19, 8);
-        FU_PARSE_HEX_BYTE_AT(21, 9);
-        FU_PARSE_HEX_BYTE_AT(24, 10);
-        FU_PARSE_HEX_BYTE_AT(26, 11);
-        FU_PARSE_HEX_BYTE_AT(28, 12);
-        FU_PARSE_HEX_BYTE_AT(30, 13);
-        FU_PARSE_HEX_BYTE_AT(32, 14);
-        FU_PARSE_HEX_BYTE_AT(34, 15);
-        return 1;
-    }
-    if (len == 32) {
-        for (int i = 0; i < 16; i++) {
-            FU_PARSE_HEX_BYTE_AT(i * 2, i);
-        }
-        return 1;
-    }
+    if (EXPECTED(len == 36)) return fu_parse_canon36(s, out);
+    if (len == 32) return fu_parse_hex32(s, out);
     return 0;
 }
 
-#undef FU_PARSE_HEX_BYTE_AT
+static bool fu_valid_tolerant(const char *s, size_t len) {
+    if (UNEXPECTED(len == 0)) return false;
+    if (UNEXPECTED(s[0] == '{' || (s[0] | 0x20) == 'u')) {
+        fu_strip_wrappers(&s, &len);
+    }
+    if (EXPECTED(len == 36)) return fu_valid_canon36(s);
+    if (len == 32) return fu_valid_hex32(s);
+    return false;
+}
 
 /* ramsey/uuid GenericValidator grammar: an optional "urn:", then an optional "uuid:" (case-insensitive), then
    the 8-4-4-4-12 form, optionally inside one pair of braces. No bare 32-hex and no nested wrappers. */
 static bool fu_valid_strict(const char *s, size_t len) {
-    if (len >= 4 && zend_binary_strncasecmp(s, len, "urn:", 4, 4) == 0) { s += 4; len -= 4; }
-    if (len >= 5 && zend_binary_strncasecmp(s, len, "uuid:", 5, 5) == 0) { s += 5; len -= 5; }
-    if (len == 38 && s[0] == '{' && s[37] == '}') { s++; len -= 2; }
-    if (len != 36) return false;
-    for (size_t i = 0; i < 36; i++) {
-        if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (s[i] != '-') return false;
-        } else if (fu_nib_lut[(unsigned char)s[i]] < 0) {
-            return false;
-        }
+    if (UNEXPECTED(len != 36)) {
+        if (!fu_strip_strict_wrappers(&s, &len)) return false;
     }
-    return true;
+    return fu_valid_canon36(s);
 }
 
 static zend_string *fu_str(fu_obj *u) {
@@ -452,7 +908,19 @@ FU_TARGET_AES static void fu_aes_ctr(unsigned char *key, unsigned char *ctr, uns
         b5 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
         b6 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
         b7 = _mm_xor_si128(c, rk[0]); c = _mm_add_epi64(c, one);
-        for (int r = 1; r < 14; r++) FU_AES_ROUNDS8(_mm_aesenc_si128, rk[r]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[1]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[2]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[3]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[4]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[5]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[6]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[7]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[8]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[9]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[10]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[11]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[12]);
+        FU_AES_ROUNDS8(_mm_aesenc_si128, rk[13]);
         FU_AES_ROUNDS8(_mm_aesenclast_si128, rk[14]);
         _mm_storeu_si128((__m128i *)(out),       b0);
         _mm_storeu_si128((__m128i *)(out + 16),  b1);
@@ -503,30 +971,47 @@ static int fu_detect_aes(void) {
 # endif
 }
 
-/* SubWord through AESE with a zero round key: with all four columns equal,
-   ShiftRows is the identity, leaving SubBytes on each byte. No S-box table. */
-FU_TARGET_AES static uint32_t fu_aes_subword(uint32_t w) {
-    uint8x16_t v = vaeseq_u8(vreinterpretq_u8_u32(vdupq_n_u32(w)), vdupq_n_u8(0));
-    return vgetq_lane_u32(vreinterpretq_u32_u8(v), 0);
+# define FU_AES_ARM_STEP_EVEN(t0, t1, rcon_val) do { \
+    uint8x16_t s_  = vaeseq_u8(vqtbl1q_u8((t1), rot_idx), zero); \
+    uint8x16_t rc_ = vreinterpretq_u8_u32(vdupq_n_u32((rcon_val))); \
+    (t0) = veorq_u8((t0), vextq_u8(zero, (t0), 12)); \
+    (t0) = veorq_u8((t0), vextq_u8(zero, (t0), 8)); \
+    (t0) = veorq_u8((t0), veorq_u8(s_, rc_)); \
+} while (0)
+
+# define FU_AES_ARM_STEP_ODD(t1, t0) do { \
+    uint8x16_t s_ = vaeseq_u8(vqtbl1q_u8((t0), sub_idx), zero); \
+    (t1) = veorq_u8((t1), vextq_u8(zero, (t1), 12)); \
+    (t1) = veorq_u8((t1), vextq_u8(zero, (t1), 8)); \
+    (t1) = veorq_u8((t1), s_); \
+} while (0)
+
+/* Pure NEON FIPS-197 5.2 key expansion (Nk = 8, little-endian): all four
+   columns of the AESE input hold the same word so ShiftRows is identity. */
+FU_TARGET_AES static void fu_aes_expand(const unsigned char *key, uint8x16_t *rk) {
+    static const uint8_t rot_idx_d[16] = {
+        13,14,15,12, 13,14,15,12, 13,14,15,12, 13,14,15,12
+    };
+    static const uint8_t sub_idx_d[16] = {
+        12,13,14,15, 12,13,14,15, 12,13,14,15, 12,13,14,15
+    };
+    const uint8x16_t zero    = vdupq_n_u8(0);
+    const uint8x16_t rot_idx = vld1q_u8(rot_idx_d);
+    const uint8x16_t sub_idx = vld1q_u8(sub_idx_d);
+    uint8x16_t t0 = vld1q_u8(key);
+    uint8x16_t t1 = vld1q_u8(key + 16);
+    rk[0] = t0; rk[1] = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x01); rk[2]  = t0; FU_AES_ARM_STEP_ODD(t1, t0); rk[3]  = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x02); rk[4]  = t0; FU_AES_ARM_STEP_ODD(t1, t0); rk[5]  = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x04); rk[6]  = t0; FU_AES_ARM_STEP_ODD(t1, t0); rk[7]  = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x08); rk[8]  = t0; FU_AES_ARM_STEP_ODD(t1, t0); rk[9]  = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x10); rk[10] = t0; FU_AES_ARM_STEP_ODD(t1, t0); rk[11] = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x20); rk[12] = t0; FU_AES_ARM_STEP_ODD(t1, t0); rk[13] = t1;
+    FU_AES_ARM_STEP_EVEN(t0, t1, 0x40); rk[14] = t0;
 }
 
-/* FIPS-197 5.2 key expansion, Nk = 8, on little-endian words. */
-FU_TARGET_AES static void fu_aes_expand(const unsigned char *key, uint8x16_t *rk) {
-    static const uint8_t rcon[7] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40 };
-    uint32_t w[60];
-    memcpy(w, key, 32);
-    for (int i = 8; i < 60; i++) {
-        uint32_t t = w[i - 1];
-        if (i % 8 == 0) {
-            t = fu_aes_subword((t >> 8) | (t << 24)) ^ rcon[i / 8 - 1];
-        } else if (i % 8 == 4) {
-            t = fu_aes_subword(t);
-        }
-        w[i] = w[i - 8] ^ t;
-    }
-    for (int r = 0; r < 15; r++) rk[r] = vld1q_u8((const uint8_t *)(w + 4 * r));
-    ZEND_SECURE_ZERO(w, sizeof(w));
-}
+# undef FU_AES_ARM_STEP_EVEN
+# undef FU_AES_ARM_STEP_ODD
 
 # define FU_AESE_MC(s, k) vaesmcq_u8(vaeseq_u8((s), (k)))
 # define FU_AESE_LAST(s, k) vaeseq_u8((s), (k))
@@ -537,6 +1022,9 @@ FU_TARGET_AES static void fu_aes_ctr(unsigned char *key, unsigned char *ctr, uns
     const uint64x2_t one = vcombine_u64(vcreate_u64(1), vcreate_u64(0));
     uint64x2_t c = vreinterpretq_u64_u8(vld1q_u8(ctr));
     fu_aes_expand(key, rk);
+    const uint8x16_t rk0  = rk[0],  rk1  = rk[1],  rk2  = rk[2],  rk3  = rk[3],  rk4  = rk[4];
+    const uint8x16_t rk5  = rk[5],  rk6  = rk[6],  rk7  = rk[7],  rk8  = rk[8],  rk9  = rk[9];
+    const uint8x16_t rk10 = rk[10], rk11 = rk[11], rk12 = rk[12], rk13 = rk[13], rk14 = rk[14];
 
     for (; len >= 128; len -= 128, out += 128) {
         uint8x16_t b0, b1, b2, b3, b4, b5, b6, b7;
@@ -548,9 +1036,21 @@ FU_TARGET_AES static void fu_aes_ctr(unsigned char *key, unsigned char *ctr, uns
         b5 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
         b6 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
         b7 = vreinterpretq_u8_u64(c); c = vaddq_u64(c, one);
-        for (int r = 0; r < 13; r++) FU_AES_ROUNDS8(FU_AESE_MC, rk[r]);
-        FU_AES_ROUNDS8(FU_AESE_LAST, rk[13]);
-        FU_AES_ROUNDS8(veorq_u8, rk[14]);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk0);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk1);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk2);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk3);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk4);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk5);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk6);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk7);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk8);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk9);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk10);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk11);
+        FU_AES_ROUNDS8(FU_AESE_MC, rk12);
+        FU_AES_ROUNDS8(FU_AESE_LAST, rk13);
+        FU_AES_ROUNDS8(veorq_u8, rk14);
         vst1q_u8(out,       b0);
         vst1q_u8(out + 16,  b1);
         vst1q_u8(out + 32,  b2);
@@ -568,8 +1068,8 @@ FU_TARGET_AES static void fu_aes_ctr(unsigned char *key, unsigned char *ctr, uns
         uint8x16_t x1 = vreinterpretq_u8_u64(c);
         if (rekey || take > 16) c = vaddq_u64(c, one);
         for (int r = 0; r < 13; r++) { x0 = FU_AESE_MC(x0, rk[r]); x1 = FU_AESE_MC(x1, rk[r]); }
-        x0 = veorq_u8(vaeseq_u8(x0, rk[13]), rk[14]);
-        x1 = veorq_u8(vaeseq_u8(x1, rk[13]), rk[14]);
+        x0 = veorq_u8(vaeseq_u8(x0, rk13), rk14);
+        x1 = veorq_u8(vaeseq_u8(x1, rk13), rk14);
         if (rekey) {
             vst1q_u8(key,      x0);
             vst1q_u8(key + 16, x1);
@@ -682,32 +1182,41 @@ static zend_result fu_rand_fill(unsigned char *dst, size_t n) {
 /* crypto-secure, batched. Returns FAILURE (with an exception thrown by
    php_random_bytes_throw) if the CSPRNG fails; dst is zeroed on failure so
    callers never read uninitialized bytes. */
-static zend_result fu_rand(unsigned char *dst, size_t n) {
+static zend_never_inline zend_result fu_rand_slow(unsigned char *dst, size_t n) {
     if (UNEXPECTED(n > sizeof(FAST_UUID_G(rbuf)))) {
         if (fu_rand_fill(dst, n) == FAILURE) { memset(dst, 0, n); return FAILURE; }
         return SUCCESS;
     }
-    if (FAST_UUID_G(rpos) + n > sizeof(FAST_UUID_G(rbuf))) {
-        if (fu_rand_fill(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
-            memset(dst, 0, n);
-            return FAILURE;
-        }
-        FAST_UUID_G(rpos) = 0;
+    if (fu_rand_fill(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
+        memset(dst, 0, n);
+        return FAILURE;
     }
-    memcpy(dst, FAST_UUID_G(rbuf) + FAST_UUID_G(rpos), n);
-    FAST_UUID_G(rpos) += n;
+    memcpy(dst, FAST_UUID_G(rbuf), n);
+    FAST_UUID_G(rpos) = n;
+    return SUCCESS;
+}
+
+static zend_always_inline zend_result fu_rand(unsigned char *dst, size_t n) {
+    size_t rpos = FAST_UUID_G(rpos);
+    if (UNEXPECTED(n > sizeof(FAST_UUID_G(rbuf)) - rpos)) {
+        return fu_rand_slow(dst, n);
+    }
+    memcpy(dst, FAST_UUID_G(rbuf) + rpos, n);
+    FAST_UUID_G(rpos) = rpos + n;
     return SUCCESS;
 }
 
 /* non-crypto xoshiro256** for uuid_v4_fast() */
-static inline uint64_t fu_rotl(uint64_t x, int k) { return (x << k) | (x >> (64 - k)); }
-static uint64_t fu_xs_next(void) {
-    uint64_t *s = FAST_UUID_G(prng_s);
-    if (UNEXPECTED(!FAST_UUID_G(prng_seeded))) {
-        if (fu_rand((unsigned char *)s, 32) == FAILURE) return 0; /* exception pending */
-        if ((s[0]|s[1]|s[2]|s[3]) == 0) s[0] = 0x9e3779b97f4a7c15ULL;
-        FAST_UUID_G(prng_seeded) = 1;
-    }
+static zend_always_inline uint64_t fu_rotl(uint64_t x, int k) { return (x << k) | (x >> (64 - k)); }
+
+static zend_never_inline zend_result fu_xs_seed(uint64_t *s) {
+    if (fu_rand((unsigned char *)s, 32) == FAILURE) return FAILURE;
+    if ((s[0] | s[1] | s[2] | s[3]) == 0) s[0] = 0x9e3779b97f4a7c15ULL;
+    FAST_UUID_G(prng_seeded) = 1;
+    return SUCCESS;
+}
+
+static zend_always_inline uint64_t fu_xs_next_raw(uint64_t *s) {
     uint64_t r = fu_rotl(s[1] * 5, 7) * 9;
     uint64_t t = s[1] << 17;
     s[2] ^= s[0]; s[3] ^= s[1]; s[1] ^= s[2]; s[0] ^= s[3];
@@ -715,11 +1224,8 @@ static uint64_t fu_xs_next(void) {
     return r;
 }
 
-static zend_result fu_rand_u64(uint64_t *out) {
-    unsigned char r[8]; if (fu_rand(r, 8) == FAILURE) return FAILURE;
-    *out = ((uint64_t)r[0]<<56)|((uint64_t)r[1]<<48)|((uint64_t)r[2]<<40)|((uint64_t)r[3]<<32)
-         |((uint64_t)r[4]<<24)|((uint64_t)r[5]<<16)|((uint64_t)r[6]<<8)|(uint64_t)r[7];
-    return SUCCESS;
+static zend_always_inline zend_result fu_rand_u64(uint64_t *out) {
+    return fu_rand((unsigned char *)out, sizeof(*out));
 }
 
 #ifndef PHP_WIN32
@@ -754,41 +1260,515 @@ static void fu_atfork_child(void) {
 #endif
 
 /* ------------------------------------------------------------------ */
+/* hardware SHA-1 (v5) and inline MD5 (v3)                            */
+/* ------------------------------------------------------------------ */
+
+#if defined(FU_X86) && !defined(FU_DISABLE_SHA1)
+# define FU_SHA1_X86 1
+# if defined(_MSC_VER)
+#  define FU_TARGET_SHA1
+# else
+#  define FU_TARGET_SHA1 __attribute__((target("sha,sse4.1,ssse3")))
+# endif
+#elif defined(FU_AARCH64_LE) && !defined(FU_DISABLE_SHA1)
+# if defined(__ARM_FEATURE_SHA2) || defined(__ARM_FEATURE_CRYPTO)
+#  define FU_SHA1_ARM 1
+#  define FU_TARGET_SHA1
+# elif defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 8
+#  define FU_SHA1_ARM 1
+#  define FU_TARGET_SHA1 __attribute__((target("+crypto")))
+# endif
+# ifdef FU_SHA1_ARM
+#  if defined(__linux__)
+#   include <sys/auxv.h>
+#   ifndef HWCAP_SHA1
+#    define HWCAP_SHA1 (1UL << 5)
+#   endif
+#  endif
+# endif
+#endif
+
+#if defined(FU_SHA1_X86) || defined(FU_SHA1_ARM)
+# define FU_HAVE_SHA1_HW 1
+static int fu_sha1_active = 0;  /* set once in MINIT after selftest */
+
+static zend_always_inline void fu_store_be32(unsigned char *dst, uint32_t v) {
+# if defined(WORDS_BIGENDIAN)
+    memcpy(dst, &v, 4);
+# elif defined(_MSC_VER)
+    uint32_t be = _byteswap_ulong(v);
+    memcpy(dst, &be, 4);
+# else
+    uint32_t be = __builtin_bswap32(v);
+    memcpy(dst, &be, 4);
+# endif
+}
+#endif
+
+#ifdef FU_SHA1_X86
+static int fu_detect_sha1(void) {
+# if defined(_MSC_VER)
+    int regs[4];
+    __cpuid(regs, 0);
+    if (regs[0] < 7) return 0;
+    __cpuid(regs, 1);
+    if (((regs[2] >> 9) & 1) == 0 || ((regs[2] >> 19) & 1) == 0) return 0;
+    __cpuidex(regs, 7, 0);
+    return (regs[1] >> 29) & 1;
+# else
+    unsigned int eax, ebx, ecx, edx;
+    if (__get_cpuid_max(0, NULL) < 7) return 0;
+    if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return 0;
+    if (((ecx >> 9) & 1) == 0 || ((ecx >> 19) & 1) == 0) return 0;
+    if (!__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) return 0;
+    return (ebx >> 29) & 1;
+# endif
+}
+
+# define FU_SHA1_X86_MID(ecur, enxt, m0, m1, m2, m3, fn) do { \
+    (ecur) = _mm_sha1nexte_epu32((ecur), (m0)); \
+    (enxt) = abcd; \
+    abcd = _mm_sha1rnds4_epu32(abcd, (ecur), (fn)); \
+    (m1) = _mm_sha1msg2_epu32((m1), (m0)); \
+    (m3) = _mm_sha1msg1_epu32((m3), (m0)); \
+    (m2) = _mm_xor_si128((m2), (m0)); \
+} while (0)
+
+FU_TARGET_SHA1 static void fu_sha1_block_hw(uint32_t st[5], const unsigned char blk[64]) {
+    const __m128i shuf_mask = _mm_set_epi64x(0x0001020304050607ULL, 0x08090a0b0c0d0e0fULL);
+    __m128i abcd = _mm_shuffle_epi32(_mm_loadu_si128((const __m128i *)st), 0x1B);
+    __m128i e0   = _mm_set_epi32((int)st[4], 0, 0, 0);
+    __m128i abcd_save = abcd, e0_save = e0;
+    __m128i e1, msg0, msg1, msg2, msg3;
+
+    /* Rounds 0..3 */
+    msg0 = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(blk + 0)), shuf_mask);
+    e0   = _mm_add_epi32(e0, msg0);
+    e1   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e0, 0);
+    /* Rounds 4..7 */
+    msg1 = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(blk + 16)), shuf_mask);
+    e1   = _mm_sha1nexte_epu32(e1, msg1);
+    e0   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e1, 0);
+    msg0 = _mm_sha1msg1_epu32(msg0, msg1);
+    /* Rounds 8..11 */
+    msg2 = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(blk + 32)), shuf_mask);
+    e0   = _mm_sha1nexte_epu32(e0, msg2);
+    e1   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e0, 0);
+    msg1 = _mm_sha1msg1_epu32(msg1, msg2);
+    msg0 = _mm_xor_si128(msg0, msg2);
+    /* Rounds 12..15 */
+    msg3 = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(blk + 48)), shuf_mask);
+    e1   = _mm_sha1nexte_epu32(e1, msg3);
+    e0   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e1, 0);
+    msg0 = _mm_sha1msg2_epu32(msg0, msg3);
+    msg2 = _mm_sha1msg1_epu32(msg2, msg3);
+    msg1 = _mm_xor_si128(msg1, msg3);
+
+    FU_SHA1_X86_MID(e0, e1, msg0, msg1, msg2, msg3, 0); /* 16..19 */
+    FU_SHA1_X86_MID(e1, e0, msg1, msg2, msg3, msg0, 1); /* 20..23 */
+    FU_SHA1_X86_MID(e0, e1, msg2, msg3, msg0, msg1, 1); /* 24..27 */
+    FU_SHA1_X86_MID(e1, e0, msg3, msg0, msg1, msg2, 1); /* 28..31 */
+    FU_SHA1_X86_MID(e0, e1, msg0, msg1, msg2, msg3, 1); /* 32..35 */
+    FU_SHA1_X86_MID(e1, e0, msg1, msg2, msg3, msg0, 1); /* 36..39 */
+    FU_SHA1_X86_MID(e0, e1, msg2, msg3, msg0, msg1, 2); /* 40..43 */
+    FU_SHA1_X86_MID(e1, e0, msg3, msg0, msg1, msg2, 2); /* 44..47 */
+    FU_SHA1_X86_MID(e0, e1, msg0, msg1, msg2, msg3, 2); /* 48..51 */
+    FU_SHA1_X86_MID(e1, e0, msg1, msg2, msg3, msg0, 2); /* 52..55 */
+    FU_SHA1_X86_MID(e0, e1, msg2, msg3, msg0, msg1, 2); /* 56..59 */
+    FU_SHA1_X86_MID(e1, e0, msg3, msg0, msg1, msg2, 3); /* 60..63 */
+    FU_SHA1_X86_MID(e0, e1, msg0, msg1, msg2, msg3, 3); /* 64..67 */
+
+    /* Rounds 68..71 */
+    e1   = _mm_sha1nexte_epu32(e1, msg1);
+    e0   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e1, 3);
+    msg2 = _mm_sha1msg2_epu32(msg2, msg1);
+    msg3 = _mm_xor_si128(msg3, msg1);
+    /* Rounds 72..75 */
+    e0   = _mm_sha1nexte_epu32(e0, msg2);
+    e1   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e0, 3);
+    msg3 = _mm_sha1msg2_epu32(msg3, msg2);
+    /* Rounds 76..79 */
+    e1   = _mm_sha1nexte_epu32(e1, msg3);
+    e0   = abcd;
+    abcd = _mm_sha1rnds4_epu32(abcd, e1, 3);
+
+    e0   = _mm_sha1nexte_epu32(e0, e0_save);
+    abcd = _mm_shuffle_epi32(_mm_add_epi32(abcd, abcd_save), 0x1B);
+    _mm_storeu_si128((__m128i *)st, abcd);
+    st[4] = (uint32_t)_mm_extract_epi32(e0, 3);
+}
+# undef FU_SHA1_X86_MID
+#endif /* FU_SHA1_X86 */
+
+#ifdef FU_SHA1_ARM
+static int fu_detect_sha1(void) {
+# if defined(__linux__)
+    return (getauxval(AT_HWCAP) & HWCAP_SHA1) != 0;
+# elif defined(__APPLE__)
+    return 1;
+# else
+    return 0;
+# endif
+}
+
+# define FU_SHA1_ARM_STEP(op, k, ecur, enxt, m0, m1, m2, m3) do { \
+    uint32x4_t t_ = vaddq_u32((m0), (k)); \
+    (enxt) = vsha1h_u32(vgetq_lane_u32(abcd, 0)); \
+    abcd = op(abcd, (ecur), t_); \
+    (m0) = vsha1su1q_u32(vsha1su0q_u32((m0), (m1), (m2)), (m3)); \
+} while (0)
+
+# define FU_SHA1_ARM_TAIL(op, k, ecur, enxt, m0) do { \
+    uint32x4_t t_ = vaddq_u32((m0), (k)); \
+    (enxt) = vsha1h_u32(vgetq_lane_u32(abcd, 0)); \
+    abcd = op(abcd, (ecur), t_); \
+} while (0)
+
+FU_TARGET_SHA1 static void fu_sha1_block_hw(uint32_t st[5], const unsigned char blk[64]) {
+    const uint32x4_t k0 = vdupq_n_u32(0x5A827999U);
+    const uint32x4_t k1 = vdupq_n_u32(0x6ED9EBA1U);
+    const uint32x4_t k2 = vdupq_n_u32(0x8F1BBCDCU);
+    const uint32x4_t k3 = vdupq_n_u32(0xCA62C1D6U);
+    uint32x4_t abcd = vld1q_u32(st);
+    uint32_t e0 = st[4], e1;
+    uint32x4_t abcd_save = abcd;
+    uint32_t e0_save = e0;
+
+    uint32x4_t m0 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(blk + 0)));
+    uint32x4_t m1 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(blk + 16)));
+    uint32x4_t m2 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(blk + 32)));
+    uint32x4_t m3 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(blk + 48)));
+
+    FU_SHA1_ARM_STEP(vsha1cq_u32, k0, e0, e1, m0, m1, m2, m3); /* 0..3 */
+    FU_SHA1_ARM_STEP(vsha1cq_u32, k0, e1, e0, m1, m2, m3, m0); /* 4..7 */
+    FU_SHA1_ARM_STEP(vsha1cq_u32, k0, e0, e1, m2, m3, m0, m1); /* 8..11 */
+    FU_SHA1_ARM_STEP(vsha1cq_u32, k0, e1, e0, m3, m0, m1, m2); /* 12..15 */
+    FU_SHA1_ARM_STEP(vsha1cq_u32, k0, e0, e1, m0, m1, m2, m3); /* 16..19 */
+
+    FU_SHA1_ARM_STEP(vsha1pq_u32, k1, e1, e0, m1, m2, m3, m0); /* 20..23 */
+    FU_SHA1_ARM_STEP(vsha1pq_u32, k1, e0, e1, m2, m3, m0, m1); /* 24..27 */
+    FU_SHA1_ARM_STEP(vsha1pq_u32, k1, e1, e0, m3, m0, m1, m2); /* 28..31 */
+    FU_SHA1_ARM_STEP(vsha1pq_u32, k1, e0, e1, m0, m1, m2, m3); /* 32..35 */
+    FU_SHA1_ARM_STEP(vsha1pq_u32, k1, e1, e0, m1, m2, m3, m0); /* 36..39 */
+
+    FU_SHA1_ARM_STEP(vsha1mq_u32, k2, e0, e1, m2, m3, m0, m1); /* 40..43 */
+    FU_SHA1_ARM_STEP(vsha1mq_u32, k2, e1, e0, m3, m0, m1, m2); /* 44..47 */
+    FU_SHA1_ARM_STEP(vsha1mq_u32, k2, e0, e1, m0, m1, m2, m3); /* 48..51 */
+    FU_SHA1_ARM_STEP(vsha1mq_u32, k2, e1, e0, m1, m2, m3, m0); /* 52..55 */
+    FU_SHA1_ARM_STEP(vsha1mq_u32, k2, e0, e1, m2, m3, m0, m1); /* 56..59 */
+
+    FU_SHA1_ARM_STEP(vsha1pq_u32, k3, e1, e0, m3, m0, m1, m2); /* 60..63 */
+    FU_SHA1_ARM_TAIL(vsha1pq_u32, k3, e0, e1, m0);             /* 64..67 */
+    FU_SHA1_ARM_TAIL(vsha1pq_u32, k3, e1, e0, m1);             /* 68..71 */
+    FU_SHA1_ARM_TAIL(vsha1pq_u32, k3, e0, e1, m2);             /* 72..75 */
+    FU_SHA1_ARM_TAIL(vsha1pq_u32, k3, e1, e0, m3);             /* 76..79 */
+
+    vst1q_u32(st, vaddq_u32(abcd, abcd_save));
+    st[4] = e0 + e0_save;
+}
+# undef FU_SHA1_ARM_STEP
+# undef FU_SHA1_ARM_TAIL
+#endif /* FU_SHA1_ARM */
+
+#ifdef FU_HAVE_SHA1_HW
+static zend_never_inline void fu_sha1_process_hw(
+    uint32_t st[5], const unsigned char *p1, size_t l1, const unsigned char *p2, size_t l2) {
+    unsigned char blk[64];
+    size_t pos = 0;
+    uint64_t total_bits = ((uint64_t)l1 + (uint64_t)l2) << 3;
+    const unsigned char *bufs[2] = { p1, p2 };
+    size_t lens[2] = { l1, l2 };
+    for (int idx = 0; idx < 2; idx++) {
+        const unsigned char *p = bufs[idx];
+        size_t rem = lens[idx];
+        if (pos > 0 && rem > 0) {
+            size_t take = 64 - pos;
+            if (take > rem) take = rem;
+            memcpy(blk + pos, p, take);
+            pos += take; p += take; rem -= take;
+            if (pos == 64) {
+                fu_sha1_block_hw(st, blk);
+                pos = 0;
+            }
+        }
+        while (rem >= 64) {
+            fu_sha1_block_hw(st, p);
+            p += 64; rem -= 64;
+        }
+        if (rem > 0) {
+            memcpy(blk, p, rem);
+            pos = rem;
+        }
+    }
+    blk[pos++] = 0x80;
+    if (pos > 56) {
+        memset(blk + pos, 0, 64 - pos);
+        fu_sha1_block_hw(st, blk);
+        pos = 0;
+    }
+    memset(blk + pos, 0, 56 - pos);
+    fu_store_be64(blk + 56, total_bits);
+    fu_sha1_block_hw(st, blk);
+}
+
+static void fu_sha1_v5_hw(unsigned char b[16], const unsigned char ns[16], const char *name, size_t nl) {
+    uint32_t st[5] = { 0x67452301U, 0xEFCDAB89U, 0x98BADCFEU, 0x10325476U, 0xC3D2E1F0U };
+    if (EXPECTED(nl <= 39)) {
+        unsigned char blk[64];
+        memcpy(blk, ns, 16);
+        if (nl) memcpy(blk + 16, name, nl);
+        blk[16 + nl] = 0x80;
+        memset(blk + 17 + nl, 0, 56 - (17 + nl));
+        fu_store_be64(blk + 56, ((uint64_t)(16 + nl)) << 3);
+        fu_sha1_block_hw(st, blk);
+    } else {
+        fu_sha1_process_hw(st, ns, 16, (const unsigned char *)name, nl);
+    }
+    fu_store_be32(b,      st[0]);
+    fu_store_be32(b + 4,  st[1]);
+    fu_store_be32(b + 8,  st[2]);
+    fu_store_be32(b + 12, st[3]);
+    b[6] = (b[6] & 0x0f) | 0x50;
+    b[8] = (b[8] & 0x3f) | 0x80;
+}
+
+static int fu_sha1_selftest(void) {
+    static const unsigned char exp_empty[20] = {
+        0xda,0x39,0xa3,0xee,0x5e,0x6b,0x4b,0x0d,0x32,0x55,
+        0xbf,0xef,0x95,0x60,0x18,0x90,0xaf,0xd8,0x07,0x09
+    };
+    static const unsigned char exp_abc[20] = {
+        0xa9,0x99,0x3e,0x36,0x47,0x06,0x81,0x6a,0xba,0x3e,
+        0x25,0x71,0x78,0x50,0xc2,0x6c,0x9c,0xd0,0xd8,0x9d
+    };
+    static const char msg56[] = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    static const unsigned char exp_56[20] = {
+        0x84,0x98,0x3e,0x44,0x1c,0x3b,0xd2,0x6e,0xba,0xae,
+        0x4a,0xa1,0xf9,0x51,0x29,0xe5,0xe5,0x46,0x70,0xf1
+    };
+    static const unsigned char ns_dns[16] = {
+        0x6b,0xa7,0xb8,0x10,0x9d,0xad,0x11,0xd1,0x80,0xb4,0x00,0xc0,0x4f,0xd4,0x30,0xc8
+    };
+    static const unsigned char exp_v5[16] = {
+        0x2e,0xd6,0x65,0x7d,0xe9,0x27,0x56,0x8b,0x95,0xe1,0x26,0x65,0xa8,0xae,0xa6,0xa2
+    };
+    const struct { const char *msg; size_t len; const unsigned char *exp; } kat[3] = {
+        { "",    0,  exp_empty },
+        { "abc", 3,  exp_abc },
+        { msg56, 56, exp_56 },
+    };
+    for (int i = 0; i < 3; i++) {
+        uint32_t st[5] = { 0x67452301U, 0xEFCDAB89U, 0x98BADCFEU, 0x10325476U, 0xC3D2E1F0U };
+        unsigned char dig[20];
+        fu_sha1_process_hw(st, (const unsigned char *)kat[i].msg, kat[i].len, NULL, 0);
+        for (int j = 0; j < 5; j++) fu_store_be32(dig + j * 4, st[j]);
+        if (memcmp(dig, kat[i].exp, 20) != 0) return 0;
+    }
+    unsigned char v5[16];
+    fu_sha1_v5_hw(v5, ns_dns, "www.example.com", 15);
+    return memcmp(v5, exp_v5, 16) == 0;
+}
+#endif /* FU_HAVE_SHA1_HW */
+
+#ifndef WORDS_BIGENDIAN
+static zend_always_inline uint32_t fu_rotl32(uint32_t x, int s) {
+    return (x << s) | (x >> (32 - s));
+}
+
+# define FU_MD5_STEP(f, a, b, c, d, x, s, ac) do { \
+    (a) += f((b), (c), (d)) + (x) + (uint32_t)(ac); \
+    (a) = fu_rotl32((a), (s)) + (b); \
+} while (0)
+# define FU_MD5_F(x, y, z) (((x) & (y)) | (~(x) & (z)))
+# define FU_MD5_G(x, y, z) (((x) & (z)) | ((y) & ~(z)))
+# define FU_MD5_H(x, y, z) ((x) ^ (y) ^ (z))
+# define FU_MD5_I(x, y, z) ((y) ^ ((x) | ~(z)))
+
+static void fu_md5_block(uint32_t st[4], const unsigned char blk[64]) {
+    uint32_t x[16];
+    memcpy(x, blk, 64);
+    uint32_t a = st[0], b = st[1], c = st[2], d = st[3];
+
+    FU_MD5_STEP(FU_MD5_F, a, b, c, d, x[ 0],  7, 0xd76aa478U);
+    FU_MD5_STEP(FU_MD5_F, d, a, b, c, x[ 1], 12, 0xe8c7b756U);
+    FU_MD5_STEP(FU_MD5_F, c, d, a, b, x[ 2], 17, 0x242070dbU);
+    FU_MD5_STEP(FU_MD5_F, b, c, d, a, x[ 3], 22, 0xc1bdceeeU);
+    FU_MD5_STEP(FU_MD5_F, a, b, c, d, x[ 4],  7, 0xf57c0fafU);
+    FU_MD5_STEP(FU_MD5_F, d, a, b, c, x[ 5], 12, 0x4787c62aU);
+    FU_MD5_STEP(FU_MD5_F, c, d, a, b, x[ 6], 17, 0xa8304613U);
+    FU_MD5_STEP(FU_MD5_F, b, c, d, a, x[ 7], 22, 0xfd469501U);
+    FU_MD5_STEP(FU_MD5_F, a, b, c, d, x[ 8],  7, 0x698098d8U);
+    FU_MD5_STEP(FU_MD5_F, d, a, b, c, x[ 9], 12, 0x8b44f7afU);
+    FU_MD5_STEP(FU_MD5_F, c, d, a, b, x[10], 17, 0xffff5bb1U);
+    FU_MD5_STEP(FU_MD5_F, b, c, d, a, x[11], 22, 0x895cd7beU);
+    FU_MD5_STEP(FU_MD5_F, a, b, c, d, x[12],  7, 0x6b901122U);
+    FU_MD5_STEP(FU_MD5_F, d, a, b, c, x[13], 12, 0xfd987193U);
+    FU_MD5_STEP(FU_MD5_F, c, d, a, b, x[14], 17, 0xa679438eU);
+    FU_MD5_STEP(FU_MD5_F, b, c, d, a, x[15], 22, 0x49b40821U);
+
+    FU_MD5_STEP(FU_MD5_G, a, b, c, d, x[ 1],  5, 0xf61e2562U);
+    FU_MD5_STEP(FU_MD5_G, d, a, b, c, x[ 6],  9, 0xc040b340U);
+    FU_MD5_STEP(FU_MD5_G, c, d, a, b, x[11], 14, 0x265e5a51U);
+    FU_MD5_STEP(FU_MD5_G, b, c, d, a, x[ 0], 20, 0xe9b6c7aaU);
+    FU_MD5_STEP(FU_MD5_G, a, b, c, d, x[ 5],  5, 0xd62f105dU);
+    FU_MD5_STEP(FU_MD5_G, d, a, b, c, x[10],  9, 0x02441453U);
+    FU_MD5_STEP(FU_MD5_G, c, d, a, b, x[15], 14, 0xd8a1e681U);
+    FU_MD5_STEP(FU_MD5_G, b, c, d, a, x[ 4], 20, 0xe7d3fbc8U);
+    FU_MD5_STEP(FU_MD5_G, a, b, c, d, x[ 9],  5, 0x21e1cde6U);
+    FU_MD5_STEP(FU_MD5_G, d, a, b, c, x[14],  9, 0xc33707d6U);
+    FU_MD5_STEP(FU_MD5_G, c, d, a, b, x[ 3], 14, 0xf4d50d87U);
+    FU_MD5_STEP(FU_MD5_G, b, c, d, a, x[ 8], 20, 0x455a14edU);
+    FU_MD5_STEP(FU_MD5_G, a, b, c, d, x[13],  5, 0xa9e3e905U);
+    FU_MD5_STEP(FU_MD5_G, d, a, b, c, x[ 2],  9, 0xfcefa3f8U);
+    FU_MD5_STEP(FU_MD5_G, c, d, a, b, x[ 7], 14, 0x676f02d9U);
+    FU_MD5_STEP(FU_MD5_G, b, c, d, a, x[12], 20, 0x8d2a4c8aU);
+
+    FU_MD5_STEP(FU_MD5_H, a, b, c, d, x[ 5],  4, 0xfffa3942U);
+    FU_MD5_STEP(FU_MD5_H, d, a, b, c, x[ 8], 11, 0x8771f681U);
+    FU_MD5_STEP(FU_MD5_H, c, d, a, b, x[11], 16, 0x6d9d6122U);
+    FU_MD5_STEP(FU_MD5_H, b, c, d, a, x[14], 23, 0xfde5380cU);
+    FU_MD5_STEP(FU_MD5_H, a, b, c, d, x[ 1],  4, 0xa4beea44U);
+    FU_MD5_STEP(FU_MD5_H, d, a, b, c, x[ 4], 11, 0x4bdecfa9U);
+    FU_MD5_STEP(FU_MD5_H, c, d, a, b, x[ 7], 16, 0xf6bb4b60U);
+    FU_MD5_STEP(FU_MD5_H, b, c, d, a, x[10], 23, 0xbebfbc70U);
+    FU_MD5_STEP(FU_MD5_H, a, b, c, d, x[13],  4, 0x289b7ec6U);
+    FU_MD5_STEP(FU_MD5_H, d, a, b, c, x[ 0], 11, 0xeaa127faU);
+    FU_MD5_STEP(FU_MD5_H, c, d, a, b, x[ 3], 16, 0xd4ef3085U);
+    FU_MD5_STEP(FU_MD5_H, b, c, d, a, x[ 6], 23, 0x04881d05U);
+    FU_MD5_STEP(FU_MD5_H, a, b, c, d, x[ 9],  4, 0xd9d4d039U);
+    FU_MD5_STEP(FU_MD5_H, d, a, b, c, x[12], 11, 0xe6db99e5U);
+    FU_MD5_STEP(FU_MD5_H, c, d, a, b, x[15], 16, 0x1fa27cf8U);
+    FU_MD5_STEP(FU_MD5_H, b, c, d, a, x[ 2], 23, 0xc4ac5665U);
+
+    FU_MD5_STEP(FU_MD5_I, a, b, c, d, x[ 0],  6, 0xf4292244U);
+    FU_MD5_STEP(FU_MD5_I, d, a, b, c, x[ 7], 10, 0x432aff97U);
+    FU_MD5_STEP(FU_MD5_I, c, d, a, b, x[14], 15, 0xab9423a7U);
+    FU_MD5_STEP(FU_MD5_I, b, c, d, a, x[ 5], 21, 0xfc93a039U);
+    FU_MD5_STEP(FU_MD5_I, a, b, c, d, x[12],  6, 0x655b59c3U);
+    FU_MD5_STEP(FU_MD5_I, d, a, b, c, x[ 3], 10, 0x8f0ccc92U);
+    FU_MD5_STEP(FU_MD5_I, c, d, a, b, x[10], 15, 0xffeff47dU);
+    FU_MD5_STEP(FU_MD5_I, b, c, d, a, x[ 1], 21, 0x85845dd1U);
+    FU_MD5_STEP(FU_MD5_I, a, b, c, d, x[ 8],  6, 0x6fa87e4fU);
+    FU_MD5_STEP(FU_MD5_I, d, a, b, c, x[15], 10, 0xfe2ce6e0U);
+    FU_MD5_STEP(FU_MD5_I, c, d, a, b, x[ 6], 15, 0xa3014314U);
+    FU_MD5_STEP(FU_MD5_I, b, c, d, a, x[13], 21, 0x4e0811a1U);
+    FU_MD5_STEP(FU_MD5_I, a, b, c, d, x[ 4],  6, 0xf7537e82U);
+    FU_MD5_STEP(FU_MD5_I, d, a, b, c, x[11], 10, 0xbd3af235U);
+    FU_MD5_STEP(FU_MD5_I, c, d, a, b, x[ 2], 15, 0x2ad7d2bbU);
+    FU_MD5_STEP(FU_MD5_I, b, c, d, a, x[ 9], 21, 0xeb86d391U);
+
+    st[0] += a; st[1] += b; st[2] += c; st[3] += d;
+}
+
+# undef FU_MD5_STEP
+# undef FU_MD5_F
+# undef FU_MD5_G
+# undef FU_MD5_H
+# undef FU_MD5_I
+
+static zend_never_inline void fu_md5_process(
+    uint32_t st[4], const unsigned char ns[16], const unsigned char *name, size_t nl) {
+    unsigned char blk[64];
+    uint64_t total_bits = ((uint64_t)16 + (uint64_t)nl) << 3;
+    memcpy(blk, ns, 16);
+    size_t pos = 16;
+    if (nl >= 48) {
+        memcpy(blk + 16, name, 48);
+        fu_md5_block(st, blk);
+        name += 48; nl -= 48;
+        while (nl >= 64) {
+            fu_md5_block(st, name);
+            name += 64; nl -= 64;
+        }
+        if (nl > 0) memcpy(blk, name, nl);
+        pos = nl;
+    } else if (nl > 0) {
+        memcpy(blk + 16, name, nl);
+        pos = 16 + nl;
+    }
+    blk[pos++] = 0x80;
+    if (pos > 56) {
+        memset(blk + pos, 0, 64 - pos);
+        fu_md5_block(st, blk);
+        pos = 0;
+    }
+    memset(blk + pos, 0, 56 - pos);
+    memcpy(blk + 56, &total_bits, 8);
+    fu_md5_block(st, blk);
+}
+
+static void fu_md5_v3(unsigned char b[16], const unsigned char ns[16], const char *name, size_t nl) {
+    uint32_t st[4] = { 0x67452301U, 0xEFCDAB89U, 0x98BADCFEU, 0x10325476U };
+    if (EXPECTED(nl <= 39)) {
+        unsigned char blk[64];
+        uint64_t total_bits = ((uint64_t)16 + (uint64_t)nl) << 3;
+        memcpy(blk, ns, 16);
+        if (nl) memcpy(blk + 16, name, nl);
+        blk[16 + nl] = 0x80;
+        memset(blk + 17 + nl, 0, 56 - (17 + nl));
+        memcpy(blk + 56, &total_bits, 8);
+        fu_md5_block(st, blk);
+    } else {
+        fu_md5_process(st, ns, (const unsigned char *)name, nl);
+    }
+    memcpy(b, st, 16);
+    b[6] = (b[6] & 0x0f) | 0x30;
+    b[8] = (b[8] & 0x3f) | 0x80;
+}
+#endif /* !WORDS_BIGENDIAN */
+
+/* ------------------------------------------------------------------ */
 /* generators                                                         */
 /* ------------------------------------------------------------------ */
 
 /* RFC 9562 version nibble (high of b[6]) + RFC variant bits on b[8]. */
-static inline void fu_set_ver_var(unsigned char *b, unsigned char ver_hi) {
+static zend_always_inline void fu_set_ver_var(unsigned char *b, unsigned char ver_hi) {
     b[6] = (b[6] & 0x0f) | ver_hi;
     b[8] = (b[8] & 0x3f) | 0x80;
 }
 
-static zend_result fu_gen_v4(unsigned char *b) {
+static zend_always_inline zend_result fu_gen_v4(unsigned char *b) {
     if (fu_rand(b, 16) == FAILURE) return FAILURE;
     fu_set_ver_var(b, 0x40);
     return SUCCESS;
 }
 
-static zend_result fu_gen_v4_fast(unsigned char *b) {
-    uint64_t a = fu_xs_next();
-    if (UNEXPECTED(EG(exception))) return FAILURE; /* first call seeds from the CSPRNG */
-    uint64_t c = fu_xs_next();
+static zend_always_inline zend_result fu_gen_v4_fast(unsigned char *b) {
+    uint64_t *s = FAST_UUID_G(prng_s);
+    if (UNEXPECTED(!FAST_UUID_G(prng_seeded))) {
+        if (fu_xs_seed(s) == FAILURE) return FAILURE;
+    }
+    uint64_t a = fu_xs_next_raw(s);
+    uint64_t c = fu_xs_next_raw(s);
     memcpy(b, &a, 8); memcpy(b + 8, &c, 8);
     fu_set_ver_var(b, 0x40);
     return SUCCESS;
 }
 
 /* Randomize clock_seq and node in one CSPRNG draw when neither is supplied. */
-static zend_result fu_lay_clockseq_node(unsigned char *b, const unsigned char *node, int clockseq) {
+static zend_always_inline zend_result fu_lay_clockseq_node(unsigned char *b, const unsigned char *node, int clockseq) {
+    if (EXPECTED(clockseq < 0 && !node)) {
+        if (fu_rand(b + 8, 8) == FAILURE) return FAILURE;
+        b[8]  = (b[8] & 0x3f) | 0x80;
+        b[10] |= 0x01; /* multicast bit per RFC 9562 */
+        return SUCCESS;
+    }
     unsigned char rnode[6];
-    if (clockseq < 0 && !node) {
-        unsigned char r[8];
-        if (fu_rand(r, 8) == FAILURE) return FAILURE;
-        memcpy(rnode, r, 6); rnode[0] |= 0x01; node = rnode; /* multicast bit per RFC 9562 */
-        clockseq = ((r[6] << 8) | r[7]) & 0x3fff;
-    } else {
-        if (clockseq < 0) { unsigned char rc[2]; if (fu_rand(rc, 2) == FAILURE) return FAILURE; clockseq = ((rc[0]<<8)|rc[1]) & 0x3fff; }
-        if (!node)        { if (fu_rand(rnode, 6) == FAILURE) return FAILURE; rnode[0] |= 0x01; node = rnode; }
+    if (clockseq < 0) {
+        unsigned char rc[2];
+        if (fu_rand(rc, 2) == FAILURE) return FAILURE;
+        clockseq = ((rc[0] << 8) | rc[1]) & 0x3fff;
+    }
+    if (!node) {
+        if (fu_rand(rnode, 6) == FAILURE) return FAILURE;
+        rnode[0] |= 0x01;
+        node = rnode;
     }
     b[8] = ((clockseq >> 8) & 0x3f) | 0x80; /* variant + clock_seq_hi */
     b[9] = clockseq & 0xff;                 /* clock_seq_low */
@@ -798,13 +1778,12 @@ static zend_result fu_lay_clockseq_node(unsigned char *b, const unsigned char *n
 
 /* Lay out a v1 UUID from a Gregorian 100ns timestamp. Pass node = NULL or
    clockseq = -1 to randomize that field. */
-static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
-    uint32_t tl = (uint32_t)(g & 0xffffffffULL);
-    uint16_t tm = (uint16_t)((g >> 32) & 0xffff);
-    uint16_t th = (uint16_t)((g >> 48) & 0x0fff) | 0x1000; /* version 1 */
-    b[0]=tl>>24; b[1]=tl>>16; b[2]=tl>>8; b[3]=tl;
-    b[4]=tm>>8;  b[5]=tm;
-    b[6]=th>>8;  b[7]=th;
+static zend_always_inline zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
+    uint64_t hi = ((g & 0xffffffffULL) << 32)
+                | ((g >> 16) & 0xffff0000ULL)
+                | 0x1000ULL
+                | ((g >> 48) & 0x0fffULL);
+    fu_store_be64(b, hi);
     return fu_lay_clockseq_node(b, node, clockseq);
 }
 
@@ -813,14 +1792,8 @@ static zend_result fu_lay_v1(unsigned char *b, uint64_t g, const unsigned char *
    single-threaded MINIT; pre-Win8 falls back to GetSystemTimeAsFileTime. */
 typedef void (WINAPI *fu_precise_time_fn)(LPFILETIME);
 static fu_precise_time_fn fu_precise_time = NULL;
-#endif
 
-/* Wall-clock nanoseconds since the Unix epoch. POSIX uses CLOCK_REALTIME;
-   Windows has no clock_gettime, so it reads GetSystemTimePreciseAsFileTime
-   (100ns FILETIME ticks since 1601-01-01), which keeps sub-microsecond
-   resolution for the v7 sub-ms field. */
-static inline zend_result fu_unix_nanos(uint64_t *out) {
-#ifdef PHP_WIN32
+static zend_always_inline zend_result fu_win_unix_t100(uint64_t *out) {
     FILETIME ft;
     if (fu_precise_time) {
         fu_precise_time(&ft);
@@ -828,44 +1801,78 @@ static inline zend_result fu_unix_nanos(uint64_t *out) {
         GetSystemTimeAsFileTime(&ft);
     }
     uint64_t t100 = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-    if (t100 < 116444736000000000ULL) {
+    if (UNEXPECTED(t100 < 116444736000000000ULL)) {
         zend_throw_exception(fu_ex_unsupported, "System clock is before the Unix epoch", 0);
         return FAILURE;
     }
     t100 -= 116444736000000000ULL; /* 1601-01-01 .. 1970-01-01 in 100ns ticks */
-    if (t100 > UINT64_MAX / 100ULL) { /* nanosecond product would wrap (~year 2554) */
+    if (UNEXPECTED(t100 > UINT64_MAX / 100ULL)) { /* nanosecond product would wrap (~year 2554) */
         zend_throw_exception(fu_ex_unsupported, "System clock too far in the future for nanosecond representation", 0);
         return FAILURE;
     }
-    *out = t100 * 100ULL;
+    *out = t100;
     return SUCCESS;
+}
 #else
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        zend_throw_exception_ex(fu_ex_unsupported, 0, "clock_gettime(CLOCK_REALTIME) failed: %s", strerror(errno));
-        return FAILURE;
+static zend_never_inline zend_result fu_clock_fail(int err) {
+    zend_throw_exception_ex(fu_ex_unsupported, 0, "clock_gettime(CLOCK_REALTIME) failed: %s", strerror(err));
+    return FAILURE;
+}
+
+static zend_always_inline zend_result fu_posix_clock(struct timespec *ts) {
+    if (UNEXPECTED(clock_gettime(CLOCK_REALTIME, ts) != 0)) {
+        return fu_clock_fail(errno);
     }
-    if (ts.tv_sec < 0) {
+    if (UNEXPECTED(ts->tv_sec < 0)) {
         zend_throw_exception(fu_ex_unsupported, "System clock is before the Unix epoch", 0);
         return FAILURE;
     }
-    if ((uint64_t)ts.tv_sec > (UINT64_MAX - (uint64_t)ts.tv_nsec) / 1000000000ULL) { /* wraps ~year 2554 */
+    if (UNEXPECTED((uint64_t)ts->tv_sec >= 18446744073ULL
+        && (uint64_t)ts->tv_sec > (UINT64_MAX - (uint64_t)ts->tv_nsec) / 1000000000ULL)) {
         zend_throw_exception(fu_ex_unsupported, "System clock too far in the future for nanosecond representation", 0);
         return FAILURE;
     }
-    *out = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    return SUCCESS;
+}
+#endif
+
+static zend_always_inline zend_result fu_v7_now_key(uint64_t *key_out) {
+#ifdef PHP_WIN32
+    uint64_t t100;
+    if (fu_win_unix_t100(&t100) == FAILURE) return FAILURE;
+    uint64_t ms = t100 / 10000ULL;
+    uint32_t rem = (uint32_t)(t100 - ms * 10000ULL);
+    uint32_t sub = (rem << 12) / 10000U;
+    *key_out = (ms << 12) | sub;
+    return SUCCESS;
+#else
+    struct timespec ts;
+    if (fu_posix_clock(&ts) == FAILURE) return FAILURE;
+    uint32_t ns32 = (uint32_t)ts.tv_nsec;
+    uint32_t sub_ms = ns32 / 1000000U;
+    uint32_t rem_ns = ns32 - sub_ms * 1000000U;
+    uint64_t ms = (uint64_t)ts.tv_sec * 1000ULL + sub_ms;
+    uint32_t sub = (rem_ns << 12) / 1000000U;
+    *key_out = (ms << 12) | sub;
     return SUCCESS;
 #endif
 }
 
-static inline zend_result fu_greg_now(uint64_t *out) {
-    uint64_t ns;
-    if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
-    *out = (ns / 100ULL) + FU_GREG_UNIX_EPOCH;
+static zend_always_inline zend_result fu_greg_now(uint64_t *out) {
+#ifdef PHP_WIN32
+    uint64_t t100;
+    if (fu_win_unix_t100(&t100) == FAILURE) return FAILURE;
+    *out = t100 + FU_GREG_UNIX_EPOCH;
     return SUCCESS;
+#else
+    struct timespec ts;
+    if (fu_posix_clock(&ts) == FAILURE) return FAILURE;
+    *out = (uint64_t)ts.tv_sec * 10000000ULL + ((uint32_t)ts.tv_nsec / 100U) + FU_GREG_UNIX_EPOCH;
+    return SUCCESS;
+#endif
 }
 
-static inline zend_result fu_greg_monotonic(uint64_t *out) {
+static zend_always_inline zend_result fu_greg_monotonic(uint64_t *out) {
     uint64_t g;
     if (fu_greg_now(&g) == FAILURE) return FAILURE;
     if (g <= FAST_UUID_G(greg_last)) {
@@ -902,32 +1909,29 @@ static inline zend_result fu_v2_monotonic(uint64_t *out) {
     return SUCCESS;
 }
 
-static zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+static zend_always_inline zend_result fu_gen_v1_ex(unsigned char *b, const unsigned char *node, int clockseq) {
     uint64_t g;
     if (fu_greg_monotonic(&g) == FAILURE) return FAILURE;
     return fu_lay_v1(b, g, node, clockseq);
 }
 
-static zend_result fu_gen_v1(unsigned char *b) { return fu_gen_v1_ex(b, NULL, -1); }
+static zend_always_inline zend_result fu_gen_v1(unsigned char *b) { return fu_gen_v1_ex(b, NULL, -1); }
 
 /* v6 stores the 60-bit Gregorian timestamp most-significant-first across
    bytes 0..7. */
-static zend_result fu_lay_v6(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
-    uint64_t t60 = g & ((1ULL << 60) - 1);
-    b[0]=(t60>>52)&0xff; b[1]=(t60>>44)&0xff; b[2]=(t60>>36)&0xff; b[3]=(t60>>28)&0xff;
-    b[4]=(t60>>20)&0xff; b[5]=(t60>>12)&0xff;
-    b[6]=0x60 | ((t60>>8)&0x0f); /* version 6 */
-    b[7]=t60 & 0xff;
+static zend_always_inline zend_result fu_lay_v6(unsigned char *b, uint64_t g, const unsigned char *node, int clockseq) {
+    uint64_t hi = ((g & 0x0ffffffffffff000ULL) << 4) | 0x6000ULL | (g & 0x0fffULL);
+    fu_store_be64(b, hi);
     return fu_lay_clockseq_node(b, node, clockseq);
 }
 
-static zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
+static zend_always_inline zend_result fu_gen_v6_ex(unsigned char *b, const unsigned char *node, int clockseq) {
     uint64_t g;
     if (fu_greg_monotonic(&g) == FAILURE) return FAILURE;
     return fu_lay_v6(b, g, node, clockseq);
 }
 
-static zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1); }
+static zend_always_inline zend_result fu_gen_v6(unsigned char *b) { return fu_gen_v6_ex(b, NULL, -1); }
 
 /* DCE Security (v2): v1 time layout, but time_low := local identifier and
    clock_seq_low := local domain; version nibble = 2. The low 32 timestamp bits
@@ -957,26 +1961,26 @@ static zend_result fu_gen_v2(unsigned char *b, uint32_t local_id, unsigned char 
 /* rand_a holds 12 bits of sub-millisecond clock precision (RFC 9562 6.2,
    Method 3): floor(fraction_of_ms * 4096). rand_b (62 bits) carries the
    monotonic counter / randomness. */
-static zend_result fu_lay_v7(unsigned char *b, uint64_t ms, uint64_t sub, uint64_t randb) {
-    b[0]=(ms>>40)&0xff; b[1]=(ms>>32)&0xff; b[2]=(ms>>24)&0xff;
-    b[3]=(ms>>16)&0xff; b[4]=(ms>>8)&0xff;  b[5]=ms&0xff;
-    b[6]=0x70 | ((sub>>8)&0x0f);
-    b[7]=sub&0xff;
-    b[8]=0x80 | ((randb>>56)&0x3f);
-    b[9]=(randb>>48)&0xff; b[10]=(randb>>40)&0xff; b[11]=(randb>>32)&0xff;
-    b[12]=(randb>>24)&0xff; b[13]=(randb>>16)&0xff; b[14]=(randb>>8)&0xff; b[15]=randb&0xff;
-    return SUCCESS;
+static zend_always_inline void fu_lay_v7_key(unsigned char *b, uint64_t key, uint64_t randb) {
+    uint64_t hi = ((key & 0x0ffffffffffff000ULL) << 4) | 0x7000ULL | (key & 0x0fffULL);
+    uint64_t lo = 0x8000000000000000ULL | randb;
+    fu_store_be64(b, hi);
+    fu_store_be64(b + 8, lo);
 }
 
-static zend_result fu_v7_increment(uint64_t *key, uint64_t *randb) {
+static zend_never_inline zend_result fu_v7_exhausted(void) {
+    zend_throw_exception(fu_ex_unsupported, "UUIDv7 monotonic timestamp exhausted", 0);
+    return FAILURE;
+}
+
+static zend_always_inline zend_result fu_v7_increment(uint64_t *key, uint64_t *randb) {
     unsigned char r[3];
     if (fu_rand(r, sizeof(r)) == FAILURE) return FAILURE;
     uint64_t step = ((uint64_t)r[0] << 16 | (uint64_t)r[1] << 8 | r[2]) + 1;
     uint64_t next = *randb + step; /* 1..2^24, so the 62-bit addition fits uint64_t */
-    if (next > FU_RANDB_MASK) {
+    if (UNEXPECTED(next > FU_RANDB_MASK)) {
         if (UNEXPECTED(*key == ((1ULL << 60) - 1))) {
-            zend_throw_exception(fu_ex_unsupported, "UUIDv7 monotonic timestamp exhausted", 0);
-            return FAILURE;
+            return fu_v7_exhausted();
         }
         (*key)++;
         next &= FU_RANDB_MASK;
@@ -985,7 +1989,7 @@ static zend_result fu_v7_increment(uint64_t *key, uint64_t *randb) {
     return SUCCESS;
 }
 
-static zend_result fu_v7_start(uint64_t *key, uint64_t *randb) {
+static zend_always_inline zend_result fu_v7_start(uint64_t *key, uint64_t *randb) {
     if (!FAST_UUID_G(v7_initialized) || *key > FAST_UUID_G(v7_key)) {
         if (fu_rand_u64(randb) == FAILURE) return FAILURE;
         *randb &= FU_RANDB_MASK;
@@ -999,28 +2003,28 @@ static zend_result fu_v7_start(uint64_t *key, uint64_t *randb) {
 
 /* monotonic v7 using module-global state. The 60-bit time key (ms<<12 | sub)
    gives ~244ns resolution; rand_b advances by random positive steps on ties. */
-static zend_result fu_gen_v7(unsigned char *b) {
-    uint64_t ns;
-    if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
-    uint64_t ms  = ns / 1000000ULL;
-    uint64_t sub = ((ns % 1000000ULL) * 4096ULL) / 1000000ULL; /* 0..4095 */
-    uint64_t key = (ms << 12) | sub;
+static zend_always_inline zend_result fu_gen_v7(unsigned char *b) {
+    uint64_t key;
+    if (fu_v7_now_key(&key) == FAILURE) return FAILURE;
     uint64_t randb;
     if (fu_v7_start(&key, &randb) == FAILURE) return FAILURE;
     FAST_UUID_G(v7_key) = key;
     FAST_UUID_G(v7_randb) = randb;
     FAST_UUID_G(v7_initialized) = 1;
-    return fu_lay_v7(b, key >> 12, key & 0xfff, randb);
+    fu_lay_v7_key(b, key, randb);
+    return SUCCESS;
 }
 
 /* non-monotonic v7 at an explicit timestamp (ms + 12-bit sub-ms fraction) */
-static zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
-    uint64_t randb; if (fu_rand_u64(&randb) == FAILURE) return FAILURE;
+static zend_always_inline zend_result fu_gen_v7_at(unsigned char *b, uint64_t ms, uint64_t sub) {
+    uint64_t randb;
+    if (fu_rand_u64(&randb) == FAILURE) return FAILURE;
     randb &= FU_RANDB_MASK;
-    return fu_lay_v7(b, ms, sub, randb);
+    fu_lay_v7_key(b, (ms << 12) | sub, randb);
+    return SUCCESS;
 }
 
-static int fu_name_len_ok(size_t nl) {
+static zend_always_inline int fu_name_len_ok(size_t nl) {
     if (UNEXPECTED(nl > FU_MAX_NAME_BYTES)) {
         zend_throw_exception_ex(fu_ex_invalid_arg, 0,
             "name is too large (max %u bytes)", FU_MAX_NAME_BYTES);
@@ -1031,6 +2035,9 @@ static int fu_name_len_ok(size_t nl) {
 
 static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
     if (!fu_name_len_ok(nl)) return;
+#ifndef WORDS_BIGENDIAN
+    fu_md5_v3(b, ns, name, nl);
+#else
     PHP_MD5_CTX c; unsigned char d[16];
     PHP_MD5Init(&c);
     PHP_MD5Update(&c, ns, 16);
@@ -1038,10 +2045,17 @@ static void fu_gen_v3(unsigned char *b, const unsigned char ns[16], const char *
     PHP_MD5Final(d, &c);
     memcpy(b, d, 16);
     fu_set_ver_var(b, 0x30);
+#endif
 }
 
 static void fu_gen_v5(unsigned char *b, const unsigned char ns[16], const char *name, size_t nl) {
     if (!fu_name_len_ok(nl)) return;
+#ifdef FU_HAVE_SHA1_HW
+    if (EXPECTED(fu_sha1_active)) {
+        fu_sha1_v5_hw(b, ns, name, nl);
+        return;
+    }
+#endif
     PHP_SHA1_CTX c; unsigned char d[20];
     PHP_SHA1Init(&c);
     PHP_SHA1Update(&c, ns, 16);
@@ -1051,7 +2065,7 @@ static void fu_gen_v5(unsigned char *b, const unsigned char ns[16], const char *
     fu_set_ver_var(b, 0x50);
 }
 
-static void fu_gen_v8(unsigned char *b, const unsigned char *data) {
+static zend_always_inline void fu_gen_v8(unsigned char *b, const unsigned char *data) {
     memcpy(b, data, 16);
     fu_set_ver_var(b, 0x80);
 }
@@ -1092,11 +2106,11 @@ static int fu_from_decimal(const char *s, size_t len, unsigned char out[16]) {
 /* shared helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-static void fu_return_uuid(zval *rv, const unsigned char b[16]) {
+static zend_always_inline void fu_return_uuid(zval *rv, const unsigned char b[16]) {
     if (UNEXPECTED(EG(exception))) return; /* CSPRNG failure during generation */
-    zend_object *o = fu_create(fast_uuid_ce);
-    memcpy(fu_from_zobj(o)->b, b, 16);
-    ZVAL_OBJ(rv, o);
+    fu_obj *u = fu_alloc_obj();
+    memcpy(u->b, b, 16);
+    ZVAL_OBJ(rv, &u->std);
 }
 
 /* Resolve a UUID-valued argument (namespace, equals, compareTo) to 16 bytes.
@@ -1165,9 +2179,9 @@ static int fu_method_may_return(
 }
 
 static zend_function *fu_find_zero_arg_method(
-    zend_class_entry *ce, const char *name, size_t name_len, uint32_t allowed_return_types,
+    zend_class_entry *ce, zend_string *name, uint32_t allowed_return_types,
     zend_class_entry *required_class) {
-    zend_function *method = zend_hash_str_find_ptr(&ce->function_table, name, name_len);
+    zend_function *method = zend_hash_find_ptr(&ce->function_table, name);
     if (method != NULL
         && method->common.required_num_args == 0
         && (method->common.fn_flags & (ZEND_ACC_PUBLIC | ZEND_ACC_ABSTRACT | ZEND_ACC_STATIC)) == ZEND_ACC_PUBLIC
@@ -1180,18 +2194,18 @@ static zend_function *fu_find_zero_arg_method(
 static int fu_resolve_uuid(zval *z, unsigned char ns[16]) {
     if (Z_TYPE_P(z) == IS_OBJECT) {
         zend_class_entry *ce = Z_OBJCE_P(z);
-        if (instanceof_function(ce, fast_uuid_ce)) {
+        if (EXPECTED(ce == fast_uuid_ce)) {
             memcpy(ns, fu_from_zobj(Z_OBJ_P(z))->b, 16);
             return 1;
         }
         zend_function *fn = fu_find_zero_arg_method(
-            ce, "getcore", sizeof("getcore") - 1, MAY_BE_OBJECT, fast_uuid_ce);
+            ce, fu_str_getcore, MAY_BE_OBJECT, fast_uuid_ce);
         if (fn) {
             zval ret;
             ZVAL_UNDEF(&ret);
             zend_call_known_instance_method(fn, Z_OBJ_P(z), &ret, 0, NULL);
             if (!EG(exception)
-                && Z_TYPE(ret) == IS_OBJECT && instanceof_function(Z_OBJCE(ret), fast_uuid_ce)) {
+                && Z_TYPE(ret) == IS_OBJECT && Z_OBJCE(ret) == fast_uuid_ce) {
                 memcpy(ns, fu_from_zobj(Z_OBJ(ret))->b, 16);
                 zval_ptr_dtor(&ret);
                 return 1;
@@ -1454,7 +2468,7 @@ PHP_METHOD(FastUuid_Uuid, uuid1) {
     ZEND_PARSE_PARAMETERS_END();
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
-    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    int cseq = -1; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     unsigned char b[16]; if (fu_gen_v1_ex(b, np, cseq) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
@@ -1478,7 +2492,7 @@ PHP_METHOD(FastUuid_Uuid, uuid2) {
     if (fu_local_id_arg(local_domain, id_str, id_long, id_null, &local_id) == FAILURE) RETURN_THROWS();
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
-    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    int cseq = -1; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     unsigned char b[16];
     /* Apply the high-water mark only to a fully supplied node+clockseq pair;
        defaulted values retain the randomized path without the mark or its drift. */
@@ -1528,7 +2542,7 @@ PHP_METHOD(FastUuid_Uuid, uuid6) {
     ZEND_PARSE_PARAMETERS_END();
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
-    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    int cseq = -1; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     unsigned char b[16]; if (fu_gen_v6_ex(b, np, cseq) == FAILURE) RETURN_THROWS(); fu_return_uuid(return_value, b);
 }
 
@@ -1593,17 +2607,17 @@ PHP_METHOD(FastUuid_Uuid, uuid7) {
 PHP_METHOD(FastUuid_Uuid, uuid8) {
     zend_string *data;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(data) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(data) != 16) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
-    unsigned char b[16];
-    fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
-    fu_return_uuid(return_value, b);
+    if (UNEXPECTED(ZSTR_LEN(data) != 16)) { zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0); RETURN_THROWS(); }
+    fu_obj *u = fu_alloc_obj();
+    fu_gen_v8(u->b, (const unsigned char *)ZSTR_VAL(data));
+    RETURN_OBJ(&u->std);
 }
 
 PHP_METHOD(FastUuid_Uuid, fromString) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
     unsigned char b[16];
-    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) {
+    if (UNEXPECTED(!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b))) {
         zend_throw_exception_ex(fu_ex_invalid_str, 0, "Invalid UUID string (len=%zu)", ZSTR_LEN(s));
         RETURN_THROWS();
     }
@@ -1613,8 +2627,10 @@ PHP_METHOD(FastUuid_Uuid, fromString) {
 PHP_METHOD(FastUuid_Uuid, fromBytes) {
     zend_string *s;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(s) ZEND_PARSE_PARAMETERS_END();
-    if (ZSTR_LEN(s) != 16) { zend_throw_exception(fu_ex_invalid_arg, "UUID bytes must be 16 long", 0); RETURN_THROWS(); }
-    fu_return_uuid(return_value, (const unsigned char *)ZSTR_VAL(s));
+    if (UNEXPECTED(ZSTR_LEN(s) != 16)) { zend_throw_exception(fu_ex_invalid_arg, "UUID bytes must be 16 long", 0); RETURN_THROWS(); }
+    fu_obj *u = fu_alloc_obj();
+    memcpy(u->b, ZSTR_VAL(s), 16);
+    RETURN_OBJ(&u->std);
 }
 
 PHP_METHOD(FastUuid_Uuid, fromInteger) {
@@ -1630,8 +2646,7 @@ PHP_METHOD(FastUuid_Uuid, isValid) {
     bool strict = false;
     ZEND_PARSE_PARAMETERS_START(1, 2) Z_PARAM_STR(s) Z_PARAM_OPTIONAL Z_PARAM_BOOL(strict) ZEND_PARSE_PARAMETERS_END();
     if (strict) RETURN_BOOL(fu_valid_strict(ZSTR_VAL(s), ZSTR_LEN(s)));
-    unsigned char b[16];
-    RETURN_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
+    RETURN_BOOL(fu_valid_tolerant(ZSTR_VAL(s), ZSTR_LEN(s)));
 }
 
 PHP_METHOD(FastUuid_Uuid, fromHexadecimal) {
@@ -1643,26 +2658,25 @@ PHP_METHOD(FastUuid_Uuid, fromHexadecimal) {
         Z_PARAM_BOOL(pad)
     ZEND_PARSE_PARAMETERS_END();
     /* accept a 32-char hex string or any object stringifiable to one (ramsey Type\Hexadecimal) */
+    bool release_s = false;
     if (obj) {
         zval t; ZVAL_OBJ(&t, obj); s = zval_get_string(&t);
         if (EG(exception)) { if (s) zend_string_release(s); RETURN_THROWS(); } /* propagate a throwing __toString */
-    } else {
-        zend_string_addref(s);
+        release_s = true;
     }
     unsigned char b[16];
     size_t len = ZSTR_LEN(s);
     int ok;
     if (pad && len >= 1 && len < 32) {
-        /* A leading '0' keeps fu_parse from reading a prefix or braces, so only hex digits pass. */
         char padded[32];
         memset(padded, '0', 32 - len);
         memcpy(padded + 32 - len, ZSTR_VAL(s), len);
-        ok = fu_parse(padded, 32, b);
+        ok = fu_parse_hex32(padded, b);
     } else {
-        ok = len == 32 && fu_parse(ZSTR_VAL(s), 32, b);
+        ok = len == 32 && fu_parse_hex32(ZSTR_VAL(s), b);
     }
-    zend_string_release(s);
-    if (!ok) {
+    if (release_s) zend_string_release(s);
+    if (UNEXPECTED(!ok)) {
         zend_throw_exception(fu_ex_invalid_str, pad ? "Invalid hexadecimal UUID (expect 1 to 32 hex chars)" : "Invalid hexadecimal UUID (expect 32 hex chars)", 0);
         RETURN_THROWS();
     }
@@ -1683,7 +2697,7 @@ PHP_METHOD(FastUuid_Uuid, fromDateTime) {
 
     unsigned char node[6]; const unsigned char *np;
     if (fu_node_arg(node_str, node_long, node_null, node, &np) == FAILURE) RETURN_THROWS();
-    int cseq; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
+    int cseq = -1; if (fu_clockseq_arg(clockseq, cs_null, &cseq) == FAILURE) RETURN_THROWS();
     /* The v1 timestamp is a 60-bit count of 100ns ticks since 1582-10-15. Bound
        secs first so the multiply can't overflow int64, then range-check the
        Gregorian tick value precisely (valid window ~1582-10-15 .. ~year 5236).
@@ -1734,16 +2748,18 @@ PHP_METHOD(FastUuid_Uuid, getUrn) {
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
     zend_string *s = zend_string_alloc(45, 0);
     memcpy(ZSTR_VAL(s), "urn:uuid:", 9);
-    fu_format36(u->b, ZSTR_VAL(s) + 9); ZSTR_VAL(s)[45] = '\0';
+    if (u->str) {
+        memcpy(ZSTR_VAL(s) + 9, ZSTR_VAL(u->str), 36);
+    } else {
+        fu_format36(u->b, ZSTR_VAL(s) + 9);
+    }
+    ZSTR_VAL(s)[45] = '\0';
     RETURN_STR(s);
 }
 
 PHP_METHOD(FastUuid_Uuid, getVersion) {
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
-    int allz = 1, allf = 1;
-    for (int i = 0; i < 16; i++) { if (u->b[i]) allz = 0; if (u->b[i] != 0xff) allf = 0; }
-    if (allz || allf) RETURN_NULL();
     if ((u->b[8] & 0xC0) != 0x80) RETURN_NULL();
     RETURN_LONG((u->b[6] >> 4) & 0x0f);
 }
@@ -1816,13 +2832,34 @@ PHP_METHOD(FastUuid_Uuid, getDateTime) {
 
 PHP_METHOD(FastUuid_Uuid, getTimestampMillis) {
     ZEND_PARSE_PARAMETERS_NONE();
-    fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
-    int64_t secs; uint32_t micros;
-    if (!fu_decode_time(u->b, &secs, &micros, false)) {
+    const unsigned char *b = fu_from_zobj(Z_OBJ_P(getThis()))->b;
+    if ((b[8] & 0xC0) != 0x80) {
         zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
         RETURN_THROWS();
     }
-    int64_t millis = secs * 1000LL + (int64_t)(micros / 1000);
+    int ver = (b[6] >> 4) & 0x0f;
+    int64_t millis;
+    if (ver == 7) {
+        millis = (int64_t)(((uint64_t)b[0] << 40) | ((uint64_t)b[1] << 32) | ((uint64_t)b[2] << 24)
+                         | ((uint64_t)b[3] << 16) | ((uint64_t)b[4] << 8)  | b[5]);
+    } else if (ver == 1 || ver == 2 || ver == 6) {
+        uint64_t t60;
+        if (ver == 6) {
+            t60 = ((uint64_t)b[0] << 52) | ((uint64_t)b[1] << 44) | ((uint64_t)b[2] << 36)
+                | ((uint64_t)b[3] << 28) | ((uint64_t)b[4] << 20) | ((uint64_t)b[5] << 12)
+                | ((uint64_t)(b[6] & 0x0f) << 8) | b[7];
+        } else {
+            uint64_t th = ((uint64_t)(b[6] & 0x0f) << 8) | b[7];
+            uint64_t tm = ((uint64_t)b[4] << 8) | b[5];
+            uint64_t tl = (ver == 2) ? 0
+                : ((uint64_t)b[0] << 24) | ((uint64_t)b[1] << 16) | ((uint64_t)b[2] << 8) | b[3];
+            t60 = (th << 48) | (tm << 32) | tl;
+        }
+        millis = (int64_t)(t60 / 10000ULL) - (int64_t)(FU_GREG_UNIX_EPOCH / 10000ULL);
+    } else {
+        zend_throw_exception(fu_ex_unsupported, "UUID has no embedded timestamp", 0);
+        RETURN_THROWS();
+    }
     if (millis < (int64_t) ZEND_LONG_MIN || millis > (int64_t) ZEND_LONG_MAX) {
         zend_throw_exception(fu_ex_unsupported, "UUID timestamp cannot be represented as an integer on this PHP build", 0);
         RETURN_THROWS();
@@ -1835,41 +2872,56 @@ PHP_METHOD(FastUuid_Uuid, getFields) {
        that shape, so the core returns a hex array. */
     ZEND_PARSE_PARAMETERS_NONE();
     fu_obj *u = fu_from_zobj(Z_OBJ_P(getThis()));
-    array_init(return_value);
+    array_init_size(return_value, 6);
     char hx[32]; fu_hex32(u->b, hx);
-    char f[13];
-    memcpy(f, hx,     8); f[8]  = 0; add_assoc_string(return_value, "time_low", f);
-    memcpy(f, hx + 8,  4); f[4]  = 0; add_assoc_string(return_value, "time_mid", f);
-    memcpy(f, hx + 12, 4); f[4]  = 0; add_assoc_string(return_value, "time_hi_and_version", f);
-    memcpy(f, hx + 16, 2); f[2]  = 0; add_assoc_string(return_value, "clock_seq_hi_and_reserved", f);
-    memcpy(f, hx + 18, 2); f[2]  = 0; add_assoc_string(return_value, "clock_seq_low", f);
-    memcpy(f, hx + 20, 12); f[12] = 0; add_assoc_string(return_value, "node", f);
+    add_assoc_stringl_ex(return_value, "time_low",                  sizeof("time_low") - 1,                  hx,      8);
+    add_assoc_stringl_ex(return_value, "time_mid",                  sizeof("time_mid") - 1,                  hx + 8,  4);
+    add_assoc_stringl_ex(return_value, "time_hi_and_version",       sizeof("time_hi_and_version") - 1,       hx + 12, 4);
+    add_assoc_stringl_ex(return_value, "clock_seq_hi_and_reserved", sizeof("clock_seq_hi_and_reserved") - 1, hx + 16, 2);
+    add_assoc_stringl_ex(return_value, "clock_seq_low",             sizeof("clock_seq_low") - 1,             hx + 18, 2);
+    add_assoc_stringl_ex(return_value, "node",                      sizeof("node") - 1,                      hx + 20, 12);
+}
+
+static zend_never_inline void fu_equals_slow(zval *return_value, const unsigned char self_b[16], zval *o) {
+    unsigned char b[16];
+    if (!fu_resolve_uuid(o, b)) {
+        if (UNEXPECTED(EG(exception))) return;
+        RETVAL_FALSE;
+        return;
+    }
+    RETVAL_BOOL(memcmp(self_b, b, 16) == 0);
+}
+
+static zend_never_inline void fu_compare_slow(zval *return_value, const unsigned char self_b[16], zval *o) {
+    unsigned char b[16];
+    if (!fu_resolve_uuid(o, b)) {
+        if (UNEXPECTED(EG(exception))) return;
+        zend_throw_exception(fu_ex_invalid_arg, "Not comparable", 0);
+        return;
+    }
+    int r = memcmp(self_b, b, 16);
+    RETVAL_LONG(r < 0 ? -1 : (r > 0 ? 1 : 0));
 }
 
 PHP_METHOD(FastUuid_Uuid, equals) {
     zval *o;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ZVAL(o) ZEND_PARSE_PARAMETERS_END();
     fu_obj *self = fu_from_zobj(Z_OBJ_P(getThis()));
-    unsigned char b[16];
-    if (!fu_resolve_uuid(o, b)) {
-        if (UNEXPECTED(EG(exception))) RETURN_THROWS();
-        RETURN_FALSE;
+    if (EXPECTED(Z_TYPE_P(o) == IS_OBJECT && Z_OBJCE_P(o) == fast_uuid_ce)) {
+        RETURN_BOOL(memcmp(self->b, fu_from_zobj(Z_OBJ_P(o))->b, 16) == 0);
     }
-    RETURN_BOOL(memcmp(self->b, b, 16) == 0);
+    fu_equals_slow(return_value, self->b, o);
 }
 
 PHP_METHOD(FastUuid_Uuid, compareTo) {
     zval *o;
     ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_ZVAL(o) ZEND_PARSE_PARAMETERS_END();
     fu_obj *self = fu_from_zobj(Z_OBJ_P(getThis()));
-    unsigned char b[16];
-    if (!fu_resolve_uuid(o, b)) {
-        if (UNEXPECTED(EG(exception))) RETURN_THROWS();
-        zend_throw_exception(fu_ex_invalid_arg, "Not comparable", 0);
-        RETURN_THROWS();
+    if (EXPECTED(Z_TYPE_P(o) == IS_OBJECT && Z_OBJCE_P(o) == fast_uuid_ce)) {
+        int r = memcmp(self->b, fu_from_zobj(Z_OBJ_P(o))->b, 16);
+        RETURN_LONG(r < 0 ? -1 : (r > 0 ? 1 : 0));
     }
-    int r = memcmp(self->b, b, 16);
-    RETURN_LONG(r < 0 ? -1 : (r > 0 ? 1 : 0));
+    fu_compare_slow(return_value, self->b, o);
 }
 
 PHP_METHOD(FastUuid_Uuid, jsonSerialize) {
@@ -1946,55 +2998,6 @@ static zend_result fu_batch_count_arg(zend_long count, uint32_t *out) {
     return SUCCESS;
 }
 
-static zend_always_inline zend_string *fu_uuid_zstr(const unsigned char b[16], int as_bytes) {
-    if (as_bytes) {
-        return zend_string_init((const char *)b, 16, 0);
-    }
-    zend_string *s = zend_string_alloc(36, 0);
-    fu_format36(b, ZSTR_VAL(s));
-    ZSTR_VAL(s)[36] = '\0';
-    return s;
-}
-
-/* Emit zif_fname and, on 8.4+, its frameless twin; both run `call`, which
-   reads the parsed arguments as lval, str, or str1/str2. */
-#define FU_FN_ARG0(fname, call) \
-PHP_FUNCTION(fname) { \
-    ZEND_PARSE_PARAMETERS_NONE(); \
-    call; \
-} \
-FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 0) { \
-    call; \
-})
-
-#define FU_FN_LONG1(fname, call) \
-PHP_FUNCTION(fname) { \
-    zend_long lval; \
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(lval) ZEND_PARSE_PARAMETERS_END(); \
-    call; \
-} \
-FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 1) { \
-    zend_long lval; \
-    Z_FLF_PARAM_LONG(1, lval); \
-    call; \
-flf_clean: ; \
-})
-
-#define FU_FN_STR1(fname, call) \
-PHP_FUNCTION(fname) { \
-    zend_string *str; \
-    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(str) ZEND_PARSE_PARAMETERS_END(); \
-    call; \
-} \
-FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 1) { \
-    zval str_tmp; \
-    zend_string *str; \
-    Z_FLF_PARAM_STR(1, str, str_tmp); \
-    call; \
-flf_clean: \
-    Z_FLF_PARAM_FREE_STR(1, str_tmp); \
-})
-
 /* A frameless handler receives compiled variables by pointer, not by copy as
    ZPP does. Coercing either argument can run userland (__toString, an error
    handler on the null-argument deprecation) that reassigns the other argument's
@@ -2013,7 +3016,74 @@ static zend_always_inline bool fu_flf_str_owned(zval *arg, zend_string **dest, u
     }
     return true;
 }
+
+static zend_never_inline bool fu_flf_long_slow(zval *arg, zend_long *dest, uint32_t arg_num) {
+    if (!zend_parse_arg_long_ex(arg, dest, /* is_null */ NULL, /* null_check */ false, arg_num, /* frameless */ true)) {
+        zend_wrong_parameter_type_error(arg_num, Z_EXPECTED_LONG, arg);
+        return false;
+    }
+    return true;
+}
 #endif
+
+/* Emit zif_fname and, on 8.4+, its frameless twin; both run `call`, which
+   reads the parsed arguments as lval, str, or str1/str2. Slow coercion paths
+   are outlined so exact-type frameless calls keep minimal stack frames. */
+#define FU_FN_ARG0(fname, call) \
+PHP_FUNCTION(fname) { \
+    ZEND_PARSE_PARAMETERS_NONE(); \
+    call; \
+} \
+FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 0) { \
+    call; \
+})
+
+#define FU_FN_LONG1(fname, call) \
+PHP_FUNCTION(fname) { \
+    zend_long lval; \
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_LONG(lval) ZEND_PARSE_PARAMETERS_END(); \
+    call; \
+} \
+FU_FLF_ONLY( \
+static zend_never_inline void fu_flf_slow_##fname(zval *return_value, zval *arg1) { \
+    zend_long lval; \
+    if (fu_flf_long_slow(arg1, &lval, 1)) { \
+        call; \
+    } \
+} \
+ZEND_FRAMELESS_FUNCTION(fname, 1) { \
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_LONG)) { \
+        zend_long lval = Z_LVAL_P(arg1); \
+        call; \
+        return; \
+    } \
+    fu_flf_slow_##fname(return_value, arg1); \
+})
+
+#define FU_FN_STR1(fname, call) \
+PHP_FUNCTION(fname) { \
+    zend_string *str; \
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_STR(str) ZEND_PARSE_PARAMETERS_END(); \
+    call; \
+} \
+FU_FLF_ONLY( \
+static zend_never_inline void fu_flf_slow_##fname(zval *return_value, zval *arg1) { \
+    zval str_tmp; \
+    zend_string *str; \
+    ZVAL_COPY(&str_tmp, arg1); \
+    if (fu_flf_str_owned(&str_tmp, &str, 1)) { \
+        call; \
+    } \
+    zval_ptr_dtor(&str_tmp); \
+} \
+ZEND_FRAMELESS_FUNCTION(fname, 1) { \
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING)) { \
+        zend_string *str = Z_STR_P(arg1); \
+        call; \
+        return; \
+    } \
+    fu_flf_slow_##fname(return_value, arg1); \
+})
 
 #define FU_FN_STR2(fname, call) \
 PHP_FUNCTION(fname) { \
@@ -2021,15 +3091,10 @@ PHP_FUNCTION(fname) { \
     ZEND_PARSE_PARAMETERS_START(2, 2) Z_PARAM_STR(str1) Z_PARAM_STR(str2) ZEND_PARSE_PARAMETERS_END(); \
     call; \
 } \
-FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 2) { \
-    zend_string *str1, *str2; \
-    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING && Z_TYPE_P(arg2) == IS_STRING)) { \
-        str1 = Z_STR_P(arg1); \
-        str2 = Z_STR_P(arg2); \
-        call; \
-        return; \
-    } \
+FU_FLF_ONLY( \
+static zend_never_inline void fu_flf_slow_##fname(zval *return_value, zval *arg1, zval *arg2) { \
     zval str1_tmp, str2_tmp; \
+    zend_string *str1, *str2; \
     ZVAL_COPY(&str1_tmp, arg1); \
     ZVAL_COPY(&str2_tmp, arg2); \
     if (fu_flf_str_owned(&str1_tmp, &str1, 1) && fu_flf_str_owned(&str2_tmp, &str2, 2)) { \
@@ -2037,18 +3102,58 @@ FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(fname, 2) { \
     } \
     zval_ptr_dtor(&str1_tmp); \
     zval_ptr_dtor(&str2_tmp); \
+} \
+ZEND_FRAMELESS_FUNCTION(fname, 2) { \
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING && Z_TYPE_P(arg2) == IS_STRING)) { \
+        zend_string *str1 = Z_STR_P(arg1); \
+        zend_string *str2 = Z_STR_P(arg2); \
+        call; \
+        return; \
+    } \
+    fu_flf_slow_##fname(return_value, arg1, arg2); \
 })
 
 /* gen always inlines to a direct call: every caller passes a constant. */
 static zend_always_inline void fu_fn_generate(zval *return_value, zend_result (*gen)(unsigned char *), bool as_bytes) {
+    if (as_bytes) {
+        zend_string *out = zend_string_alloc(16, 0);
+        if (UNEXPECTED(gen((unsigned char *)ZSTR_VAL(out)) == FAILURE)) {
+            zend_string_efree(out);
+            return;
+        }
+        ZSTR_VAL(out)[16] = '\0';
+        RETVAL_STR(out);
+        return;
+    }
     unsigned char b[16];
-    if (gen(b) == FAILURE) return;
-    fu_retval_uuid(return_value, b, as_bytes);
+    if (UNEXPECTED(gen(b) == FAILURE)) return;
+    fu_retval_uuid(return_value, b, false);
+}
+
+static zend_never_inline void fu_fn_v4_str_slow(zval *return_value) {
+    unsigned char b[16];
+    if (fu_rand_slow(b, 16) == FAILURE) return;
+    fu_set_ver_var(b, 0x40);
+    fu_retval_uuid(return_value, b, false);
+}
+
+static zend_always_inline void fu_fn_v4_str(zval *return_value) {
+    size_t rpos = FAST_UUID_G(rpos);
+    if (UNEXPECTED(16 > sizeof(FAST_UUID_G(rbuf)) - rpos)) {
+        fu_fn_v4_str_slow(return_value);
+        return;
+    }
+    const unsigned char *raw = FAST_UUID_G(rbuf) + rpos;
+    FAST_UUID_G(rpos) = rpos + 16;
+    zend_string *s = zend_string_alloc(36, 0);
+    fu_format36_v4(raw, ZSTR_VAL(s));
+    ZSTR_VAL(s)[36] = '\0';
+    RETVAL_STR(s);
 }
 
 FU_FN_ARG0(uuid_v1,          fu_fn_generate(return_value, fu_gen_v1, 0))
 FU_FN_ARG0(uuid_v1_bin,      fu_fn_generate(return_value, fu_gen_v1, 1))
-FU_FN_ARG0(uuid_v4,          fu_fn_generate(return_value, fu_gen_v4, 0))
+FU_FN_ARG0(uuid_v4,          fu_fn_v4_str(return_value))
 FU_FN_ARG0(uuid_v4_bin,      fu_fn_generate(return_value, fu_gen_v4, 1))
 FU_FN_ARG0(uuid_v4_fast,     fu_fn_generate(return_value, fu_gen_v4_fast, 0))
 FU_FN_ARG0(uuid_v4_fast_bin, fu_fn_generate(return_value, fu_gen_v4_fast, 1))
@@ -2058,9 +3163,23 @@ FU_FN_ARG0(uuid_v7,          fu_fn_generate(return_value, fu_gen_v7, 0))
 FU_FN_ARG0(uuid_v7_bin,      fu_fn_generate(return_value, fu_gen_v7, 1))
 
 static zend_always_inline void fu_fn_v7_at(zval *return_value, zend_long ms, bool as_bytes) {
+    if (as_bytes) {
+        if (UNEXPECTED(ms < 0 || (uint64_t)ms > FU_MS48_MAX)) {
+            zend_throw_exception(fu_ex_invalid_arg, "v7 millisecond timestamp out of range (0 .. 281474976710655)", 0);
+            return;
+        }
+        zend_string *out = zend_string_alloc(16, 0);
+        if (UNEXPECTED(fu_gen_v7_at((unsigned char *)ZSTR_VAL(out), (uint64_t)ms, 0) == FAILURE)) {
+            zend_string_efree(out);
+            return;
+        }
+        ZSTR_VAL(out)[16] = '\0';
+        RETVAL_STR(out);
+        return;
+    }
     unsigned char b[16];
     if (fu_v7_at_ms(b, ms) == FAILURE) return;
-    fu_retval_uuid(return_value, b, as_bytes);
+    fu_retval_uuid(return_value, b, false);
 }
 
 FU_FN_LONG1(uuid_v7_at,     fu_fn_v7_at(return_value, lval, 0))
@@ -2069,7 +3188,7 @@ FU_FN_LONG1(uuid_v7_at_bin, fu_fn_v7_at(return_value, lval, 1))
 static zend_always_inline void fu_fn_name_based(zval *return_value, zend_string *zns, zend_string *nm,
         void (*gen)(unsigned char *, const unsigned char *, const char *, size_t), bool as_bytes) {
     unsigned char ns[16], b[16];
-    if (!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns)) {
+    if (UNEXPECTED(!fu_parse(ZSTR_VAL(zns), ZSTR_LEN(zns), ns))) {
         zend_throw_exception(fu_ex_invalid_arg, "Invalid namespace", 0);
         return;
     }
@@ -2084,23 +3203,29 @@ FU_FN_STR2(uuid_v5,     fu_fn_name_based(return_value, str1, str2, fu_gen_v5, 0)
 FU_FN_STR2(uuid_v5_bin, fu_fn_name_based(return_value, str1, str2, fu_gen_v5, 1))
 
 static zend_always_inline void fu_fn_v8(zval *return_value, zend_string *data, bool as_bytes) {
-    if (ZSTR_LEN(data) != 16) {
+    if (UNEXPECTED(ZSTR_LEN(data) != 16)) {
         zend_throw_exception(fu_ex_invalid_arg, "uuid8 requires 16 bytes", 0);
+        return;
+    }
+    if (as_bytes) {
+        zend_string *out = zend_string_alloc(16, 0);
+        fu_gen_v8((unsigned char *)ZSTR_VAL(out), (const unsigned char *)ZSTR_VAL(data));
+        ZSTR_VAL(out)[16] = '\0';
+        RETVAL_STR(out);
         return;
     }
     unsigned char b[16];
     fu_gen_v8(b, (const unsigned char *)ZSTR_VAL(data));
-    fu_retval_uuid(return_value, b, as_bytes);
+    fu_retval_uuid(return_value, b, false);
 }
 
 FU_FN_STR1(uuid_v8,     fu_fn_v8(return_value, str, 0))
 FU_FN_STR1(uuid_v8_bin, fu_fn_v8(return_value, str, 1))
 
-/* v4 batch: draw the CSPRNG bytes for FU_V4_CHUNK UUIDs at a time instead of
-   16 bytes per UUID (~8% per UUID on aarch64), then stamp version/variant. */
-#define FU_V4_CHUNK 64
+/* v4 batch: consume CSPRNG bytes directly from rbuf in chunked slices,
+   updating rpos ahead of string allocations and formatting straight into
+   each zend_string without an intermediate stack copy. */
 static zend_result fu_gen_v4_batch_n(zval *arr, uint32_t n, int as_bytes) {
-    unsigned char chunk[FU_V4_CHUNK * 16];
     uint32_t done = 0;
     zend_result rc = SUCCESS;
     zend_hash_real_init_packed(Z_ARRVAL_P(arr));
@@ -2110,16 +3235,36 @@ static zend_result fu_gen_v4_batch_n(zval *arr, uint32_t n, int as_bytes) {
        discards holds exactly the elements added so far. */
     ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(arr)) {
         while (done < n) {
-            uint32_t take = (n - done > FU_V4_CHUNK) ? FU_V4_CHUNK : (n - done);
-            if (fu_rand(chunk, (size_t)take * 16) == FAILURE) {
-                rc = FAILURE;
-                break;
+            size_t rpos = FAST_UUID_G(rpos);
+            uint32_t avail = (uint32_t)((sizeof(FAST_UUID_G(rbuf)) - rpos) / 16);
+            if (UNEXPECTED(avail == 0)) {
+                if (fu_rand_fill(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
+                    rc = FAILURE;
+                    break;
+                }
+                rpos = 0;
+                avail = (uint32_t)(sizeof(FAST_UUID_G(rbuf)) / 16);
             }
-            for (uint32_t i = 0; i < take; i++) {
-                unsigned char *b = chunk + i * 16;
-                fu_set_ver_var(b, 0x40);
-                ZEND_HASH_FILL_SET_STR(fu_uuid_zstr(b, as_bytes));
-                ZEND_HASH_FILL_NEXT();
+            uint32_t take = (n - done < avail) ? (n - done) : avail;
+            const unsigned char *raw = FAST_UUID_G(rbuf) + rpos;
+            FAST_UUID_G(rpos) = rpos + (size_t)take * 16;
+            if (as_bytes) {
+                for (uint32_t i = 0; i < take; i++) {
+                    zend_string *s = zend_string_alloc(16, 0);
+                    memcpy(ZSTR_VAL(s), raw + (size_t)i * 16, 16);
+                    fu_set_ver_var((unsigned char *)ZSTR_VAL(s), 0x40);
+                    ZSTR_VAL(s)[16] = '\0';
+                    ZEND_HASH_FILL_SET_STR(s);
+                    ZEND_HASH_FILL_NEXT();
+                }
+            } else {
+                for (uint32_t i = 0; i < take; i++) {
+                    zend_string *s = zend_string_alloc(36, 0);
+                    fu_format36_v4(raw + (size_t)i * 16, ZSTR_VAL(s));
+                    ZSTR_VAL(s)[36] = '\0';
+                    ZEND_HASH_FILL_SET_STR(s);
+                    ZEND_HASH_FILL_NEXT();
+                }
             }
             done += take;
         }
@@ -2140,32 +3285,138 @@ static zend_always_inline void fu_fn_batch(zval *return_value, zend_long count,
 FU_FN_LONG1(uuid_v4_batch,     fu_fn_batch(return_value, lval, fu_gen_v4_batch_n, 0))
 FU_FN_LONG1(uuid_v4_bin_batch, fu_fn_batch(return_value, lval, fu_gen_v4_batch_n, 1))
 
+static void fu_format_v7_prefix19(uint64_t key, char prefix[19]) {
+    unsigned char hi8[8];
+    uint64_t hi = ((key & 0x0ffffffffffff000ULL) << 4) | 0x7000ULL | (key & 0x0fffULL);
+    fu_store_be64(hi8, hi);
+    const char *L = fu_lut;
+    for (int j = 0; j < 4; j++) { prefix[j*2] = L[hi8[j]*2]; prefix[j*2+1] = L[hi8[j]*2+1]; }
+    prefix[8]  = '-';
+    prefix[9]  = L[hi8[4]*2]; prefix[10] = L[hi8[4]*2+1];
+    prefix[11] = L[hi8[5]*2]; prefix[12] = L[hi8[5]*2+1];
+    prefix[13] = '-';
+    prefix[14] = L[hi8[6]*2]; prefix[15] = L[hi8[6]*2+1];
+    prefix[16] = L[hi8[7]*2]; prefix[17] = L[hi8[7]*2+1];
+    prefix[18] = '-';
+}
+
 /* One clock read per batch, then advance the monotonic (key, rand_b)
    counter: the same output as n fu_gen_v7 calls within one tick. */
 static zend_result fu_gen_v7_batch_n(zval *arr, uint32_t n, int as_bytes) {
-    uint64_t ns;
-    if (fu_unix_nanos(&ns) == FAILURE) return FAILURE;
-    uint64_t ms  = ns / 1000000ULL;
-    uint64_t sub = ((ns % 1000000ULL) * 4096ULL) / 1000000ULL;
-    uint64_t key = (ms << 12) | sub;
-    uint64_t randb;
-
+    uint64_t key, randb;
+    if (fu_v7_now_key(&key) == FAILURE) return FAILURE;
     if (fu_v7_start(&key, &randb) == FAILURE) return FAILURE;
 
     zend_result rc = SUCCESS;
     zend_hash_real_init_packed(Z_ARRVAL_P(arr));
     ZEND_ASSERT(Z_ARRVAL_P(arr)->nTableSize >= n);
     ZEND_HASH_FILL_PACKED(Z_ARRVAL_P(arr)) {
-        for (uint32_t i = 0; i < n; i++) {
-            unsigned char b[16];
-            if (i > 0 && fu_v7_increment(&key, &randb) == FAILURE) {
-                rc = FAILURE;
-                break;
+        if (as_bytes) {
+            uint64_t hi_be = fu_bswap64(((key & 0x0ffffffffffff000ULL) << 4) | 0x7000ULL | (key & 0x0fffULL));
+            {
+                zend_string *s = zend_string_alloc(16, 0);
+                memcpy(ZSTR_VAL(s), &hi_be, 8);
+                fu_store_be64((unsigned char *)ZSTR_VAL(s) + 8, 0x8000000000000000ULL | randb);
+                ZSTR_VAL(s)[16] = '\0';
+                ZEND_HASH_FILL_SET_STR(s);
+                ZEND_HASH_FILL_NEXT();
             }
-            fu_lay_v7(b, key >> 12, key & 0xfff, randb);
-            ZEND_HASH_FILL_SET_STR(fu_uuid_zstr(b, as_bytes));
-            ZEND_HASH_FILL_NEXT();
+            uint32_t rem = n - 1;
+            while (rem > 0) {
+                size_t rpos = FAST_UUID_G(rpos);
+                uint32_t avail = (uint32_t)((sizeof(FAST_UUID_G(rbuf)) - rpos) / 3);
+                if (UNEXPECTED(avail == 0)) {
+                    if (fu_rand_fill(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
+                        rc = FAILURE;
+                        break;
+                    }
+                    rpos = 0;
+                    avail = (uint32_t)(sizeof(FAST_UUID_G(rbuf)) / 3);
+                }
+                uint32_t take = (rem < avail) ? rem : avail;
+                const unsigned char *rp = FAST_UUID_G(rbuf) + rpos;
+                for (uint32_t j = 0; j < take; j++) {
+                    uint64_t step = ((uint64_t)rp[0] << 16 | (uint64_t)rp[1] << 8 | rp[2]) + 1;
+                    rp += 3;
+                    uint64_t next = randb + step;
+                    if (UNEXPECTED(next > FU_RANDB_MASK)) {
+                        if (UNEXPECTED(key == ((1ULL << 60) - 1))) {
+                            FAST_UUID_G(rpos) = (size_t)(rp - FAST_UUID_G(rbuf));
+                            fu_v7_exhausted();
+                            rc = FAILURE;
+                            goto v7_batch_done;
+                        }
+                        key++;
+                        next &= FU_RANDB_MASK;
+                        hi_be = fu_bswap64(((key & 0x0ffffffffffff000ULL) << 4) | 0x7000ULL | (key & 0x0fffULL));
+                    }
+                    randb = next;
+                    zend_string *s = zend_string_alloc(16, 0);
+                    memcpy(ZSTR_VAL(s), &hi_be, 8);
+                    fu_store_be64((unsigned char *)ZSTR_VAL(s) + 8, 0x8000000000000000ULL | randb);
+                    ZSTR_VAL(s)[16] = '\0';
+                    ZEND_HASH_FILL_SET_STR(s);
+                    ZEND_HASH_FILL_NEXT();
+                }
+                FAST_UUID_G(rpos) = (size_t)(rp - FAST_UUID_G(rbuf));
+                rem -= take;
+            }
+        } else {
+            char prefix[19];
+            unsigned char tail8[8];
+            fu_format_v7_prefix19(key, prefix);
+            {
+                fu_store_be64(tail8, 0x8000000000000000ULL | randb);
+                zend_string *s = zend_string_alloc(36, 0);
+                memcpy(ZSTR_VAL(s), prefix, 19);
+                fu_format_v7_tail17(tail8, ZSTR_VAL(s));
+                ZSTR_VAL(s)[36] = '\0';
+                ZEND_HASH_FILL_SET_STR(s);
+                ZEND_HASH_FILL_NEXT();
+            }
+            uint32_t rem = n - 1;
+            while (rem > 0) {
+                size_t rpos = FAST_UUID_G(rpos);
+                uint32_t avail = (uint32_t)((sizeof(FAST_UUID_G(rbuf)) - rpos) / 3);
+                if (UNEXPECTED(avail == 0)) {
+                    if (fu_rand_fill(FAST_UUID_G(rbuf), sizeof(FAST_UUID_G(rbuf))) == FAILURE) {
+                        rc = FAILURE;
+                        break;
+                    }
+                    rpos = 0;
+                    avail = (uint32_t)(sizeof(FAST_UUID_G(rbuf)) / 3);
+                }
+                uint32_t take = (rem < avail) ? rem : avail;
+                const unsigned char *rp = FAST_UUID_G(rbuf) + rpos;
+                for (uint32_t j = 0; j < take; j++) {
+                    uint64_t step = ((uint64_t)rp[0] << 16 | (uint64_t)rp[1] << 8 | rp[2]) + 1;
+                    rp += 3;
+                    uint64_t next = randb + step;
+                    if (UNEXPECTED(next > FU_RANDB_MASK)) {
+                        if (UNEXPECTED(key == ((1ULL << 60) - 1))) {
+                            FAST_UUID_G(rpos) = (size_t)(rp - FAST_UUID_G(rbuf));
+                            fu_v7_exhausted();
+                            rc = FAILURE;
+                            goto v7_batch_done;
+                        }
+                        key++;
+                        next &= FU_RANDB_MASK;
+                        fu_format_v7_prefix19(key, prefix);
+                    }
+                    randb = next;
+                    fu_store_be64(tail8, 0x8000000000000000ULL | randb);
+                    zend_string *s = zend_string_alloc(36, 0);
+                    memcpy(ZSTR_VAL(s), prefix, 19);
+                    fu_format_v7_tail17(tail8, ZSTR_VAL(s));
+                    ZSTR_VAL(s)[36] = '\0';
+                    ZEND_HASH_FILL_SET_STR(s);
+                    ZEND_HASH_FILL_NEXT();
+                }
+                FAST_UUID_G(rpos) = (size_t)(rp - FAST_UUID_G(rbuf));
+                rem -= take;
+            }
         }
+v7_batch_done: ;
     } ZEND_HASH_FILL_END();
     FAST_UUID_G(v7_key) = key;
     FAST_UUID_G(v7_randb) = randb;
@@ -2177,16 +3428,18 @@ FU_FN_LONG1(uuid_v7_batch,     fu_fn_batch(return_value, lval, fu_gen_v7_batch_n
 FU_FN_LONG1(uuid_v7_bin_batch, fu_fn_batch(return_value, lval, fu_gen_v7_batch_n, 1))
 
 static zend_always_inline void fu_fn_to_bin(zval *return_value, zend_string *s) {
-    unsigned char b[16];
-    if (!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b)) {
+    zend_string *out = zend_string_alloc(16, 0);
+    if (UNEXPECTED(!fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), (unsigned char *)ZSTR_VAL(out)))) {
+        zend_string_efree(out);
         zend_throw_exception(fu_ex_invalid_str, "Invalid UUID", 0);
         return;
     }
-    RETVAL_STRINGL((const char *)b, 16);
+    ZSTR_VAL(out)[16] = '\0';
+    RETVAL_STR(out);
 }
 
 static zend_always_inline void fu_fn_from_bin(zval *return_value, zend_string *s) {
-    if (ZSTR_LEN(s) != 16) {
+    if (UNEXPECTED(ZSTR_LEN(s) != 16)) {
         zend_throw_exception(fu_ex_invalid_arg, "Expected 16 bytes", 0);
         return;
     }
@@ -2198,8 +3451,7 @@ static zend_always_inline void fu_fn_is_valid(zval *return_value, zend_string *s
         RETVAL_BOOL(fu_valid_strict(ZSTR_VAL(s), ZSTR_LEN(s)));
         return;
     }
-    unsigned char b[16];
-    RETVAL_BOOL(fu_parse(ZSTR_VAL(s), ZSTR_LEN(s), b));
+    RETVAL_BOOL(fu_valid_tolerant(ZSTR_VAL(s), ZSTR_LEN(s)));
 }
 
 FU_FN_STR1(uuid_to_bin,   fu_fn_to_bin(return_value, str))
@@ -2211,20 +3463,26 @@ PHP_FUNCTION(uuid_is_valid) {
     ZEND_PARSE_PARAMETERS_START(1, 2) Z_PARAM_STR(str) Z_PARAM_OPTIONAL Z_PARAM_BOOL(strict) ZEND_PARSE_PARAMETERS_END();
     fu_fn_is_valid(return_value, str, strict);
 }
-FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 1) {
+FU_FLF_ONLY(
+static zend_never_inline void fu_flf_slow_uuid_is_valid_1(zval *return_value, zval *arg1) {
     zval str_tmp;
     zend_string *str;
-    Z_FLF_PARAM_STR(1, str, str_tmp);
-    fu_fn_is_valid(return_value, str, false);
-flf_clean:
-    Z_FLF_PARAM_FREE_STR(1, str_tmp);
-})
-/* As in FU_FN_STR2: unless both arguments already have their types, pin both before coercing either. */
-FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 2) {
-    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING && (Z_TYPE_P(arg2) == IS_TRUE || Z_TYPE_P(arg2) == IS_FALSE))) {
-        fu_fn_is_valid(return_value, Z_STR_P(arg1), Z_TYPE_P(arg2) == IS_TRUE);
+    ZVAL_COPY(&str_tmp, arg1);
+    if (fu_flf_str_owned(&str_tmp, &str, 1)) {
+        fu_fn_is_valid(return_value, str, false);
+    }
+    zval_ptr_dtor(&str_tmp);
+}
+ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 1) {
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING)) {
+        RETVAL_BOOL(fu_valid_tolerant(Z_STRVAL_P(arg1), Z_STRLEN_P(arg1)));
         return;
     }
+    fu_flf_slow_uuid_is_valid_1(return_value, arg1);
+})
+/* As in FU_FN_STR2: unless both arguments already have their types, pin both before coercing either. */
+FU_FLF_ONLY(
+static zend_never_inline void fu_flf_slow_uuid_is_valid_2(zval *return_value, zval *arg1, zval *arg2) {
     zval str_tmp, strict_tmp;
     ZVAL_COPY(&str_tmp, arg1);
     ZVAL_COPY(&strict_tmp, arg2);
@@ -2239,11 +3497,18 @@ FU_FLF_ONLY(ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 2) {
     }
     zval_ptr_dtor(&str_tmp);
     zval_ptr_dtor(&strict_tmp);
+}
+ZEND_FRAMELESS_FUNCTION(uuid_is_valid, 2) {
+    if (EXPECTED(Z_TYPE_P(arg1) == IS_STRING && (Z_TYPE_P(arg2) == IS_TRUE || Z_TYPE_P(arg2) == IS_FALSE))) {
+        fu_fn_is_valid(return_value, Z_STR_P(arg1), Z_TYPE_P(arg2) == IS_TRUE);
+        return;
+    }
+    fu_flf_slow_uuid_is_valid_2(return_value, arg1, arg2);
 })
 
 static zend_always_inline void fu_fn_random_bytes(zval *return_value, zend_long n) {
-    if (n <= 0) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); return; }
-    if ((zend_ulong)n > FU_MAX_RANDOM_BYTES) { zend_throw_exception_ex(fu_ex_invalid_arg, 0, "length is too large (max %u)", FU_MAX_RANDOM_BYTES); return; }
+    if (UNEXPECTED(n <= 0)) { zend_throw_exception(fu_ex_invalid_arg, "length must be > 0", 0); return; }
+    if (UNEXPECTED((zend_ulong)n > FU_MAX_RANDOM_BYTES)) { zend_throw_exception_ex(fu_ex_invalid_arg, 0, "length is too large (max %u)", FU_MAX_RANDOM_BYTES); return; }
     zend_string *s = zend_string_alloc((size_t)n, 0);
     zend_result result;
     if (UNEXPECTED((size_t)n > sizeof(FAST_UUID_G(rbuf)) / 2 && (size_t)n < sizeof(FAST_UUID_G(rbuf)))) {
@@ -2251,7 +3516,7 @@ static zend_always_inline void fu_fn_random_bytes(zval *return_value, zend_long 
     } else {
         result = fu_rand((unsigned char *)ZSTR_VAL(s), (size_t)n);
     }
-    if (result == FAILURE) { zend_string_release(s); return; }
+    if (UNEXPECTED(result == FAILURE)) { zend_string_efree(s); return; }
     ZSTR_VAL(s)[n] = '\0';
     RETVAL_STR(s);
 }
@@ -2477,6 +3742,10 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     }
 #endif
 
+#ifdef FU_HAVE_SHA1_HW
+    fu_sha1_active = fu_detect_sha1() && fu_sha1_selftest();
+#endif
+
     zend_class_entry *marker_ce = register_class_FastUuid_UuidInterface(php_json_serializable_ce, zend_ce_stringable);
     if (!marker_ce) {
         php_error_docref(NULL, E_WARNING, "fast_uuid: could not register FastUuid\\UuidInterface");
@@ -2493,6 +3762,7 @@ PHP_MINIT_FUNCTION(fast_uuid) {
         return FAILURE;
     }
     fast_uuid_ce->create_object = fu_create;
+    ZEND_ASSERT(fast_uuid_ce->default_properties_count == 0);
 
     memcpy(&fu_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
     fu_handlers.offset             = offsetof(fu_obj, std);
@@ -2502,6 +3772,9 @@ PHP_MINIT_FUNCTION(fast_uuid) {
     fu_handlers.cast_object        = fu_cast;
     fu_handlers.get_debug_info     = fu_get_debug_info;
     fu_handlers.get_properties_for = fu_get_properties_for;
+#if PHP_VERSION_ID >= 80300
+    fast_uuid_ce->default_object_handlers = &fu_handlers;
+#endif
 
     /* exception hierarchy (ramsey/uuid 4.x-shaped): InvalidUuidString <-
        InvalidArgument <- \InvalidArgumentException; UnsupportedOperation <-
@@ -2531,6 +3804,17 @@ PHP_MINIT_FUNCTION(fast_uuid) {
         return FAILURE;
     }
 
+    fu_str_getcore = zend_string_init("getcore", sizeof("getcore") - 1, 1);
+    zend_string_hash_val(fu_str_getcore);
+
+    return SUCCESS;
+}
+
+PHP_MSHUTDOWN_FUNCTION(fast_uuid) {
+    if (fu_str_getcore) {
+        zend_string_release(fu_str_getcore);
+        fu_str_getcore = NULL;
+    }
     return SUCCESS;
 }
 
@@ -2583,7 +3867,7 @@ zend_module_entry fast_uuid_module_entry = {
     "fast_uuid",
     ext_functions,
     PHP_MINIT(fast_uuid),
-    NULL,
+    PHP_MSHUTDOWN(fast_uuid),
     NULL,
     NULL,
     PHP_MINFO(fast_uuid),
