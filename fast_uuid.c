@@ -1290,6 +1290,11 @@ static void fu_atfork_child(void) {
 
 #if defined(FU_SHA1_X86) || defined(FU_SHA1_ARM)
 # define FU_HAVE_SHA1_HW 1
+# ifdef FU_SHA1_X86
+#  define FU_SHA1_NAME "SHA-NI"
+# else
+#  define FU_SHA1_NAME "ARMv8 SHA-1"
+# endif
 static int fu_sha1_active = 0;  /* set once in MINIT after selftest */
 
 static zend_always_inline void fu_store_be32(unsigned char *dst, uint32_t v) {
@@ -3859,6 +3864,22 @@ PHP_MINFO_FUNCTION(fast_uuid) {
         }
         php_info_print_table_row(2, "CSPRNG", rng);
     }
+#ifdef FU_HAVE_SHA1_HW
+    {
+        const char *sha1 = FU_SHA1_NAME;
+        if (!fu_sha1_active) {
+# if defined(FU_SHA1_ARM) && !defined(__linux__) && !defined(__APPLE__)
+            sha1 = "software (SHA-1 detection unsupported on this OS)";
+# else
+            sha1 = fu_detect_sha1() ? "software (SHA-1 known-answer self-test failed)"
+                                    : "software (CPU lacks SHA-1 instructions)";
+# endif
+        }
+        php_info_print_table_row(2, "SHA-1 (v5)", sha1);
+    }
+#else
+    php_info_print_table_row(2, "SHA-1 (v5)", "software (no hardware SHA-1 backend in this build)");
+#endif
     php_info_print_table_end();
 }
 
