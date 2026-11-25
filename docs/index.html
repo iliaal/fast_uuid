@@ -84,7 +84,7 @@ pie install iliaal/fast_uuid
 <span class="cm"># not on Packagist; add it as a Composer path repository from your checkout:</span>
 composer config repositories.fast-uuid-compat path /path/to/fast_uuid/compat
 composer require iliaal/fast-uuid-compat:@dev</pre></div>
-  <p>No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set); v3 and v5 use PHP's bundled MD5 and SHA1.</p>
+  <p>No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set); v3 uses a built-in MD5 (PHP's bundled MD5 on big-endian builds); v5 uses the CPU's SHA-1 instructions (x86 SHA-NI, ARMv8 SHA-1) when the build and CPU support them and their self-test passes, otherwise PHP's bundled SHA-1.</p>
 
   <h2 id="quickstart">Quick start</h2>
   <div class="ex">
