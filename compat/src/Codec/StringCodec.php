@@ -24,7 +24,7 @@ class StringCodec implements CodecInterface
 
     public function decode(string $encoded): UuidInterface
     {
-        return \FastUuid\Compat\AbstractUuid::wrapCore(
+        return \FastUuid\Compat\Internal\Minter::wrapCore(
             \FastUuid\Uuid::fromString($encoded),
             static::class === self::class ? null : $this,
         );
@@ -32,7 +32,7 @@ class StringCodec implements CodecInterface
 
     public function decodeBytes(string $bytes): UuidInterface
     {
-        return \FastUuid\Compat\AbstractUuid::wrapCore(
+        return \FastUuid\Compat\Internal\Minter::wrapCore(
             \FastUuid\Uuid::fromBytes($bytes),
             static::class === self::class ? null : $this,
         );
@@ -40,7 +40,7 @@ class StringCodec implements CodecInterface
 
     final protected function uuidFromBytes(string $bytes): UuidInterface
     {
-        return \FastUuid\Compat\AbstractUuid::wrapCore(
+        return \FastUuid\Compat\Internal\Minter::wrapCore(
             \FastUuid\Uuid::fromBytes($bytes),
             static::class === self::class ? null : $this,
         );
@@ -48,7 +48,7 @@ class StringCodec implements CodecInterface
 
     final protected function uuidFromString(string $uuid): UuidInterface
     {
-        return \FastUuid\Compat\AbstractUuid::wrapCore(
+        return \FastUuid\Compat\Internal\Minter::wrapCore(
             \FastUuid\Uuid::fromString($uuid),
             static::class === self::class ? null : $this,
         );

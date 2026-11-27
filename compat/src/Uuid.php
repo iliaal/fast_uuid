@@ -70,7 +70,7 @@ final class Uuid
     public static function uuid1(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
         if (self::$factory === null) {
-            return AbstractUuid::mintV1($node instanceof Hexadecimal ? $node->toString() : $node, $clockSeq);
+            return Internal\Minter::mintV1($node instanceof Hexadecimal ? $node->toString() : $node, $clockSeq);
         }
         return self::$factory->uuid1($node, $clockSeq);
     }
@@ -89,7 +89,7 @@ final class Uuid
         if (self::$factory === null) {
             if (\is_string($ns)) {
                 try {
-                    return AbstractUuid::mintV3($ns, $name);
+                    return Internal\Minter::mintV3($ns, $name);
                 } catch (\FastUuid\Exception\InvalidArgumentException $e) {
                     if (!\uuid_is_valid($ns)) {
                         throw new \FastUuid\Exception\InvalidUuidStringException(
@@ -101,14 +101,14 @@ final class Uuid
                     throw $e;
                 }
             }
-            return AbstractUuid::mintV3(Internal\WrapperClass::coreFrom($ns), $name);
+            return Internal\Minter::mintV3(Internal\WrapperClass::coreFrom($ns), $name);
         }
         return self::$factory->uuid3($ns, $name);
     }
 
     public static function uuid4(): UuidInterface
     {
-        return self::$factory === null ? AbstractUuid::mintV4() : self::$factory->uuid4();
+        return self::$factory === null ? Internal\Minter::mintV4() : self::$factory->uuid4();
     }
 
     public static function uuid5(UuidInterface|string $ns, string $name): UuidInterface
@@ -116,7 +116,7 @@ final class Uuid
         if (self::$factory === null) {
             if (\is_string($ns)) {
                 try {
-                    return AbstractUuid::mintV5($ns, $name);
+                    return Internal\Minter::mintV5($ns, $name);
                 } catch (\FastUuid\Exception\InvalidArgumentException $e) {
                     if (!\uuid_is_valid($ns)) {
                         throw new \FastUuid\Exception\InvalidUuidStringException(
@@ -128,7 +128,7 @@ final class Uuid
                     throw $e;
                 }
             }
-            return AbstractUuid::mintV5(Internal\WrapperClass::coreFrom($ns), $name);
+            return Internal\Minter::mintV5(Internal\WrapperClass::coreFrom($ns), $name);
         }
         return self::$factory->uuid5($ns, $name);
     }
@@ -136,7 +136,7 @@ final class Uuid
     public static function uuid6(int|string|Hexadecimal|null $node = null, ?int $clockSeq = null): UuidInterface
     {
         if (self::$factory === null) {
-            return AbstractUuid::mintV6($node instanceof Hexadecimal ? $node->toString() : $node, $clockSeq);
+            return Internal\Minter::mintV6($node instanceof Hexadecimal ? $node->toString() : $node, $clockSeq);
         }
         return self::$factory->uuid6($node, $clockSeq);
     }
@@ -144,7 +144,7 @@ final class Uuid
     public static function uuid7(int|\DateTimeInterface|null $dateTime = null): UuidInterface
     {
         if (self::$factory === null) {
-            return AbstractUuid::mintV7($dateTime);
+            return Internal\Minter::mintV7($dateTime);
         }
         if (self::$factory instanceof UuidFactory || \method_exists(self::$factory, 'uuid7')) {
             return self::$factory->uuid7($dateTime);
@@ -155,7 +155,7 @@ final class Uuid
     public static function uuid8(string $bytes): UuidInterface
     {
         if (self::$factory === null) {
-            return AbstractUuid::mintV8($bytes);
+            return Internal\Minter::mintV8($bytes);
         }
         if (\method_exists(self::$factory, 'uuid8')) {
             return self::$factory->uuid8($bytes);
@@ -166,14 +166,14 @@ final class Uuid
     public static function fromString(string $uuid): UuidInterface
     {
         return self::$factory === null
-            ? AbstractUuid::wrapCore(\FastUuid\Uuid::fromString($uuid))
+            ? Internal\Minter::wrapCore(\FastUuid\Uuid::fromString($uuid))
             : self::$factory->fromString($uuid);
     }
 
     public static function fromBytes(string $bytes): UuidInterface
     {
         return self::$factory === null
-            ? AbstractUuid::wrapCore(\FastUuid\Uuid::fromBytes($bytes))
+            ? Internal\Minter::wrapCore(\FastUuid\Uuid::fromBytes($bytes))
             : self::$factory->fromBytes($bytes);
     }
 
