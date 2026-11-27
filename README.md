@@ -23,7 +23,7 @@ Full API reference with runnable examples: [docs/index.html](docs/index.html). B
 
 - PHP 8.1 through 8.6, NTS or ZTS. PHP 8.1/8.2/8.3 build via small `#if PHP_VERSION_ID` polyfills.
 - x86-64 and ARM64 get the SIMD formatter automatically; other architectures fall back to the scalar path. No build flags needed either way.
-- No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 and v5 use PHP's bundled MD5/SHA1.
+- No external libraries. v1 and v6 use an internal RFC-compliant generator with a random node (multicast bit set, per RFC 9562 §5.1). v3 uses a built-in MD5 (PHP's bundled MD5 on big-endian builds). v5 uses the CPU's SHA-1 instructions (x86 SHA-NI, ARMv8 SHA-1) when the build and CPU support them and their self-test passes, otherwise PHP's bundled SHA-1.
 
 ## 📦 Install
 
@@ -54,12 +54,13 @@ make test
 php -d extension="$(pwd)/modules/fast_uuid.so" -r 'echo \FastUuid\Uuid::uuid4(), "\n"; echo uuid_v7(), "\n";'
 ```
 
-The SIMD hex formatter and the AES-256-CTR CSPRNG backend are chosen at runtime from the CPU's feature flags. To build without them, add a define to `CFLAGS` before running `./configure`:
+The SIMD hex formatter, the AES-256-CTR CSPRNG backend, and hardware SHA-1 for v5 are chosen at runtime from the CPU's feature flags. To build without them, add a define to `CFLAGS` before running `./configure`:
 
 - `-DFU_DISABLE_AES` removes only the AES backend; the buffer is refilled from the OS CSPRNG.
-- `-DFU_DISABLE_SSSE3` (x86) or `-DFU_DISABLE_NEON` (ARM64) removes the SIMD formatter and, with it, the AES backend for that architecture.
+- `-DFU_DISABLE_SHA1` removes only hardware SHA-1; v5 uses PHP's bundled SHA-1.
+- `-DFU_DISABLE_SSSE3` (x86) or `-DFU_DISABLE_NEON` (ARM64) removes the SIMD formatter and, with it, the AES and hardware SHA-1 backends for that architecture.
 
-`php --ri fast_uuid` shows the active CSPRNG backend and, after a fallback, the reason.
+`php --ri fast_uuid` shows the active CSPRNG and SHA-1 backends and, after a fallback, the reason.
 
 The arginfo header is generated from `fast_uuid.stub.php`. To regenerate after editing the stub:
 
