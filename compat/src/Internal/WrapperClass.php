@@ -71,7 +71,7 @@ final class WrapperClass
     ];
 
     /**
-     * The match arms in AbstractUuid::wrapCore(), VERSION_CLASSES and
+     * The match arms in Minter::wrapCore(), VERSION_CLASSES and
      * CLASS_VERSIONS must name the same class per version. Every other core
      * (nil, max, nonstandard, unassigned versions) resolves through for().
      */
@@ -79,7 +79,7 @@ final class WrapperClass
         \FastUuid\Uuid $core,
         ?CodecInterface $codec = null,
     ): UuidInterface {
-        return \FastUuid\Compat\AbstractUuid::wrapCore($core, $codec);
+        return Minter::wrapCore($core, $codec);
     }
 
     /**

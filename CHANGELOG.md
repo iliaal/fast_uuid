@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Faster UUID formatting, parsing, and validation (SSSE3 and AArch64 NEON), `uuid_v3()`/`uuid_v5()` hashing (hardware SHA-1 when the CPU has it), batch generation, and compat-layer object creation. Output is unchanged.
 
+### Fixed
+- Compat `AbstractUuid` no longer has the public static helpers (`wrapCore()`, `mintV1()` to `mintV8()`, `mintFromDateTime()`) that the faster object creation added, so a subclass that declares a method with one of those names and a different signature loads again. Its public and protected methods match 0.10.0.
+
 ## [0.10.0] - 2026-11-20
 
 ### Added
